@@ -1,4 +1,4 @@
-import type { BossType, Tile } from './roomGenerator';
+import type { BossType, EnemyType, Tile } from './roomGenerator';
 
 export interface Palette {
   background: number;
@@ -29,6 +29,9 @@ export interface FloorTheme {
   palette: Palette;
   looks: Record<Exclude<Tile, 'floor'>, TileLook>;
   boss: BossType;
+  /** The floor's basic walker and turret: each floor's variants look and behave differently. */
+  walker: EnemyType;
+  turret: EnemyType;
 }
 
 const THEMES: readonly FloorTheme[] = [
@@ -49,6 +52,8 @@ const THEMES: readonly FloorTheme[] = [
       hole: { name: 'pond', shape: 'block', color: 0x2a5a8a, stroke: 0x4f86b8, inset: 0 },
     },
     boss: 'wormBoss',
+    walker: 'zombie',
+    turret: 'turret',
   },
   {
     name: 'Caves',
@@ -67,6 +72,8 @@ const THEMES: readonly FloorTheme[] = [
       hole: { name: 'chasm', shape: 'block', color: 0x020205, stroke: 0x1e1e2c, inset: 0 },
     },
     boss: 'hiveBoss',
+    walker: 'zombie',
+    turret: 'turret',
   },
   {
     name: 'Dungeon',
@@ -85,6 +92,8 @@ const THEMES: readonly FloorTheme[] = [
       hole: { name: 'pit', shape: 'block', color: 0x050407, stroke: 0x2a1c20, inset: 0 },
     },
     boss: 'shadowBoss',
+    walker: 'zombie',
+    turret: 'turret',
   },
 ];
 

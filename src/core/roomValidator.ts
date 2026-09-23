@@ -1,4 +1,5 @@
 import type { Cell } from './floorGenerator';
+import { ENEMY_CLASS } from './enemies';
 import { floodFill, lineOfSight } from './grid';
 import type { Door, RoomLayout, Tile } from './roomGenerator';
 import { blocksSight, isWalkable } from './tiles';
@@ -58,14 +59,16 @@ export function validateRoom(room: RoomToValidate, symmetry: Symmetry): Violatio
     return { x: x + 0.5, y: y + 0.5 };
   });
   for (const e of room.enemies) {
-    if (e.type === 'turret') {
+    const kind = ENEMY_CLASS[e.type];
+    if (kind === 'phasing') continue;
+    if (kind === 'stationary' || kind === 'flyer') {
       const from = { x: e.cell.x + 0.5, y: e.cell.y + 0.5 };
       if (!standable.some((p) => lineOfSight(tiles, from, p, blocksSight))) {
         violations.push({ rule: 'turret-unshootable', cell: e.cell });
       }
       continue;
     }
-    // Everything else walks (a worm needs its whole body reachable).
+    // Walkers need their whole body reachable (a worm's tail too).
     if (![e.cell, ...(e.tail ?? [])].every((c) => reachable.has(key(c)))) {
       violations.push({ rule: 'walker-unreachable', cell: e.cell });
     }

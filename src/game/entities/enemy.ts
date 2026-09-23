@@ -47,6 +47,8 @@ export interface Enemy {
    * knight's shield) instead of hurting it. Bombs, crushers and thorns never ask.
    */
   blocks?(part: EnemySprite, heading: { x: number; y: number }): boolean;
+  /** Flyers (with `collidesWithTerrain` false) still hit walls and stone, but cross holes and thorns. */
+  flies?: boolean;
 }
 
 /** Stat multipliers for a champion, or none for a regular enemy. */

@@ -38,6 +38,7 @@ import { doorCorridor, mapCellAt, roomBlock, tileAt, tileCenter } from './geomet
 import { createGoblin } from './entities/goblin';
 import { createSeedSpitter } from './entities/seedSpitter';
 import { createKnight } from './entities/knight';
+import { createWasp } from './entities/wasp';
 
 type Keys = Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
 type PhysicsRect = Phaser.GameObjects.Rectangle & { body: Phaser.Physics.Arcade.Body };
@@ -58,6 +59,7 @@ const ENEMY_FACTORIES: Record<EnemyType, (scene: Phaser.Scene, spawn: EnemySpawn
   gargoyle: (scene, s, at) => createGargoyle(scene, at(s.cell).x, at(s.cell).y),
   treantBoss: (scene, s, at) => createTreant(scene, at(s.cell).x, at(s.cell).y, s.cell),
   knight: (scene, s, at) => createKnight(scene, at(s.cell).x, at(s.cell).y, !!s.champion),
+  wasp: (scene, s, at) => createWasp(scene, at(s.cell).x, at(s.cell).y, !!s.champion),
 };
 
 type Shape = Phaser.GameObjects.Shape;
@@ -129,6 +131,8 @@ export class GameScene extends Phaser.Scene {
   private enemiesWakeAt = 0;
   /** Every room's crushers with their drawn blocks; `readyAt` is when one may wake again. */
   private crushers: TrackedCrusher[] = [];
+  /** Flying enemies: stopped by walls and stone, but over holes and thorns, and through each other. */
+  private flyers!: Phaser.Physics.Arcade.Group;
 
   constructor() {
     super('game');
@@ -186,6 +190,8 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.walkers, this.holes);
     this.physics.add.collider(this.walkers, this.thorns, (part) => this.thornWalker(part as EnemySprite));
     this.physics.add.collider(this.walkers, this.walkers);
+    this.flyers = this.physics.add.group();
+    this.physics.add.collider(this.flyers, this.walls);
     this.physics.add.overlap(this.shots, this.enemyParts, (shot, part) => this.hitEnemy(shot, part as EnemySprite));
     this.physics.add.overlap(this.player, this.enemyParts, () => this.hurtPlayer());
     // An event rather than JustDown polling, so a tap shorter than a frame still counts.
@@ -491,6 +497,7 @@ export class GameScene extends Phaser.Scene {
       const immovable = part.body.immovable;
       this.enemyParts.add(part);
       if (enemy.collidesWithTerrain) this.walkers.add(part);
+      else if (enemy.flies) this.flyers.add(part);
       part.body.setImmovable(immovable);
     }
     this.enemies.push(enemy);

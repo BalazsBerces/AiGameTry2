@@ -21,4 +21,6 @@ export const ENEMY_CLASS: Record<EnemyType, EnemyClass> = {
   treantBoss: 'stationary',
   /** The dungeon's shielded skeleton knight walks up to the player. */
   knight: 'walker',
+  /** Flies over ponds and thorns, so it only has to be shootable. */
+  wasp: 'flyer',
 };

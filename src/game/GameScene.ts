@@ -3,7 +3,7 @@ import { DIRECTIONS, STEP, type Cell, type Direction, type RoomKind } from '../c
 import { distanceField, lineOfSight } from '../core/grid';
 import type { ChampionDrop, EnemySpawn, EnemyType, Tile } from '../core/roomGenerator';
 import { themeForFloor, type Palette, type TileLook } from '../core/themes';
-import { blocksShots, blocksSight, isWalkable } from '../core/tiles';
+import { blocksShots, blocksSight, hurtsOnTouch, isWalkable } from '../core/tiles';
 import { launchVelocity, resolveWeapon } from '../core/weaponModel';
 import {
   BOMB_RADIUS,
@@ -97,6 +97,8 @@ export class GameScene extends Phaser.Scene {
   private walls!: Phaser.Physics.Arcade.StaticGroup;
   /** Blocks movement only; shots fly over. */
   private holes!: Phaser.Physics.Arcade.StaticGroup;
+  /** Blocks movement like holes, and hurts whoever pushes into it. */
+  private thorns!: Phaser.Physics.Arcade.StaticGroup;
   private player!: PhysicsRect;
   private move!: Keys;
   private aim!: Keys;
@@ -137,6 +139,7 @@ export class GameScene extends Phaser.Scene {
 
     this.walls = this.physics.add.staticGroup();
     this.holes = this.physics.add.staticGroup();
+    this.thorns = this.physics.add.staticGroup();
     this.terrain = new Map();
     for (const room of this.world.rooms.values()) this.drawRoom(room);
 
@@ -147,6 +150,7 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.existing(this.player);
     this.physics.add.collider(this.player, this.walls);
     this.physics.add.collider(this.player, this.holes);
+    this.physics.add.collider(this.player, this.thorns, () => this.hurtPlayer(TUNING.thorn.playerDamage));
 
     const kb = this.input.keyboard!;
     this.move = kb.addKeys({ up: 'W', down: 'S', left: 'A', right: 'D' }) as Keys;
@@ -163,6 +167,7 @@ export class GameScene extends Phaser.Scene {
     this.walkers = this.physics.add.group();
     this.physics.add.collider(this.walkers, this.walls);
     this.physics.add.collider(this.walkers, this.holes);
+    this.physics.add.collider(this.walkers, this.thorns, (part) => this.thornWalker(part as EnemySprite));
     this.physics.add.collider(this.walkers, this.walkers);
     this.physics.add.overlap(this.shots, this.enemyParts, (shot, part) => this.hitEnemy(shot, part as EnemySprite));
     this.physics.add.overlap(this.player, this.enemyParts, () => this.hurtPlayer());
@@ -467,6 +472,13 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** A walker pushed into thorns; each part has its own brief invincibility so it isn't shredded in a frame. */
+  private thornWalker(part: EnemySprite) {
+    if (!part.active || this.time.now < ((part.getData('thornSafeUntil') as number | undefined) ?? 0)) return;
+    part.setData('thornSafeUntil', this.time.now + TUNING.thorn.walkerInvincibleMs);
+    this.damagePart(part, TUNING.thorn.walkerDamage);
+  }
+
   /** Ends the run once; if death and the final boss's death land in the same frame, the first sticks. */
   private endRun(won: boolean) {
     if (this.runOver) return;
@@ -606,7 +618,7 @@ export class GameScene extends Phaser.Scene {
         const shape = drawTile(this, c.x, c.y, looks[tile as Exclude<Tile, 'floor'>]);
         // Shot-blocking tiles are walls to physics; the rest (holes) only stop walking.
         if (!blocksShots(tile)) {
-          this.holes.add(shape);
+          (hurtsOnTouch(tile) ? this.thorns : this.holes).add(shape);
           return;
         }
         shape.setData({ roomId: room.floorRoom.id, tile: { x: tx, y: ty } });

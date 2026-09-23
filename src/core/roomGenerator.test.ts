@@ -472,6 +472,37 @@ describe('Sentry Island (floor 1)', () => {
   });
 });
 
+describe('Thorn Maze (floor 1)', () => {
+  it('winds thorn hedges through the room, every floor cell walkable, walkers loose among them', () => {
+    const layouts = new Set<string>();
+    for (const doors of EVERY_DOOR_SET) {
+      for (let seed = 0; seed < 30; seed++) {
+        const r = generateRoom({ id: '0,0', kind: 'normal', doors: [...doors], archetype: 'thornMaze' }, 0, createRng(seed));
+        const where = `seed ${seed} doors ${doors}`;
+        expect(r.archetype, where).toBe('thornMaze');
+        expect(count(r, 'thorn'), where).toBeGreaterThanOrEqual(8);
+        // A maze, not a prison: thorns shape the paths but never seal floor away.
+        expect(reachable(r, r.doors[0].cell).size, where).toBe(count(r, 'floor'));
+        expect(r.enemies.length, where).toBeGreaterThan(0);
+        expect(r.enemies.every((e) => e.type === 'goblin'), where).toBe(true);
+        layouts.add(JSON.stringify(r.tiles));
+      }
+    }
+    expect(layouts.size).toBeGreaterThan(3);
+  });
+
+  it('only grows thorns on floor 1', () => {
+    for (const floorIndex of [1, 2]) {
+      for (const doors of EVERY_DOOR_SET) {
+        for (let seed = 0; seed < 10; seed++) {
+          const r = generateRoom({ id: '0,0', kind: 'normal', doors: [...doors] }, floorIndex, createRng(seed));
+          expect(count(r, 'thorn'), `floor ${floorIndex + 1} seed ${seed} doors ${doors}`).toBe(0);
+        }
+      }
+    }
+  });
+});
+
 describe('every archetype', () => {
   const ROSTER = [['goblin', 'seedSpitter'], ['ghoul', 'crystalTurret', 'worm'], ['zombie', 'gargoyle']];
 
@@ -501,7 +532,7 @@ describe('every archetype', () => {
   });
 
   it.each([
-    [1, ['jar', 'fourCorners', 'pillaredHall', 'sentryIsland', 'stash']],
+    [1, ['jar', 'fourCorners', 'pillaredHall', 'sentryIsland', 'stash', 'thornMaze']],
     [2, ['courtyard', 'gallery', 'serpentGarden', 'track', 'twinJars', 'vault']],
     [3, ['crossfire', 'fortress', 'killbox', 'minefield', 'nest', 'ruins']],
   ])('gives floor %i its own set of ideas, one of them a breather that fits every door set', (floor, ids) => {

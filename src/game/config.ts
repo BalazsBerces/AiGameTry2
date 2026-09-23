@@ -36,6 +36,8 @@ export const TUNING = {
   crystalTurret: { hp: 4, size: 34, fireDelayMs: 1700, shotSpeed: 220 },
   /** Wake range and burst timing live in core/gargoyle. */
   gargoyle: { hp: 5, size: 34, shotSpeed: 250 },
+  /** Touching a thorn bush: half a heart to the player; walker damage and i-frames are placeholders. */
+  thorn: { playerDamage: 1, walkerDamage: 1, walkerInvincibleMs: 600 },
 };
 
 /** Floor, wall, door and terrain colours come from each floor's theme (core/themes). */

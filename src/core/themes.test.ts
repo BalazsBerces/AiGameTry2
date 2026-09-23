@@ -33,4 +33,8 @@ describe('floor themes', () => {
     expect([0, 1, 2].map((f) => themeForFloor(f).boss)).toEqual(['wormBoss', 'hiveBoss', 'shadowBoss']);
     expect([0, 1, 2].map((f) => bossForFloor(f))).toEqual(['wormBoss', 'hiveBoss', 'shadowBoss']);
   });
+
+  it('shows a thorn as a thorn bush in the forest', () => {
+    expect(themeForFloor(0).looks.thorn.name).toBe('thorn bush');
+  });
 });

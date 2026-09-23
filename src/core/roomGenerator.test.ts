@@ -249,16 +249,19 @@ describe('generateRoom enemy mix per floor', () => {
     expect([...types].sort()).toEqual(['crystalTurret', 'ghoul', 'worm']);
   });
 
-  it('floor 3 skews toward worms and turrets', () => {
-    expect(share(sample(2), ['worm', 'turret'])).toBeGreaterThan(share(sample(1), ['worm', 'crystalTurret']) + 0.1);
-    expect(share(sample(2), ['worm', 'turret'])).toBeGreaterThan(0.6);
+  it('floor 3 has no worms or plain turrets, and gargoyles make up a good share of it', () => {
+    const types = new Set(sample(2).flat().map((e) => e.type));
+    expect(types.has('worm')).toBe(false);
+    expect(types.has('turret')).toBe(false);
+    expect(share(sample(2), ['gargoyle'])).toBeGreaterThan(0.3);
   });
 
   it('asks for more damage to clear a room on each later floor', () => {
-    // Hit points: zombie 3, turret 4, worm 4 segments of 2, goblin 3, seed-spitter 4, ghoul 4, crystal turret 4.
-    const HP: Record<string, number> = { zombie: 3, turret: 4, worm: 8, goblin: 3, seedSpitter: 4, ghoul: 4, crystalTurret: 4 };
+    // Default hit points: zombie 3, turret 4, worm 4 segments of 2, goblin 3, seed-spitter 4, ghoul 4,
+    // crystal turret 4, gargoyle 5; a spawn's own `hp` (the dungeon's tougher zombies) overrides them.
+    const HP: Record<string, number> = { zombie: 3, turret: 4, worm: 8, goblin: 3, seedSpitter: 4, ghoul: 4, crystalTurret: 4, gargoyle: 5 };
     const mean = (floorIndex: number) =>
-      sample(floorIndex).reduce((sum, r) => sum + r.reduce((s, e) => s + HP[e.type], 0), 0) / 600;
+      sample(floorIndex).reduce((sum, r) => sum + r.reduce((s, e) => s + (e.hp ?? HP[e.type]), 0), 0) / 600;
     expect(mean(1)).toBeGreaterThan(mean(0) + 1);
     expect(mean(2)).toBeGreaterThan(mean(1) + 1);
   });
@@ -470,7 +473,7 @@ describe('Sentry Island (floor 1)', () => {
 });
 
 describe('every archetype', () => {
-  const ROSTER = [['goblin', 'seedSpitter'], ['ghoul', 'crystalTurret', 'worm'], ['zombie', 'turret', 'worm']];
+  const ROSTER = [['goblin', 'seedSpitter'], ['ghoul', 'crystalTurret', 'worm'], ['zombie', 'gargoyle']];
 
   it('builds its own idea for every door set it fits: deterministic, varied, within its floor roster', () => {
     for (const a of ARCHETYPES) {

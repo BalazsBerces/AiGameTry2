@@ -62,8 +62,6 @@ class Canvas {
   }
 }
 
-const zombies = (cells: Cell[]): EnemySpawn[] => cells.map((cell) => ({ type: 'zombie', cell }));
-
 /** The floor theme's walker (goblin in the forest, ...) on each cell. */
 const walkersOf = (floorIndex: number, cells: Cell[]): EnemySpawn[] =>
   cells.map((cell) => ({ type: themeForFloor(floorIndex).walker, cell }));
@@ -396,9 +394,13 @@ const vault: Archetype = {
   },
 };
 
+/** The dungeon's walker (its tougher zombie) and turret (the gargoyle), from its theme. */
+const dungeonWalkers = (cells: Cell[]): EnemySpawn[] => cells.map((cell) => ({ type: themeForFloor(2).walker, cell }));
+const dungeonTurrets = (cells: Cell[]): EnemySpawn[] => cells.map((cell) => ({ type: themeForFloor(2).turret, cell }));
+
 /**
- * Floor 3: a stone keep in the middle with turrets inside, firing out through arrow slits
- * (holes: shots pass, feet don't). Worms patrol the grounds around it.
+ * Floor 3: a stone keep in the middle with gargoyles inside, firing out through arrow slits
+ * (holes: shots pass, feet don't). Zombies patrol the grounds around it.
  */
 const fortress: Archetype = {
   id: 'fortress',
@@ -415,16 +417,16 @@ const fortress: Archetype = {
     const slits = rng.pick([['top'], ['side'], ['top', 'side']]);
     if (slits.includes('top')) canvas.paint([{ x: post.x, y: 2 }], 'hole');
     if (slits.includes('side')) canvas.paint([{ x: 6 - half, y: 3 }], 'hole');
-    const turrets = canvas.images(post).map((cell): EnemySpawn => ({ type: 'turret', cell }));
-    const first = straight({ x: 4, y: 0 }, -1);
-    const worms = [first, first.map((c) => opposite(c, width, height))].slice(0, rng.int(1, 2));
-    return { tiles: canvas.tiles, enemies: [...turrets, ...worms.map(worm)], pickups: [], symmetry: { axes } };
+    const turrets = dungeonTurrets(canvas.images(post));
+    const first = { x: rng.int(2, 4), y: 0 };
+    const patrol = [first, opposite(first, width, height)].slice(0, rng.int(1, 2));
+    return { tiles: canvas.tiles, enemies: [...turrets, ...dungeonWalkers(patrol)], pickups: [], symmetry: { axes } };
   },
 };
 
 /**
  * Floor 3: the floor has fallen away except for a cross of narrow walkways joining the doors.
- * Turrets on the far corners rake whoever is out on the cross.
+ * Gargoyles on the far corners rake whoever is out on the cross.
  */
 const killbox: Archetype = {
   id: 'killbox',
@@ -444,7 +446,7 @@ const killbox: Archetype = {
     for (const c of chosen) canvas.tiles[c.y][c.x] = 'floor';
     return {
       tiles: canvas.tiles,
-      enemies: chosen.map((cell): EnemySpawn => ({ type: 'turret', cell })),
+      enemies: dungeonTurrets(chosen),
       pickups: [],
       // A diagonal pair is only point-symmetric; the perches are the idea's own feature.
       symmetry: { axes, feature: chosen },
@@ -453,7 +455,7 @@ const killbox: Archetype = {
 };
 
 /**
- * Floor 3: a long nest across the room, packed with worms and zombies, with one opening on a
+ * Floor 3: a long nest across the room, packed with zombies and roosting gargoyles, with one opening on a
  * wall without a door. Its top and bottom walls would block those doors, so it only fits
  * rooms entered from the sides.
  */
@@ -474,11 +476,12 @@ const nest: Archetype = {
     const canvas = new Canvas(width, height, []);
     canvas.paint(jarWall(shape), 'obstacle');
     canvas.paint([opening], 'floor');
-    const worms = [straight({ x: 3, y: 2 }, 1), straight({ x: 9, y: 4 }, -1)];
+    // Gargoyles roost in two opposite corners of the nest, zombies crowd its middle row.
+    const roosts = rng.next() < 0.5 ? [{ x: 3, y: 2 }, { x: 9, y: 4 }] : [{ x: 9, y: 2 }, { x: 3, y: 4 }];
     const zombieCells = shuffled([{ x: 3, y: 3 }, { x: 5, y: 3 }, { x: 7, y: 3 }, { x: 9, y: 3 }], rng).slice(0, rng.int(2, 3));
     return {
       tiles: canvas.tiles,
-      enemies: [...worms.map(worm), ...zombies(zombieCells)],
+      enemies: [...dungeonTurrets(roosts), ...dungeonWalkers(zombieCells)],
       pickups: [],
       symmetry: { axes: shape.axes, feature: [opening] },
     };
@@ -487,7 +490,7 @@ const nest: Archetype = {
 
 /**
  * Floor 3: two lanes along the top and bottom walls, each walled off from the middle and
- * guarded by a turret at both ends, so anyone cutting through a lane is caught between them.
+ * guarded by a gargoyle at both ends, so anyone cutting through a lane is caught between them.
  */
 const crossfire: Archetype = {
   id: 'crossfire',
@@ -501,14 +504,14 @@ const crossfire: Archetype = {
     canvas.paint(Array.from({ length }, (_, i) => ({ x: 2 + i, y: 2 })), 'obstacle');
     if (rng.next() < 0.6) canvas.paint([{ x: 2 + length, y: 2 }], 'rock');
     const end = { x: rng.pick([0, 1]), y: 1 };
-    const turrets = canvas.images(end).map((cell): EnemySpawn => ({ type: 'turret', cell }));
+    const turrets = dungeonTurrets(canvas.images(end));
     return { tiles: canvas.tiles, enemies: turrets, pickups: [], symmetry: { axes } };
   },
 };
 
 /**
- * Floor 3 breather: broken rock walls, mirrored into every corner, with a pair of worms
- * nosing around them. Nothing touches a door approach, so it fits every door set.
+ * Floor 3 breather: broken rock walls, mirrored into every corner, with a pair of zombies
+ * shambling around them. Nothing touches a door approach, so it fits every door set.
  */
 const ruins: Archetype = {
   id: 'ruins',
@@ -526,14 +529,14 @@ const ruins: Archetype = {
     ]);
     canvas.paint(fragment, 'rock');
     if (rng.next() < 0.5) canvas.paint([{ x: 1, y: 1 }], 'rock');
-    const first = straight({ x: 4, y: 0 }, -1);
-    const second = rng.next() < 0.5 ? first.map((c) => opposite(c, width, height)) : first.map((c) => ({ x: width - 1 - c.x, y: c.y }));
-    return { tiles: canvas.tiles, enemies: [worm(first), worm(second)], pickups: [], symmetry: { axes } };
+    const first = { x: rng.int(2, 4), y: 0 };
+    const second = rng.next() < 0.5 ? opposite(first, width, height) : { x: width - 1 - first.x, y: first.y };
+    return { tiles: canvas.tiles, enemies: dungeonWalkers([first, second]), pickups: [], symmetry: { axes } };
   },
 };
 
 /**
- * Floor 3 puzzle: a chest buried in the middle of a dense field of rocks, with turrets
+ * Floor 3 puzzle: a chest buried in the middle of a dense field of rocks, with gargoyles
  * covering it; digging in means standing still under fire (or spending a bomb).
  */
 const minefield: Archetype = {
@@ -552,7 +555,7 @@ const minefield: Archetype = {
     if (rng.next() < 0.5) canvas.paint([{ x: 6 - reach, y: 1 }], 'rock');
     const guard = rng.pick([{ x: 1, y: 1 }, { x: 2, y: 0 }]);
     const images = canvas.images(guard);
-    const turrets = [images[0], images[images.length - 1]].map((cell): EnemySpawn => ({ type: 'turret', cell }));
+    const turrets = dungeonTurrets([images[0], images[images.length - 1]]);
     return { tiles: canvas.tiles, enemies: turrets, pickups: [{ type: 'chest', cell: { x: 6, y: 3 } }], symmetry: { axes } };
   },
 };

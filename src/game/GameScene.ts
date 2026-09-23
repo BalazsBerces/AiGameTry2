@@ -32,6 +32,7 @@ import { createZombie } from './entities/zombie';
 import { createGhoul } from './entities/ghoul';
 import { createCrystalTurret } from './entities/crystalTurret';
 import { ricochet } from '../core/ricochet';
+import { createGargoyle } from './entities/gargoyle';
 import { doorCorridor, mapCellAt, roomBlock, tileAt, tileCenter } from './geometry';
 import { createGoblin } from './entities/goblin';
 import { createSeedSpitter } from './entities/seedSpitter';
@@ -43,7 +44,7 @@ const DEPTH = { player: 10 };
 
 type At = (c: Cell) => { x: number; y: number };
 const ENEMY_FACTORIES: Record<EnemyType, (scene: Phaser.Scene, spawn: EnemySpawn, at: At) => Enemy> = {
-  zombie: (scene, s, at) => createZombie(scene, at(s.cell).x, at(s.cell).y, !!s.champion),
+  zombie: (scene, s, at) => createZombie(scene, at(s.cell).x, at(s.cell).y, !!s.champion, s.hp),
   turret: (scene, s, at) => createTurret(scene, at(s.cell).x, at(s.cell).y, !!s.champion),
   worm: (scene, s, at) => spawnWorm(scene, [s.cell, ...(s.tail ?? [])], at, s.champion ? championWorm(REGULAR_WORM) : REGULAR_WORM),
   wormBoss: (scene, s, at) => spawnWorm(scene, [s.cell, ...(s.tail ?? [])], at, BOSS_WORM),
@@ -58,6 +59,7 @@ const ENEMY_FACTORIES: Record<EnemyType, (scene: Phaser.Scene, spawn: EnemySpawn
   seedSpitter: (scene, s, at) => createSeedSpitter(scene, at(s.cell).x, at(s.cell).y),
   ghoul: (scene, s, at) => createGhoul(scene, at(s.cell).x, at(s.cell).y),
   crystalTurret: (scene, s, at) => createCrystalTurret(scene, at(s.cell).x, at(s.cell).y),
+  gargoyle: (scene, s, at) => createGargoyle(scene, at(s.cell).x, at(s.cell).y),
 };
 
 type Shape = Phaser.GameObjects.Shape;

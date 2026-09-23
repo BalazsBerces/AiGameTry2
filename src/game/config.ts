@@ -34,6 +34,8 @@ export const TUNING = {
   /** Slow stalker; `lungeSpeed` while lunging (range and timing live in core/ghoul). */
   ghoul: { hp: 4, speed: 55, lungeSpeed: 330, size: 28 },
   crystalTurret: { hp: 4, size: 34, fireDelayMs: 1700, shotSpeed: 220 },
+  /** Wake range and burst timing live in core/gargoyle. */
+  gargoyle: { hp: 5, size: 34, shotSpeed: 250 },
 };
 
 /** Floor, wall, door and terrain colours come from each floor's theme (core/themes). */
@@ -78,4 +80,6 @@ export const COLORS = {
   crystalTurret: 0x5fc8d8,
   crystalTurretEdge: 0xd8f6ff,
   crystalShot: 0x9ff0ff,
+  gargoyle: 0x5e5a66,
+  gargoyleEyes: 0xff3b2a,
 };

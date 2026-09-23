@@ -32,6 +32,8 @@ export interface FloorTheme {
   /** The floor's basic walker and turret: each floor's variants look and behave differently. */
   walker: EnemyType;
   turret: EnemyType;
+  /** Hit points of the floor's walker when it is a tougher take on its type (the dungeon zombie). */
+  walkerHp?: number;
 }
 
 const THEMES: readonly FloorTheme[] = [
@@ -93,7 +95,8 @@ const THEMES: readonly FloorTheme[] = [
     },
     boss: 'shadowBoss',
     walker: 'zombie',
-    turret: 'turret',
+    turret: 'gargoyle',
+    walkerHp: 5,
   },
 ];
 

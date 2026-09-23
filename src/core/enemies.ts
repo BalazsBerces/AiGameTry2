@@ -17,4 +17,5 @@ export const ENEMY_CLASS: Record<EnemyType, EnemyClass> = {
   seedSpitter: 'stationary',
   ghoul: 'walker',
   crystalTurret: 'stationary',
+  gargoyle: 'stationary',
 };

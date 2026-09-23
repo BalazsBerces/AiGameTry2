@@ -158,3 +158,38 @@ describe('the caves cast', () => {
     expect([...types].sort()).toEqual(['crystalTurret', 'ghoul', 'worm']);
   });
 });
+
+describe('floor casts across whole runs', () => {
+  const castOf = (seed: number) => {
+    const types: Set<string>[] = [new Set(), new Set(), new Set()];
+    const hp: (number | undefined)[][] = [[], [], []];
+    for (const room of createWorld(seed).rooms.values()) {
+      if (room.floorRoom.kind !== 'normal') continue;
+      for (const e of room.layout.enemies) {
+        types[room.floorIndex].add(e.type);
+        if (e.type === 'zombie') hp[room.floorIndex].push(e.hp);
+      }
+    }
+    return { types, hp };
+  };
+  const runs = Array.from({ length: 60 }, (_, seed) => castOf(seed));
+
+  it('never spawns worms or plain turrets on floor 3, whose turret is the gargoyle', () => {
+    for (const { types } of runs) {
+      expect(types[2].has('worm')).toBe(false);
+      expect(types[2].has('turret')).toBe(false);
+    }
+    expect(runs.some(({ types }) => types[2].has('gargoyle'))).toBe(true);
+  });
+
+  it('keeps gargoyles off floors 1 and 2', () => {
+    for (const { types } of runs) for (const f of [0, 1]) expect(types[f].has('gargoyle')).toBe(false);
+  });
+
+  it('makes floor 3 zombies tougher than the plain zombie (3 hit points) of floors 1 and 2', () => {
+    const dungeon = runs.flatMap(({ hp }) => hp[2]);
+    expect(dungeon.length).toBeGreaterThan(0);
+    for (const h of dungeon) expect(h).toBeGreaterThan(3);
+    for (const h of runs.flatMap(({ hp }) => [...hp[0], ...hp[1]])) expect(h).toBeUndefined();
+  });
+});

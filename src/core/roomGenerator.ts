@@ -92,7 +92,8 @@ export type EnemyType =
   | 'goblin'
   | 'seedSpitter'
   | 'ghoul'
-  | 'crystalTurret';
+  | 'crystalTurret'
+  | 'gargoyle';
 
 export interface EnemySpawn {
   type: EnemyType;
@@ -102,6 +103,8 @@ export interface EnemySpawn {
   tail?: Cell[];
   /** Tougher and always drops `drop` (from the normal room-clear pool) when killed. */
   champion?: { drop: ChampionDrop };
+  /** Hit points overriding the type's default: a floor's tougher variant (the dungeon's zombies). */
+  hp?: number;
 }
 
 /** A champion's extra pickup; it lands wherever the champion dies. */
@@ -325,8 +328,10 @@ export function generateRoom(spec: RoomSpec, floorIndex: number, rng: Rng): Room
     const built = buildFromArchetype(spec, doors, floorIndex, rng);
     const pickups = built.pickups.map((p) => placeLoot(p, rng));
     if (spec.kind === 'normal') pickups.push(...rollClearDrop(built.tiles, doors, built.enemies, pickups, rng));
+    const { walker, walkerHp } = themeForFloor(floorIndex);
+    const floorEnemies = built.enemies.map((e) => (walkerHp && e.type === walker ? { ...e, hp: walkerHp } : e));
     // Its own stream, so champion rolls never shift the room's layout.
-    const enemies = spec.kind === 'normal' ? crownChampion(built.enemies, rng.fork('champion')) : built.enemies;
+    const enemies = spec.kind === 'normal' ? crownChampion(floorEnemies, rng.fork('champion')) : floorEnemies;
     return { id: spec.id, width, height, tiles: built.tiles, doors, enemies, pickups, summonPoints: [], archetype: built.archetype };
   }
   // Normal and item rooms come from archetypes above; boss arenas are built here, start rooms stay empty.

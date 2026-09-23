@@ -1,5 +1,7 @@
+import { archetypeById, archetypesFor, fallbackArchetype } from './archetypes';
 import type { Cell, Direction, RoomKind } from './floorGenerator';
 import { floodFill } from './grid';
+import { validateRoom } from './roomValidator';
 import type { Passive } from './weaponModel';
 import type { Rng } from './rng';
 
@@ -10,7 +12,11 @@ export const BOSS_HEIGHT = 14;
 /** Tiles per map cell: a 13x7 room interior plus its one-tile wall ring. */
 export const CELL_TILES = { w: ROOM_WIDTH + 2, h: ROOM_HEIGHT + 2 };
 
-export type Tile = 'floor' | 'obstacle' | 'hole';
+/** `obstacle` is stone; `rock` is the same but breaks after a few player shots. */
+export type Tile = 'floor' | 'obstacle' | 'rock' | 'hole';
+
+/** Player shots it takes to break a rock. */
+export const ROCK_HITS = 3;
 
 export interface DoorSpec {
   side: Direction;
@@ -23,6 +29,8 @@ export interface RoomSpec {
   kind: RoomKind;
   /** A bare side is shorthand for a door in the room's top-left cell. */
   doors: (Direction | DoorSpec)[];
+  /** Idea to build the room from, as assigned per floor; picked here if left out. */
+  archetype?: string;
 }
 
 export const roomSize = (kind: RoomKind) =>
@@ -53,12 +61,14 @@ export interface RoomLayout {
   pickups: PickupSpawn[];
   /** Cells where a boss may summon enemies during the fight (validated like any spawn). */
   summonPoints: Cell[];
+  /** The idea the room was built from, if any. */
+  archetype?: string;
 }
 
-export type PickupType = 'heart' | 'key' | 'chest' | 'lockedChest' | 'passive';
+export type PickupType = 'heart' | 'key' | 'bomb' | 'chest' | 'lockedChest' | 'passive';
 
 /** Something a chest releases. */
-export type ChestItem = { type: 'heart' } | { type: 'key' } | { type: 'passive'; passive: Passive };
+export type ChestItem = { type: 'heart' } | { type: 'key' } | { type: 'bomb' } | { type: 'passive'; passive: Passive };
 
 export interface PickupSpawn {
   type: PickupType;
@@ -67,6 +77,8 @@ export interface PickupSpawn {
   passive?: Passive;
   /** What a chest releases when opened. */
   contents?: ChestItem[];
+  /** Placed by the room's idea in plain sight, rather than revealed when the room is cleared. */
+  visible?: boolean;
 }
 
 export const PASSIVE_POOL: readonly Passive[] = ['homing', 'fireRate', 'sword'];
@@ -80,16 +92,6 @@ export interface EnemySpawn {
   /** A worm's body behind the head, in order. */
   tail?: Cell[];
 }
-
-/** Enemies per normal room and their type odds, per floor. Placeholders for playtest tuning. */
-export const ENEMIES_BY_FLOOR: readonly {
-  budget: { min: number; max: number };
-  weights: Record<'zombie' | 'turret' | 'worm', number>;
-}[] = [
-  { budget: { min: 2, max: 4 }, weights: { zombie: 65, turret: 35, worm: 0 } },
-  { budget: { min: 3, max: 5 }, weights: { zombie: 45, turret: 30, worm: 25 } },
-  { budget: { min: 4, max: 6 }, weights: { zombie: 20, turret: 40, worm: 40 } },
-];
 
 /** Doors sit at the centre of the wall of the map cell they belong to. */
 function doorCell({ side, at }: DoorSpec, width: number, height: number): Cell {
@@ -105,50 +107,6 @@ function doorCell({ side, at }: DoorSpec, width: number, height: number): Cell {
       return { x: 0, y: midY };
     case 'right':
       return { x: width - 1, y: midY };
-  }
-}
-
-const TERRAIN = {
-  emptyChance: 0.15,
-  minClusters: 2,
-  maxClusters: 5,
-  holeChance: 0.35,
-  mirrorChance: 0.6,
-};
-
-const CLUSTER_SHAPES: readonly Cell[][] = [
-  [{ x: 0, y: 0 }],
-  [{ x: 0, y: 0 }, { x: 1, y: 0 }],
-  [{ x: 0, y: 0 }, { x: 0, y: 1 }],
-  [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }],
-  [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }],
-  [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }],
-];
-
-function placeTerrain(tiles: Tile[][], rng: Rng, keepClear: (c: Cell) => boolean) {
-  const height = tiles.length;
-  const width = tiles[0].length;
-  if (rng.next() < TERRAIN.emptyChance) return;
-  const mirror = rng.next() < TERRAIN.mirrorChance;
-  const set = (c: Cell, tile: Tile) => {
-    if (c.x < 0 || c.y < 0 || c.x >= width || c.y >= height || keepClear(c)) return;
-    tiles[c.y][c.x] = tile;
-  };
-  const clusters = rng.int(TERRAIN.minClusters, TERRAIN.maxClusters);
-  for (let i = 0; i < clusters; i++) {
-    const tile: Tile = rng.next() < TERRAIN.holeChance ? 'hole' : 'obstacle';
-    const shape = rng.pick(CLUSTER_SHAPES);
-    const ox = rng.int(0, width - 1);
-    const oy = rng.int(0, height - 1);
-    for (const p of shape) {
-      const c = { x: ox + p.x, y: oy + p.y };
-      set(c, tile);
-      if (mirror) {
-        set({ x: width - 1 - c.x, y: c.y }, tile);
-        set({ x: c.x, y: height - 1 - c.y }, tile);
-        set({ x: width - 1 - c.x, y: height - 1 - c.y }, tile);
-      }
-    }
   }
 }
 
@@ -228,12 +186,6 @@ function placeLabyrinth(tiles: Tile[][], rng: Rng, keepClear: (c: Cell) => boole
 }
 
 type TerrainStrategy = (tiles: Tile[][], rng: Rng, keepClear: (c: Cell) => boolean) => void;
-
-function terrainFor(kind: RoomKind, floorIndex: number): TerrainStrategy | undefined {
-  if (kind === 'normal' || kind === 'item') return placeTerrain;
-  if (kind === 'boss') return BOSS_ARENAS[bossForFloor(floorIndex)];
-  return undefined;
-}
 
 export type BossType = 'wormBoss' | 'hiveBoss' | 'shadowBoss';
 
@@ -315,6 +267,11 @@ function placeCover(tiles: Tile[][], rng: Rng, keepClear: (c: Cell) => boolean) 
 }
 
 export const isWalkable = (tile: Tile) => tile === 'floor';
+/** Tiles that stop shots and line of sight; holes do not. */
+export const blocksSight = (tile: Tile) => tile === 'obstacle' || tile === 'rock';
+export const isBreakable = (tile: Tile) => tile === 'rock';
+/** Bombs blow away stone as well as rock; holes stay holes. */
+export const isBlastable = (tile: Tile) => tile === 'rock' || tile === 'obstacle';
 
 const roomOrigin = (tiles: Tile[][], doors: Door[]): Cell =>
   doors[0]?.cell ?? { x: Math.floor(tiles[0].length / 2), y: Math.floor(tiles.length / 2) };
@@ -329,14 +286,45 @@ function isConnected(tiles: Tile[][], doors: Door[]): boolean {
 const emptyTiles = (width: number, height: number): Tile[][] =>
   Array.from({ length: height }, () => Array<Tile>(width).fill('floor'));
 
+const MAX_ARCHETYPE_ATTEMPTS = 40;
+
+/**
+ * Builds the room from its archetype (or one picked here if none was assigned), rerolling
+ * until it passes validation; after too many failures the floor's fallback breather takes
+ * over, and if even that fails the room is left empty, which is always valid.
+ */
+function buildFromArchetype(spec: RoomSpec, doors: Door[], floorIndex: number, rng: Rng) {
+  const { width, height } = roomSize(spec.kind);
+  const sides = doors.map((d) => d.side);
+  const fitting = archetypesFor(floorIndex, spec.kind).filter((a) => a.fits(sides));
+  const named = spec.archetype ? archetypeById(spec.archetype) : undefined;
+  const assigned = named?.fits(sides) ? named : undefined;
+  const fallback = fallbackArchetype(floorIndex, spec.kind);
+  const chosen = assigned ?? (fitting.length ? rng.pick(fitting) : fallback);
+  for (const archetype of [chosen, fallback]) {
+    for (let attempt = 0; attempt < MAX_ARCHETYPE_ATTEMPTS; attempt++) {
+      const built = archetype.build({ width, height, doors, rng });
+      if (validateRoom({ ...built, doors }, built.symmetry).length === 0) return { ...built, archetype: archetype.id };
+    }
+  }
+  return { tiles: emptyTiles(width, height), enemies: [] as EnemySpawn[], pickups: [] as PickupSpawn[], archetype: fallback.id };
+}
+
 export function generateRoom(spec: RoomSpec, floorIndex: number, rng: Rng): RoomLayout {
   const { width, height } = roomSize(spec.kind);
   const doors = spec.doors
     .map((d): DoorSpec => (typeof d === 'string' ? { side: d, at: { x: 0, y: 0 } } : d))
     .map((d) => ({ side: d.side, cell: doorCell(d, width, height) }));
+  if (archetypesFor(floorIndex, spec.kind).length) {
+    const built = buildFromArchetype(spec, doors, floorIndex, rng);
+    const pickups = built.pickups.map((p) => placeLoot(p, rng));
+    if (spec.kind === 'normal') pickups.push(...rollClearDrop(built.tiles, doors, built.enemies, pickups, rng));
+    return { id: spec.id, width, height, tiles: built.tiles, doors, enemies: built.enemies, pickups, summonPoints: [], archetype: built.archetype };
+  }
+  // Normal and item rooms come from archetypes above; boss arenas are built here, start rooms stay empty.
   const isDoor = (c: Cell) => doors.some((d) => d.cell.x === c.x && d.cell.y === c.y);
   let tiles = emptyTiles(width, height);
-  const terrain = terrainFor(spec.kind, floorIndex);
+  const terrain = spec.kind === 'boss' ? BOSS_ARENAS[bossForFloor(floorIndex)] : undefined;
   for (let attempt = 0; terrain && attempt < MAX_TERRAIN_ATTEMPTS; attempt++) {
     const candidate = emptyTiles(width, height);
     terrain(candidate, rng, isDoor);
@@ -346,20 +334,6 @@ export function generateRoom(spec: RoomSpec, floorIndex: number, rng: Rng): Room
     }
   }
   const enemies: EnemySpawn[] = [];
-  if (spec.kind === 'normal') {
-    const nearDoor = (c: Cell) => doors.some((d) => Math.abs(d.cell.x - c.x) <= 1 && Math.abs(d.cell.y - c.y) <= 1);
-    const pool = reachableCells(tiles, doors).filter((c) => !nearDoor(c));
-    const mix = ENEMIES_BY_FLOOR[Math.min(floorIndex, ENEMIES_BY_FLOOR.length - 1)];
-    const n = Math.min(pool.length, rng.int(mix.budget.min, mix.budget.max));
-    for (let i = 0; i < n && pool.length; i++) {
-      const [cell] = pool.splice(rng.int(0, pool.length - 1), 1);
-      const type = weighted(mix.weights, rng);
-      const tail = type === 'worm' ? growTail(cell, pool, WORM_LENGTH - 1, rng) : undefined;
-      if (tail) enemies.push({ type: 'worm', cell, tail });
-      // A worm with no room for its body becomes a turret instead.
-      else enemies.push({ type: type === 'worm' ? 'turret' : type, cell });
-    }
-  }
   if (spec.kind === 'boss' && bossForFloor(floorIndex) === 'wormBoss') {
     const farFromDoors = (c: Cell) => doors.every((d) => Math.abs(d.cell.x - c.x) + Math.abs(d.cell.y - c.y) > 3);
     const pool = reachableCells(tiles, doors).filter(farFromDoors);
@@ -394,26 +368,13 @@ export function generateRoom(spec: RoomSpec, floorIndex: number, rng: Rng): Room
       ),
     );
   }
-  const pickups: PickupSpawn[] = [];
-  if (spec.kind === 'normal' && rng.next() < PICKUPS.roomChance) {
-    const taken = new Set(enemies.flatMap((e) => [e.cell, ...(e.tail ?? [])]).map((c) => `${c.x},${c.y}`));
-    const pool = reachableCells(tiles, doors).filter((c) => !taken.has(`${c.x},${c.y}`));
-    if (pool.length) pickups.push(rollPickup(rng.pick(pool), rng));
-  }
-  if (spec.kind === 'item') {
-    const centre = { x: (width - 1) / 2, y: (height - 1) / 2 };
-    const spot = reachableCells(tiles, doors).sort(
-      (a, b) => Math.hypot(a.x - centre.x, a.y - centre.y) - Math.hypot(b.x - centre.x, b.y - centre.y),
-    )[0];
-    pickups.push({ type: 'passive', cell: spot, passive: rng.pick(PASSIVE_POOL) });
-  }
-  return { id: spec.id, width, height, tiles, doors, enemies, pickups, summonPoints };
+  return { id: spec.id, width, height, tiles, doors, enemies, pickups: [], summonPoints };
 }
 
 /** Pickup odds; all numbers are placeholders for playtest tuning. */
 export const PICKUPS = {
   roomChance: 0.45,
-  weights: { heart: 35, key: 30, chest: 20, lockedChest: 15 } as Record<'heart' | 'key' | 'chest' | 'lockedChest', number>,
+  weights: { heart: 30, key: 25, bomb: 15, chest: 18, lockedChest: 12 } as Record<'heart' | 'key' | 'bomb' | 'chest' | 'lockedChest', number>,
   chestContents: { min: 1, max: 3 },
   lockedChestContents: { min: 2, max: 3 },
   lockedChestPassiveChance: 0.35,
@@ -429,16 +390,37 @@ function weighted<K extends string>(weights: Record<K, number>, rng: Rng): K {
   return entries[entries.length - 1][0];
 }
 
+/** The pickup a normal room may reveal once cleared, on the free reachable cell nearest the room's middle. */
+function rollClearDrop(tiles: Tile[][], doors: Door[], enemies: EnemySpawn[], placed: PickupSpawn[], rng: Rng): PickupSpawn[] {
+  if (rng.next() >= PICKUPS.roomChance) return [];
+  const taken = new Set([...enemies.flatMap((e) => [e.cell, ...(e.tail ?? [])]), ...placed.map((p) => p.cell)].map((c) => `${c.x},${c.y}`));
+  const centre = { x: (tiles[0].length - 1) / 2, y: (tiles.length - 1) / 2 };
+  const spot = reachableCells(tiles, doors)
+    .filter((c) => !taken.has(`${c.x},${c.y}`))
+    .sort((a, b) => Math.hypot(a.x - centre.x, a.y - centre.y) - Math.hypot(b.x - centre.x, b.y - centre.y))[0];
+  return spot ? [rollPickup(spot, rng)] : [];
+}
+
 function rollPickup(cell: Cell, rng: Rng): PickupSpawn {
   const type = weighted(PICKUPS.weights, rng);
-  if (type === 'heart' || type === 'key') return { type, cell };
+  if (type === 'heart' || type === 'key' || type === 'bomb') return { type, cell };
+  return { type, cell, contents: rollChestContents(type, rng) };
+}
+
+function rollChestContents(type: 'chest' | 'lockedChest', rng: Rng): ChestItem[] {
   if (type === 'lockedChest' && rng.next() < PICKUPS.lockedChestPassiveChance) {
-    return { type, cell, contents: [{ type: 'passive', passive: rng.pick(PASSIVE_POOL) }] };
+    return [{ type: 'passive', passive: rng.pick(PASSIVE_POOL) }];
   }
   const range = type === 'chest' ? PICKUPS.chestContents : PICKUPS.lockedChestContents;
-  const contents = Array.from({ length: rng.int(range.min, range.max) }, () => ({ type: rng.pick(['heart', 'key'] as const) }));
-  return { type, cell, contents };
+  return Array.from({ length: rng.int(range.min, range.max) }, () => ({ type: rng.pick(['heart', 'key', 'bomb'] as const) }));
 }
+
+/** Loot an idea placed: shown from the start, with any chest filled here. */
+const placeLoot = (p: PickupSpawn, rng: Rng): PickupSpawn => ({
+  ...p,
+  visible: true,
+  ...((p.type === 'chest' || p.type === 'lockedChest') && !p.contents ? { contents: rollChestContents(p.type, rng) } : {}),
+});
 
 export const WORM_LENGTH = 4;
 export const WORM_BOSS_LENGTH = 8;

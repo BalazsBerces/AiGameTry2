@@ -1,3 +1,4 @@
+import { assignArchetypes } from './archetypes';
 import { createRng, type Rng } from './rng';
 import {
   cellKey,
@@ -9,7 +10,15 @@ import {
   type FloorRoom,
   type RoomDoor,
 } from './floorGenerator';
-import { generateRoom, type ChestItem, type PickupType, type RoomLayout } from './roomGenerator';
+import {
+  generateRoom,
+  isBlastable,
+  isBreakable,
+  ROCK_HITS,
+  type ChestItem,
+  type PickupType,
+  type RoomLayout,
+} from './roomGenerator';
 import type { Passive } from './weaponModel';
 
 export interface WorldRoom {
@@ -26,6 +35,7 @@ export interface PlayerState {
   /** Maximum health in half-heart units (two per heart container). */
   maxHealth: number;
   keys: number;
+  bombs: number;
   passives: Passive[];
 }
 
@@ -35,6 +45,8 @@ export interface WorldPickup {
   cell: Cell;
   passive?: Passive;
   contents?: ChestItem[];
+  /** Shown before the room is cleared. */
+  visible?: boolean;
 }
 
 export const HEART_HEAL = 2;
@@ -52,9 +64,14 @@ export interface World {
   /** Pickups still lying in each room (shown once the room is cleared). */
   pickups: Map<string, WorldPickup[]>;
   nextPickupId: number;
+  /** Player hits taken so far by rocks still standing, keyed `roomId|x,y`. */
+  tileHits: Map<string, number>;
 }
 
 export const STARTING_HEARTS = 3;
+export const STARTING_BOMBS = 1;
+/** Tiles whose centre lies within this many tiles of the bomb's are blown away: the 3x3 around it. */
+export const BOMB_RADIUS = 1.5;
 
 export const FLOOR_COUNT = 3;
 
@@ -76,10 +93,18 @@ function crossFloorDoors(floors: FloorLayout[], floorIndex: number, room: FloorR
 }
 
 function buildFloor(world: World, rng: Rng, floor: FloorLayout) {
+  const doorsOf = new Map(
+    floor.rooms.map((r) => [r.id, [...roomDoors(floor, r.id), ...crossFloorDoors(world.floors, floor.floorIndex, r)]]),
+  );
+  const archetypes = assignArchetypes(
+    floor.rooms.map((r) => ({ id: r.id, kind: r.kind, doors: doorsOf.get(r.id)!.map((d) => d.side) })),
+    floor.floorIndex,
+    rng.fork('archetypes'),
+  );
   for (const floorRoom of floor.rooms) {
-    const doors = [...roomDoors(floor, floorRoom.id), ...crossFloorDoors(world.floors, floor.floorIndex, floorRoom)];
+    const doors = doorsOf.get(floorRoom.id)!;
     const layout = generateRoom(
-      { id: floorRoom.id, kind: floorRoom.kind, doors },
+      { id: floorRoom.id, kind: floorRoom.kind, doors, archetype: archetypes.get(floorRoom.id) },
       floor.floorIndex,
       rng.fork(`room ${floorRoom.id}`),
     );
@@ -91,7 +116,7 @@ function buildFloor(world: World, rng: Rng, floor: FloorLayout) {
   }
 }
 
-export type PickupResult = 'none' | 'healed' | 'key' | 'opened' | 'passive';
+export type PickupResult = 'none' | 'healed' | 'key' | 'bomb' | 'opened' | 'passive';
 
 /** The player touched a pickup. Applies its effect and updates the room's pickups. */
 export function touchPickup(world: World, roomId: string, pickupId: number): PickupResult {
@@ -110,6 +135,10 @@ export function touchPickup(world: World, roomId: string, pickupId: number): Pic
       player.keys++;
       remove();
       return 'key';
+    case 'bomb':
+      player.bombs++;
+      remove();
+      return 'bomb';
     case 'lockedChest':
       if (player.keys === 0) return 'none';
       player.keys--;
@@ -147,9 +176,64 @@ function openChest(world: World, roomId: string, chest: WorldPickup) {
   chest.type = 'openChest';
   (chest.contents ?? []).forEach((item, i) => {
     const passive = item.type === 'passive' ? item.passive : undefined;
-    list.push({ id: world.nextPickupId++, type: item.type, passive, cell: around[i] ?? chest.cell });
+    list.push({ id: world.nextPickupId++, type: item.type, passive, cell: around[i] ?? chest.cell, visible: chest.visible });
   });
   chest.contents = undefined;
+}
+
+export type TileHitResult = 'none' | 'damaged' | 'broken';
+
+/**
+ * A player shot hit a terrain tile. Rocks break into floor after `ROCK_HITS` hits; the room's
+ * tiles are the world's, so a broken rock stays broken for the rest of the run.
+ */
+export function hitTile(world: World, roomId: string, cell: Cell): TileHitResult {
+  const tiles = world.rooms.get(roomId)?.layout.tiles;
+  const tile = tiles?.[cell.y]?.[cell.x];
+  if (!tiles || !tile || !isBreakable(tile)) return 'none';
+  const key = `${roomId}|${cell.x},${cell.y}`;
+  const hits = (world.tileHits.get(key) ?? 0) + 1;
+  if (hits < ROCK_HITS) {
+    world.tileHits.set(key, hits);
+    return 'damaged';
+  }
+  world.tileHits.delete(key);
+  tiles[cell.y][cell.x] = 'floor';
+  return 'broken';
+}
+
+/** Spends a bomb if the player has one; true if one was placed. */
+export function placeBomb(world: World): boolean {
+  if (world.player.bombs <= 0) return false;
+  world.player.bombs--;
+  return true;
+}
+
+/**
+ * A bomb went off on `cell`: every rock and stone tile within `BOMB_RADIUS` becomes floor,
+ * for good. Holes survive, and room walls aren't tiles at all. Returns the cells destroyed.
+ */
+export function detonateBomb(world: World, roomId: string, cell: Cell): Cell[] {
+  const tiles = world.rooms.get(roomId)?.layout.tiles;
+  if (!tiles) return [];
+  const reach = Math.floor(BOMB_RADIUS);
+  const destroyed: Cell[] = [];
+  for (let y = cell.y - reach; y <= cell.y + reach; y++) {
+    for (let x = cell.x - reach; x <= cell.x + reach; x++) {
+      const tile = tiles[y]?.[x];
+      if (!tile || !isBlastable(tile) || Math.hypot(x - cell.x, y - cell.y) > BOMB_RADIUS) continue;
+      tiles[y][x] = 'floor';
+      world.tileHits.delete(`${roomId}|${x},${y}`);
+      destroyed.push({ x, y });
+    }
+  }
+  return destroyed;
+}
+
+/** Pickups on show in a room: everything once it is cleared, before that only loot placed in plain sight. */
+export function shownPickups(world: World, roomId: string): WorldPickup[] {
+  const all = world.pickups.get(roomId) ?? [];
+  return world.cleared.has(roomId) ? all : all.filter((p) => p.visible);
 }
 
 export function enterRoom(world: World, roomId: string) {
@@ -192,9 +276,10 @@ export function createWorld(seed: number): World {
     currentRoomId: floors[0].startRoomId,
     cleared: new Set(),
     visited: new Set([floors[0].startRoomId]),
-    player: { health: STARTING_HEARTS * 2, maxHealth: STARTING_HEARTS * 2, keys: 0, passives: [] },
+    player: { health: STARTING_HEARTS * 2, maxHealth: STARTING_HEARTS * 2, keys: 0, bombs: STARTING_BOMBS, passives: [] },
     pickups: new Map(),
     nextPickupId: 1,
+    tileHits: new Map(),
   };
   for (const floor of floors) buildFloor(world, rng.fork(`floor ${floor.floorIndex}`), floor);
   for (const [id, room] of world.rooms) if (room.layout.enemies.length === 0) world.cleared.add(id);

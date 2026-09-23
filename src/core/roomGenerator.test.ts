@@ -1,21 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import { createRng } from './rng';
-import { generateRoom } from './roomGenerator';
+import { ARCHETYPES } from './archetypes';
+import { generateRoom, WORM_LENGTH } from './roomGenerator';
 
 const ALL_DOORS = ['up', 'down', 'left', 'right'] as const;
 const room = (seed: number, doors: readonly (typeof ALL_DOORS)[number][] = ALL_DOORS) =>
   generateRoom({ id: '0,0', kind: 'normal', doors: [...doors] }, 0, createRng(seed));
 const count = (r: ReturnType<typeof room>, tile: string) => r.tiles.flat().filter((t) => t === tile).length;
 
-/** Walkable cells reachable from `from`, 4-connected. */
-function reachable(r: ReturnType<typeof room>, from: { x: number; y: number }) {
+/**
+ * Walkable cells reachable from `from`, 4-connected. `rocksBroken` walks through rocks as if
+ * shot away; `crossHoles` also crosses holes, the way shots do.
+ */
+function reachable(r: ReturnType<typeof room>, from: { x: number; y: number }, rocksBroken = false, crossHoles = false) {
   const seen = new Set<string>();
   const stack = [from];
   while (stack.length) {
     const c = stack.pop()!;
     const key = `${c.x},${c.y}`;
     if (seen.has(key) || c.x < 0 || c.y < 0 || c.x >= r.width || c.y >= r.height) continue;
-    if (r.tiles[c.y][c.x] !== 'floor') continue;
+    const tile = r.tiles[c.y][c.x];
+    if (tile !== 'floor' && !(rocksBroken && tile === 'rock') && !(crossHoles && tile === 'hole')) continue;
     seen.add(key);
     stack.push({ x: c.x + 1, y: c.y }, { x: c.x - 1, y: c.y }, { x: c.x, y: c.y + 1 }, { x: c.x, y: c.y - 1 });
   }
@@ -23,14 +28,15 @@ function reachable(r: ReturnType<typeof room>, from: { x: number; y: number }) {
 }
 
 describe('generateRoom terrain', () => {
-  it('keeps every door and every floor cell mutually reachable', () => {
+  it('keeps every door reachable, and every floor cell once rocks are broken or holes crossed', () => {
     const doorSets = [ALL_DOORS, ['left'], ['up', 'right'], ['down', 'left', 'right']] as const;
     for (let seed = 0; seed < 500; seed++) {
       for (const doors of doorSets) {
         const r = room(seed, doors);
         const seen = reachable(r, r.doors[0].cell);
         for (const d of r.doors) expect(seen.has(`${d.cell.x},${d.cell.y}`), `seed ${seed} door ${d.side}`).toBe(true);
-        expect(seen.size, `seed ${seed} doors ${doors}`).toBe(count(r, 'floor'));
+        const opened = reachable(r, r.doors[0].cell, true, true);
+        expect(opened.size, `seed ${seed} doors ${doors}`).toBe(count(r, 'floor') + count(r, 'rock') + count(r, 'hole'));
       }
     }
   });
@@ -44,13 +50,6 @@ describe('generateRoom terrain', () => {
 
   it('is identical for the same seed', () => {
     expect(room(9)).toEqual(room(9));
-  });
-
-  it('places obstacles and holes that vary between seeds', () => {
-    const rooms = Array.from({ length: 40 }, (_, seed) => room(seed));
-    expect(rooms.filter((r) => count(r, 'obstacle') > 0).length).toBeGreaterThan(20);
-    expect(rooms.filter((r) => count(r, 'hole') > 0).length).toBeGreaterThan(10);
-    expect(new Set(rooms.map((r) => JSON.stringify(r.tiles))).size).toBeGreaterThan(30);
   });
 });
 
@@ -108,24 +107,25 @@ describe('generateRoom enemies', () => {
     expect(start.enemies).toEqual([]);
   });
 
-  it('spawns only on distinct, reachable floor cells that are not next to a door', () => {
+  it('spawns only on distinct floor cells, not next to a door, that walkers can walk to and turrets be shot across holes', () => {
     const doorSets = [ALL_DOORS, ['left'], ['up', 'right']] as const;
     for (const floorIndex of [0, 1, 2]) {
       for (let seed = 0; seed < 300; seed++) {
         for (const doors of doorSets) {
           const r = generateRoom({ id: '0,0', kind: 'normal', doors: [...doors] }, floorIndex, createRng(seed));
-          const seen = reachable(r, r.doors[0].cell);
-          const cells = r.enemies.flatMap((e) => [e.cell, ...(e.tail ?? [])]);
-          for (const c of cells) {
+          const walk = reachable(r, r.doors[0].cell);
+          const shoot = reachable(r, r.doors[0].cell, false, true);
+          const cells = r.enemies.flatMap((e) => [e.cell, ...(e.tail ?? [])].map((c) => ({ c, turret: e.type === 'turret' })));
+          for (const { c, turret } of cells) {
             const where = `floor ${floorIndex} seed ${seed} doors ${doors} at ${c.x},${c.y}`;
             expect(r.tiles[c.y]?.[c.x], where).toBe('floor');
-            expect(seen.has(`${c.x},${c.y}`), where).toBe(true);
+            expect((turret ? shoot : walk).has(`${c.x},${c.y}`), where).toBe(true);
             for (const d of r.doors) {
               const near = Math.abs(d.cell.x - c.x) <= 1 && Math.abs(d.cell.y - c.y) <= 1;
               expect(near, `${where} near door ${d.side}`).toBe(false);
             }
           }
-          expect(new Set(cells.map((c) => `${c.x},${c.y}`)).size).toBe(cells.length);
+          expect(new Set(cells.map(({ c }) => `${c.x},${c.y}`)).size).toBe(cells.length);
         }
       }
     }
@@ -231,7 +231,7 @@ describe('generateRoom enemy mix per floor', () => {
 
   it('floor 1 has only zombies and turrets', () => {
     const types = new Set(sample(0).flat().map((e) => e.type));
-    expect([...types].sort()).toEqual(['turret', 'zombie']);
+    for (const t of types) expect(['turret', 'zombie']).toContain(t);
   });
 
   it('floor 2 adds worms', () => {
@@ -243,10 +243,13 @@ describe('generateRoom enemy mix per floor', () => {
     expect(share(sample(2), ['worm', 'turret'])).toBeGreaterThan(0.6);
   });
 
-  it('has more enemies per room on each later floor', () => {
-    const mean = (floorIndex: number) => sample(floorIndex).reduce((sum, r) => sum + r.length, 0) / 600;
-    expect(mean(1)).toBeGreaterThan(mean(0) + 0.3);
-    expect(mean(2)).toBeGreaterThan(mean(1) + 0.3);
+  it('asks for more damage to clear a room on each later floor', () => {
+    // Hit points: zombie 3, turret 4, worm 4 segments of 2.
+    const HP: Record<string, number> = { zombie: 3, turret: 4, worm: 8 };
+    const mean = (floorIndex: number) =>
+      sample(floorIndex).reduce((sum, r) => sum + r.reduce((s, e) => s + HP[e.type], 0), 0) / 600;
+    expect(mean(1)).toBeGreaterThan(mean(0) + 1);
+    expect(mean(2)).toBeGreaterThan(mean(1) + 1);
   });
 });
 
@@ -256,7 +259,7 @@ describe('generateRoom pickups', () => {
     for (let seed = 0; seed < 400; seed++) {
       const r = room(seed);
       if (r.pickups.length) withPickups++;
-      const seen = reachable(r, r.doors[0].cell);
+      const seen = reachable(r, r.doors[0].cell, true);
       const taken = new Set(r.enemies.flatMap((e) => [e.cell, ...(e.tail ?? [])]).map((c) => `${c.x},${c.y}`));
       for (const p of r.pickups) {
         const key = `${p.cell.x},${p.cell.y}`;
@@ -270,13 +273,25 @@ describe('generateRoom pickups', () => {
     expect(withPickups).toBeLessThan(320);
   });
 
+  it('puts the room-clear drop in the middle of the room when the middle is free', () => {
+    const drops = ['pillaredHall', 'fourCorners']
+      .flatMap((archetype) =>
+        Array.from({ length: 100 }, (_, seed) =>
+          generateRoom({ id: '0,0', kind: 'normal', doors: [...ALL_DOORS], archetype }, 0, createRng(seed)).pickups,
+        ),
+      )
+      .flat();
+    expect(drops.length).toBeGreaterThan(40);
+    for (const p of drops) expect(p.cell).toEqual({ x: 6, y: 3 });
+  });
+
   it('never puts pickups in the start room', () => {
     for (let seed = 0; seed < 50; seed++) {
       expect(generateRoom({ id: '0,0', kind: 'start', doors: ['up'] }, 0, createRng(seed)).pickups).toEqual([]);
     }
   });
 
-  it('fills chests at generation: unlocked with 1-3 hearts/keys, locked with 2-3 pickups', () => {
+  it('fills chests at generation: unlocked with 1-3 hearts/keys/bombs, locked with 2-3 pickups', () => {
     const chests = Array.from({ length: 2000 }, (_, seed) => room(seed).pickups)
       .flat()
       .filter((p) => p.type === 'chest' || p.type === 'lockedChest');
@@ -292,8 +307,14 @@ describe('generateRoom pickups', () => {
       if (c.type === 'chest') expect(n).toBeGreaterThanOrEqual(1);
       else expect(n).toBeGreaterThanOrEqual(2);
       expect(n).toBeLessThanOrEqual(3);
-      for (const item of c.contents!) expect(['heart', 'key']).toContain(item.type);
+      for (const item of c.contents!) expect(['heart', 'key', 'bomb']).toContain(item.type);
     }
+  });
+
+  it('includes bombs among room-clear drops and chest contents', () => {
+    const pickups = Array.from({ length: 1500 }, (_, seed) => room(seed).pickups).flat();
+    expect(pickups.some((p) => p.type === 'bomb')).toBe(true);
+    expect(pickups.flatMap((p) => p.contents ?? []).some((item) => item.type === 'bomb')).toBe(true);
   });
 
   it('locked chests hold a passive item about 35% of the time', () => {
@@ -315,6 +336,160 @@ describe('generateRoom pickups', () => {
       const c = r.pickups[0].cell;
       expect(r.tiles[c.y][c.x]).toBe('floor');
     }
+  });
+});
+
+describe('The Stash (floor 1 puzzle)', () => {
+  const stash = (seed: number, doors: readonly (typeof ALL_DOORS)[number][] = ALL_DOORS) =>
+    generateRoom({ id: '0,0', kind: 'normal', doors: [...doors], archetype: 'stash' }, 0, createRng(seed));
+  const walkable = (r: ReturnType<typeof room>, breakRocks: boolean) => ({
+    ...r,
+    tiles: r.tiles.map((row) => row.map((t) => (breakRocks && t === 'rock' ? 'floor' : t))),
+  });
+
+  it('shows a chest from the start that only breaking rocks can reach', () => {
+    for (let seed = 0; seed < 200; seed++) {
+      for (const doors of [ALL_DOORS, ['left'], ['up', 'right']] as const) {
+        const r = stash(seed, doors);
+        expect(r.archetype).toBe('stash');
+        const chests = r.pickups.filter((p) => p.visible);
+        expect(chests.map((p) => p.type), `seed ${seed}`).toEqual(['chest']);
+        const at = `${chests[0].cell.x},${chests[0].cell.y}`;
+        expect(reachable(walkable(r, false), r.doors[0].cell).has(at), `seed ${seed}`).toBe(false);
+        expect(reachable(walkable(r, true), r.doors[0].cell).has(at), `seed ${seed}`).toBe(true);
+        expect(r.enemies.every((e) => e.type === 'zombie')).toBe(true);
+        expect(r.enemies).toHaveLength(2);
+      }
+    }
+  });
+});
+
+const SIDES = ['up', 'down', 'left', 'right'] as const;
+const EVERY_DOOR_SET = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].map((m) => SIDES.filter((_, i) => m & (1 << i)));
+const STEP_OF = { up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 } } as const;
+
+describe('The Jar (floor 1)', () => {
+  const jar = (seed: number, doors: readonly (typeof SIDES)[number][]) =>
+    generateRoom({ id: '0,0', kind: 'normal', doors: [...doors], archetype: 'jar' }, 0, createRng(seed));
+
+  it('packs 4-5 zombies behind a single opening that never faces a door', () => {
+    let built = 0;
+    for (const doors of EVERY_DOOR_SET) {
+      for (let seed = 0; seed < 40; seed++) {
+        const r = jar(seed, doors);
+        if (r.archetype !== 'jar') continue; // the jar can't fit this door set
+        built++;
+        const where = `seed ${seed} doors ${doors}`;
+        expect(r.enemies.every((e) => e.type === 'zombie'), where).toBe(true);
+        expect(r.enemies.length, where).toBeGreaterThanOrEqual(4);
+        expect(r.enemies.length, where).toBeLessThanOrEqual(5);
+        // Some single floor cell, once blocked, cuts every zombie off from the doors: the opening.
+        const outsideWith = (x: number, y: number) =>
+          reachable({ ...r, tiles: r.tiles.map((row, yy) => row.map((tt, xx) => (xx === x && yy === y ? 'obstacle' : tt))) }, r.doors[0].cell);
+        const isDoor = (x: number, y: number) => r.doors.some((d) => d.cell.x === x && d.cell.y === y);
+        // (The tile just outside it can be a chokepoint too; the opening is the one nearest the horde.)
+        const toHorde = (x: number, y: number) => Math.min(...r.enemies.map((e) => Math.abs(e.cell.x - x) + Math.abs(e.cell.y - y)));
+        const opening = r.tiles
+          .flatMap((row, y) => row.map((t, x) => ({ t, x, y })))
+          .filter(({ t, x, y }) => {
+            const seen = t === 'floor' && !isDoor(x, y) ? outsideWith(x, y) : undefined;
+            return !!seen && r.enemies.every((e) => !seen.has(`${e.cell.x},${e.cell.y}`));
+          })
+          .sort((a, b) => toHorde(a.x, a.y) - toHorde(b.x, b.y))[0];
+        expect(opening, where).toBeDefined();
+        // It faces the side whose neighbour is outside the jar.
+        const outside = outsideWith(opening!.x, opening!.y);
+        const facing = SIDES.find((s) => outside.has(`${opening!.x + STEP_OF[s].x},${opening!.y + STEP_OF[s].y}`));
+        expect(facing, where).toBeDefined();
+        expect(doors, where).not.toContain(facing);
+      }
+    }
+    expect(built).toBeGreaterThan(200);
+  });
+});
+
+describe('Sentry Island (floor 1)', () => {
+  it('puts two turrets on an island nobody can walk to', () => {
+    for (const doors of EVERY_DOOR_SET) {
+      for (let seed = 0; seed < 30; seed++) {
+        const r = generateRoom({ id: '0,0', kind: 'normal', doors: [...doors], archetype: 'sentryIsland' }, 0, createRng(seed));
+        const where = `seed ${seed} doors ${doors}`;
+        expect(r.archetype, where).toBe('sentryIsland');
+        expect(r.enemies.map((e) => e.type), where).toEqual(['turret', 'turret']);
+        const seen = reachable(r, r.doors[0].cell);
+        for (const e of r.enemies) expect(seen.has(`${e.cell.x},${e.cell.y}`), where).toBe(false);
+        expect(count(r, 'hole'), where).toBeGreaterThan(0);
+      }
+    }
+  });
+});
+
+describe('every archetype', () => {
+  const ROSTER = [['zombie', 'turret'], ['zombie', 'turret', 'worm'], ['zombie', 'turret', 'worm']];
+
+  it('builds its own idea for every door set it fits: deterministic, varied, within its floor roster', () => {
+    for (const a of ARCHETYPES) {
+      const layouts = new Set<string>();
+      for (const doors of EVERY_DOOR_SET.filter((d) => a.fits(d))) {
+        for (let seed = 0; seed < 25; seed++) {
+          const spec = { id: '0,0', kind: a.kind, doors: [...doors], archetype: a.id };
+          const r = generateRoom(spec, a.floor, createRng(seed));
+          const where = `${a.id} seed ${seed} doors ${doors}`;
+          expect(r.archetype, where).toBe(a.id);
+          expect(generateRoom(spec, a.floor, createRng(seed)), where).toEqual(r);
+          for (const e of r.enemies) expect(ROSTER[a.floor], where).toContain(e.type);
+          for (const w of r.enemies.filter((e) => e.type === 'worm')) {
+            const chain = [w.cell, ...(w.tail ?? [])];
+            expect(chain, where).toHaveLength(WORM_LENGTH);
+            for (let i = 1; i < chain.length; i++) {
+              expect(Math.abs(chain[i].x - chain[i - 1].x) + Math.abs(chain[i].y - chain[i - 1].y), where).toBe(1);
+            }
+          }
+          layouts.add(JSON.stringify([r.tiles, r.enemies]));
+        }
+      }
+      expect(layouts.size, a.id).toBeGreaterThan(3);
+    }
+  });
+
+  it.each([
+    [1, ['jar', 'fourCorners', 'pillaredHall', 'sentryIsland', 'stash']],
+    [2, ['courtyard', 'gallery', 'serpentGarden', 'track', 'twinJars', 'vault']],
+    [3, ['crossfire', 'fortress', 'killbox', 'minefield', 'nest', 'ruins']],
+  ])('gives floor %i its own set of ideas, one of them a breather that fits every door set', (floor, ids) => {
+    const own = ARCHETYPES.filter((a) => a.floor === floor - 1 && a.kind === 'normal');
+    expect(own.map((a) => a.id).sort()).toEqual([...ids].sort());
+    expect(own.some((a) => a.breather && EVERY_DOOR_SET.every((d) => a.fits(d)))).toBe(true);
+    for (const doors of EVERY_DOOR_SET) {
+      for (let seed = 0; seed < 10; seed++) {
+        const r = generateRoom({ id: '0,0', kind: 'normal', doors: [...doors] }, floor - 1, createRng(seed));
+        expect(ids).toContain(r.archetype);
+      }
+    }
+  });
+});
+
+describe('item room showcases', () => {
+  it('frame a lone passive in the middle of the room, in a style of the floor’s own', () => {
+    const styles: string[][] = [[], [], []];
+    for (const floorIndex of [0, 1, 2]) {
+      for (const doors of EVERY_DOOR_SET) {
+        for (let seed = 0; seed < 10; seed++) {
+          const r = generateRoom({ id: '0,0', kind: 'item', doors: [...doors] }, floorIndex, createRng(seed));
+          const where = `floor ${floorIndex + 1} seed ${seed} doors ${doors}`;
+          expect(r.archetype, where).toBeDefined();
+          styles[floorIndex].push(r.archetype!);
+          expect(r.enemies, where).toEqual([]);
+          expect(r.pickups.map((p) => p.type), where).toEqual(['passive']);
+          expect(r.pickups[0].cell, where).toEqual({ x: 6, y: 3 });
+          expect(reachable(r, r.doors[0].cell).has('6,3'), where).toBe(true);
+          expect(count(r, 'floor'), where).toBeLessThan(13 * 7);
+        }
+      }
+    }
+    const [f1, f2, f3] = styles.map((s) => new Set(s));
+    for (const id of f1) expect(f2.has(id) || f3.has(id)).toBe(false);
+    for (const id of f2) expect(f3.has(id)).toBe(false);
   });
 });
 

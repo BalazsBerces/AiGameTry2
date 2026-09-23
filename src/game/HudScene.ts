@@ -13,6 +13,7 @@ export class HudScene extends Phaser.Scene {
   private minimap!: Phaser.GameObjects.Graphics;
   private floorText!: Phaser.GameObjects.Text;
   private keysText!: Phaser.GameObjects.Text;
+  private bombsText!: Phaser.GameObjects.Text;
 
   constructor() {
     super('hud');
@@ -31,6 +32,12 @@ export class HudScene extends Phaser.Scene {
       fontSize: '14px',
       color: COLORS.text,
     });
+    this.add.circle(HEART.x + 64, HEART.y + HEART.size + 18, 7, COLORS.bomb).setStrokeStyle(2, COLORS.bombFuse);
+    this.bombsText = this.add.text(HEART.x + 76, HEART.y + HEART.size + 10, '', {
+      fontFamily: 'monospace',
+      fontSize: '14px',
+      color: COLORS.text,
+    });
     this.floorText = this.add
       .text(x + MAP.w, MAP.margin + MAP.h + 4, '', { fontFamily: 'monospace', fontSize: '14px', color: COLORS.text })
       .setOrigin(1, 0);
@@ -42,6 +49,7 @@ export class HudScene extends Phaser.Scene {
     this.drawMinimap(world);
     this.floorText.setText(`FLOOR ${currentFloorIndex(world) + 1}`);
     this.keysText.setText(`x ${world.player.keys}`);
+    this.bombsText.setText(`x ${world.player.bombs}`);
   }
 
   private drawHearts(health: number, maxHealth: number) {

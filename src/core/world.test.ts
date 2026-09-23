@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { validateRoom } from './roomValidator';
-import { createWorld, detonateBomb, hitTile, placeBomb, shownPickups, touchPickup, type WorldRoom } from './world';
+import { createWorld, detonateBomb, hitTile, placeBomb, shownPickups, smashRock, touchPickup, type WorldRoom } from './world';
 import { archetypeById, supportsShape } from './archetypes';
 import { CELL_TILES, roomPadding } from './roomGenerator';
 
@@ -27,6 +27,32 @@ describe('hitTile', () => {
     for (let i = 0; i < 5; i++) expect(hitTile(world, room.floorRoom.id, { x: 6, y: 3 })).toBe('none');
     expect(room.layout.tiles[3][6]).toBe('obstacle');
     expect(hitTile(world, room.floorRoom.id, { x: 0, y: 0 })).toBe('none');
+  });
+});
+
+describe('smashRock', () => {
+  it('breaks a rock outright, for good, forgetting any cracks it had', () => {
+    const world = createWorld(1);
+    const room = firstNormalRoom(world);
+    const id = room.floorRoom.id;
+    room.layout.tiles[3][6] = 'rock';
+    hitTile(world, id, { x: 6, y: 3 });
+    expect(smashRock(world, id, { x: 6, y: 3 })).toBe(true);
+    expect(world.rooms.get(id)!.layout.tiles[3][6]).toBe('floor');
+    room.layout.tiles[3][6] = 'rock';
+    expect(hitTile(world, id, { x: 6, y: 3 })).toBe('damaged');
+    expect(hitTile(world, id, { x: 6, y: 3 })).toBe('damaged');
+  });
+
+  it('leaves stone, holes and floor alone', () => {
+    const world = createWorld(1);
+    const room = firstNormalRoom(world);
+    const tiles = room.layout.tiles;
+    tiles[1][1] = 'obstacle';
+    tiles[1][2] = 'hole';
+    tiles[1][3] = 'floor';
+    for (const x of [1, 2, 3]) expect(smashRock(world, room.floorRoom.id, { x, y: 1 })).toBe(false);
+    expect(tiles[1].slice(1, 4)).toEqual(['obstacle', 'hole', 'floor']);
   });
 });
 
@@ -171,7 +197,7 @@ describe('champions', () => {
 });
 
 describe('forest cast', () => {
-  it('fills floor 1 rooms with goblins, seed-spitters and wasps only, and valid rooms', () => {
+  it('fills floor 1 rooms with goblins, seed-spitters, wasps and boars only, and valid rooms', () => {
     const seen = new Set<string>();
     for (let seed = 0; seed < 60; seed++) {
       const world = createWorld(seed);
@@ -184,7 +210,7 @@ describe('forest cast', () => {
         expect(violations, `seed ${seed} room ${layout.id}`).toEqual([]);
       }
     }
-    expect([...seen].sort()).toEqual(['goblin', 'seedSpitter', 'wasp']);
+    expect([...seen].sort()).toEqual(['boar', 'goblin', 'seedSpitter', 'wasp']);
   });
 });
 

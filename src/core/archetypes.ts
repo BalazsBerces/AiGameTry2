@@ -881,6 +881,37 @@ const waspNest: Archetype = {
   },
 };
 
+/**
+ * Floor 1, the boar run: open ground with lone posts mirrored into every quarter, and a pair of
+ * boars at opposite ends. Rock posts are bait: dodge a charge so the boar smashes one and stands
+ * stunned. Stone posts stun it without breaking. The posts leave the middle row and column clear,
+ * so no post blocks a door approach and the room fits every door set.
+ */
+const boarRun: Archetype = {
+  id: 'boarRun',
+  floor: 0,
+  kind: 'normal',
+  fits: fitsAll,
+  build({ width, height, rng }) {
+    const axes: MirrorAxis[] = ['vertical', 'horizontal'];
+    const canvas = new Canvas(width, height, axes);
+    // A top-left quarter of posts: at least one rock to smash, often a stone one to stun on.
+    const posts = rng.pick([
+      { rock: [{ x: 3, y: 1 }], stone: [{ x: 5, y: 2 }] },
+      { rock: [{ x: 2, y: 2 }, { x: 4, y: 1 }], stone: [] },
+      { rock: [{ x: 4, y: 2 }], stone: [{ x: 2, y: 1 }] },
+      { rock: [{ x: 3, y: 2 }], stone: [{ x: 5, y: 1 }] },
+    ]);
+    canvas.paint(posts.rock, 'rock');
+    canvas.paint(posts.stone, 'obstacle');
+    if (rng.next() < 0.5) canvas.paint([{ x: 0, y: 0 }], 'obstacle');
+    // Boars at opposite corners, or facing each other down the middle row.
+    const images = canvas.images(rng.pick([{ x: 1, y: 1 }, { x: 1, y: 5 }, { x: 3, y: 3 }]));
+    const boars = [images[0], images[images.length - 1]].map((cell): EnemySpawn => ({ type: 'boar', cell }));
+    return { tiles: canvas.tiles, enemies: boars, pickups: [], symmetry: { axes } };
+  },
+};
+
 function shuffled<T>(items: readonly T[], rng: Rng): T[] {
   const out = [...items];
   for (let i = out.length - 1; i > 0; i--) {
@@ -917,6 +948,7 @@ export const ARCHETYPES: readonly Archetype[] = [
   crystalGallery,
   knightGuard,
   waspNest,
+  boarRun,
 ];
 
 export const archetypeById = (id: string) => ARCHETYPES.find((a) => a.id === id);

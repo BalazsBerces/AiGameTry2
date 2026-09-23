@@ -108,7 +108,8 @@ export type EnemyType =
   | 'crystalTurret'
   | 'gargoyle'
   | 'knight'
-  | 'wasp';
+  | 'wasp'
+  | 'boar';
 
 export interface EnemySpawn {
   type: EnemyType;

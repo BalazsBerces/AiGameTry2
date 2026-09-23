@@ -204,6 +204,16 @@ export function hitTile(world: World, roomId: string, cell: Cell): TileHitResult
   return 'broken';
 }
 
+/** A charging boar ran into `cell`: a breakable tile (rock) there turns into floor at once, for good. */
+export function smashRock(world: World, roomId: string, cell: Cell): boolean {
+  const tiles = world.rooms.get(roomId)?.layout.tiles;
+  const tile = tiles?.[cell.y]?.[cell.x];
+  if (!tiles || !tile || !hitsToBreak(tile)) return false;
+  tiles[cell.y][cell.x] = 'floor';
+  world.tileHits.delete(`${roomId}|${cell.x},${cell.y}`);
+  return true;
+}
+
 /** Spends a bomb if the player has one; true if one was placed. */
 export function placeBomb(world: World): boolean {
   if (world.player.bombs <= 0) return false;

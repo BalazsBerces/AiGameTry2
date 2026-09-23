@@ -46,6 +46,10 @@ export const TUNING = {
   knight: { hp: 6, speed: 70, size: 28, clinkMs: 160 },
   /** Small and quicker than a goblin; its zigzag lives in core/wasp. */
   wasp: { hp: 2, speed: 175, size: 14 },
+  /** Trots between charges at `speed`, dashes at `dashSpeed`; charge timing and stun live in core/boar. */
+  boar: { hp: 4, speed: 60, dashSpeed: 420, width: 34, height: 24 },
+  /** The mark over a stunned enemy's head, spinning `spinDegPerSec`. */
+  stunMark: { radius: 7, spinDegPerSec: 360 },
 };
 
 /** Floor, wall, door and terrain colours come from each floor's theme (core/themes). */
@@ -101,4 +105,8 @@ export const COLORS = {
   shieldClink: 0xf4f6ff,
   wasp: 0xf2c230,
   waspStripe: 0x2a2216,
+  boar: 0x7a5236,
+  boarTusk: 0xeee2c4,
+  boarWindUp: 0xff7a3a,
+  stunMark: 0xffe066,
 };

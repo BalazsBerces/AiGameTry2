@@ -2,6 +2,7 @@ import type Phaser from 'phaser';
 import type { Cell, Direction } from '../../core/floorGenerator';
 import type { Tile } from '../../core/roomGenerator';
 import type { Weapon } from '../../core/weaponModel';
+import type { Stunnable } from '../../core/stun';
 import { COLORS, TUNING } from '../config';
 
 export type Body = Phaser.Physics.Arcade.Body;
@@ -30,9 +31,15 @@ export interface EnemyContext {
   tiles: Tile[][];
   /** Hurts the player directly (for ground attacks such as the Treant's roots); invincibility frames apply. */
   hurtPlayer(): void;
+  /** A charging boar ran into this tile: rock there breaks for good (core/world `smashRock`). */
+  smashRock(tile: Cell): void;
 }
 
-export interface Enemy {
+/**
+ * Every enemy can be stunned (core/stun): `stun(enemy, time, ms)` from anywhere, and the scene
+ * holds it still, skipping its `update`, until the stun wears off.
+ */
+export interface Enemy extends Stunnable {
   /** Hittable sprites; touching any of them hurts the player. */
   parts: EnemySprite[];
   /** Physics walkers collide with terrain; grid movers (worms) plan their own moves instead. */

@@ -23,4 +23,5 @@ export const ENEMY_CLASS: Record<EnemyType, EnemyClass> = {
   knight: 'walker',
   /** Flies over ponds and thorns, so it only has to be shootable. */
   wasp: 'flyer',
+  boar: 'walker',
 };

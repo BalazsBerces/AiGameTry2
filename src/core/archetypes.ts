@@ -1,7 +1,8 @@
-import type { Cell, Direction, RoomKind } from './floorGenerator';
+import type { Cell, Direction, RoomKind, RoomShape } from './floorGenerator';
 import type { Rng } from './rng';
 import { PASSIVE_POOL, WORM_LENGTH, type Door, type EnemySpawn, type PickupSpawn, type Tile } from './roomGenerator';
 import type { MirrorAxis, Symmetry } from './roomValidator';
+import { themeForFloor } from './themes';
 
 /** What an archetype gets to draw its idea into. */
 export interface ArchetypeContext {
@@ -29,7 +30,11 @@ export interface Archetype {
   breather?: boolean;
   fits(doors: readonly Direction[]): boolean;
   build(ctx: ArchetypeContext): ArchetypeBuild;
+  /** Room shapes the idea is drawn for; a single 1x1 cell if left out. */
+  shapes?: readonly RoomShape[];
 }
+
+export const supportsShape = (a: Archetype, shape: RoomShape) => (a.shapes ?? ['1x1']).includes(shape);
 
 const fitsAll = () => true;
 
@@ -598,6 +603,89 @@ const reliquary: Archetype = {
   },
 };
 
+/**
+ * Wide room, every floor: run the gauntlet down a long hall. The floor's turrets line ledges
+ * along the top and bottom walls behind a moat of holes, a pack of its walkers holds the middle,
+ * and scattered cover breaks up the lane. Door columns and the side doors' row stay clear, so
+ * it fits every door set.
+ */
+const gauntlet = (floor: number): Archetype => ({
+  id: `gauntlet${floor + 1}`,
+  floor,
+  kind: 'normal',
+  shapes: ['2x1'],
+  fits: fitsAll,
+  build({ width, height, rng }) {
+    const { walker, turret } = themeForFloor(floor);
+    const axes: MirrorAxis[] = ['vertical', 'horizontal'];
+    const canvas = new Canvas(width, height, axes);
+    // The ledge spans the middle of each long wall, sealed at its ends; doors sit at x 5 and 20.
+    const ledgeEnd = rng.int(8, 9);
+    canvas.paint(
+      [{ x: ledgeEnd, y: 0 }, ...Array.from({ length: 13 - ledgeEnd }, (_, i) => ({ x: ledgeEnd + i, y: 1 }))],
+      'hole',
+    );
+    const cover = rng.pick([
+      [{ x: 3, y: 2 }],
+      [{ x: 2, y: 2 }, { x: 8, y: 3 }],
+      [{ x: 7, y: 2 }],
+      [{ x: 3, y: 2 }, { x: 10, y: 3 }],
+    ]);
+    canvas.paint(cover, rng.next() < 0.5 ? 'rock' : 'obstacle');
+    const post = { x: rng.int(ledgeEnd + 2, 12), y: 0 };
+    const posts = canvas.images(post);
+    // Both ledges manned, or only the top one.
+    const manned = rng.next() < 0.5 ? posts : posts.filter((c) => c.y === 0);
+    const pack = canvas.images(rng.pick([{ x: 12, y: 3 }, { x: 12, y: 2 }, { x: 11, y: 3 }]));
+    return {
+      tiles: canvas.tiles,
+      enemies: [
+        ...manned.map((cell): EnemySpawn => ({ type: turret, cell })),
+        ...pack.map((cell): EnemySpawn => ({ type: walker, cell })),
+      ],
+      pickups: [],
+      symmetry: { axes },
+    };
+  },
+});
+
+/**
+ * Tall room, every floor: a descent down three terraces. Two drops of holes cross the room,
+ * crossed only at stairs (the gaps), with the floor's walkers waiting on the landing between
+ * and its turrets covering the stairs from the corners. Doors sit on the terraces, clear of the
+ * drops, so it fits every door set.
+ */
+const descent = (floor: number): Archetype => ({
+  id: `descent${floor + 1}`,
+  floor,
+  kind: 'normal',
+  shapes: ['1x2'],
+  fits: fitsAll,
+  build({ width, height, rng }) {
+    const { walker, turret } = themeForFloor(floor);
+    const axes: MirrorAxis[] = ['vertical', 'horizontal'];
+    const canvas = new Canvas(width, height, axes);
+    // Drops on rows 4 and 9 (mirror images); stairs in the middle or down both sides.
+    const centreStairs = rng.next() < 0.5;
+    const drop = centreStairs ? [0, 1, 2, 3, 4] : [2, 3, 4, 5, 6];
+    canvas.paint(drop.map((x) => ({ x, y: 4 })), 'hole');
+    if (rng.next() < 0.5) canvas.paint([{ x: rng.int(3, 4), y: 2 }], rng.next() < 0.5 ? 'rock' : 'obstacle');
+    const landing = canvas.images(centreStairs ? rng.pick([{ x: 2, y: 6 }, { x: 3, y: 6 }]) : rng.pick([{ x: 5, y: 6 }, { x: 4, y: 6 }]));
+    const walkers = rng.next() < 0.5 ? landing : [landing[0], landing[landing.length - 1]];
+    const corners = canvas.images({ x: rng.pick([0, 1]), y: 0 });
+    const turrets = rng.next() < 0.5 ? corners : [corners[0], corners[corners.length - 1]];
+    return {
+      tiles: canvas.tiles,
+      enemies: [
+        ...turrets.map((cell): EnemySpawn => ({ type: turret, cell })),
+        ...walkers.map((cell): EnemySpawn => ({ type: walker, cell })),
+      ],
+      pickups: [],
+      symmetry: { axes },
+    };
+  },
+});
+
 function shuffled<T>(items: readonly T[], rng: Rng): T[] {
   const out = [...items];
   for (let i = out.length - 1; i > 0; i--) {
@@ -628,16 +716,18 @@ export const ARCHETYPES: readonly Archetype[] = [
   altar,
   shrine,
   reliquary,
+  ...[0, 1, 2].flatMap((floor) => [gauntlet(floor), descent(floor)]),
 ];
 
 export const archetypeById = (id: string) => ARCHETYPES.find((a) => a.id === id);
 
-export const archetypesFor = (floorIndex: number, kind: RoomKind) =>
-  ARCHETYPES.filter((a) => a.floor === floorIndex && a.kind === kind);
+/** The floor's ideas for a kind of room, only those drawn for `shape` when one is given. */
+export const archetypesFor = (floorIndex: number, kind: RoomKind, shape?: RoomShape) =>
+  ARCHETYPES.filter((a) => a.floor === floorIndex && a.kind === kind && (!shape || supportsShape(a, shape)));
 
-/** The floor's first breather: always valid, used when an idea keeps failing validation. */
-export const fallbackArchetype = (floorIndex: number, kind: RoomKind) => {
-  const own = archetypesFor(floorIndex, kind);
+/** The floor's first breather for the shape: always valid, used when an idea keeps failing validation. */
+export const fallbackArchetype = (floorIndex: number, kind: RoomKind, shape: RoomShape = '1x1') => {
+  const own = archetypesFor(floorIndex, kind, shape);
   return own.find((a) => a.breather) ?? own[0];
 };
 
@@ -647,18 +737,20 @@ export interface RoomToAssign {
   id: string;
   kind: RoomKind;
   doors: readonly Direction[];
+  /** A single 1x1 cell if left out. */
+  shape?: RoomShape;
 }
 
 /**
- * Picks an archetype for every room on a floor that has any, uniformly among those fitting
- * its doors and used fewer than twice. When every fitting idea is at the cap (more rooms than
- * the floor has ideas for), the least-used fitting ones are picked from instead.
+ * Picks an archetype for every room on a floor that has any, uniformly among those drawn for
+ * its shape, fitting its doors and used fewer than twice. When every fitting idea is at the cap
+ * (more rooms than the floor has ideas for), the least-used fitting ones are picked from instead.
  */
 export function assignArchetypes(rooms: readonly RoomToAssign[], floorIndex: number, rng: Rng): Map<string, string> {
   const uses = new Map<string, number>();
   const assigned = new Map<string, string>();
   for (const room of rooms) {
-    const fitting = archetypesFor(floorIndex, room.kind).filter((a) => a.fits(room.doors));
+    const fitting = archetypesFor(floorIndex, room.kind, room.shape ?? '1x1').filter((a) => a.fits(room.doors));
     if (!fitting.length) continue;
     const count = (a: Archetype) => uses.get(a.id) ?? 0;
     const underCap = fitting.filter((a) => count(a) < MAX_USES_PER_FLOOR);

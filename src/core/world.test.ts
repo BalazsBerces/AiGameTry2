@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { createWorld, detonateBomb, hitTile, placeBomb, shownPickups, touchPickup } from './world';
+import { createWorld, detonateBomb, hitTile, placeBomb, shownPickups, touchPickup, type WorldRoom } from './world';
+import { archetypeById, supportsShape } from './archetypes';
+import { CELL_TILES, roomPadding } from './roomGenerator';
 
 const firstNormalRoom = (world: ReturnType<typeof createWorld>) =>
   [...world.rooms.values()].find((r) => r.floorRoom.kind === 'normal')!;
@@ -76,6 +78,46 @@ describe('bombs', () => {
     room.layout.tiles[3][6] = 'rock';
     expect(hitTile(world, room.floorRoom.id, { x: 6, y: 3 })).toBe('damaged');
     expect(hitTile(world, room.floorRoom.id, { x: 6, y: 3 })).toBe('damaged');
+  });
+});
+
+describe('createWorld room shapes', () => {
+  const SIZE: Record<string, [number, number]> = { '1x1': [13, 7], '2x1': [26, 7], '1x2': [13, 14], '2x2': [26, 14] };
+  /** A door's tile in world tile coordinates: the room's block origin, its wall padding, then the door cell. */
+  const doorTile = (room: WorldRoom, cell: { x: number; y: number }) => {
+    const pad = roomPadding(room.layout.width, room.layout.height);
+    return { x: room.floorRoom.cell.x * CELL_TILES.w + pad.x + cell.x, y: room.floorRoom.cell.y * CELL_TILES.h + pad.y + cell.y };
+  };
+
+  it('sizes every room by its shape and builds shaped rooms from ideas drawn for that shape', () => {
+    for (let seed = 0; seed < 40; seed++) {
+      const world = createWorld(seed);
+      for (const room of world.rooms.values()) {
+        const where = `seed ${seed} ${room.floorRoom.id} ${room.floorRoom.shape}`;
+        expect([room.layout.width, room.layout.height], where).toEqual(SIZE[room.floorRoom.shape]);
+        if (room.floorRoom.kind !== 'normal') continue;
+        expect(supportsShape(archetypeById(room.layout.archetype!)!, room.floorRoom.shape), where).toBe(true);
+      }
+    }
+  });
+
+  it('lines every door up with the neighbour’s door on the same tile row or column', () => {
+    for (let seed = 0; seed < 40; seed++) {
+      const world = createWorld(seed);
+      for (const room of world.rooms.values()) {
+        for (const door of room.layout.doors) {
+          const here = doorTile(room, door.cell);
+          const facing = { up: 'down', down: 'up', left: 'right', right: 'left' }[door.side];
+          const matches = room.neighbors
+            .map((id) => world.rooms.get(id)!)
+            .flatMap((n) => n.layout.doors.filter((d) => d.side === facing).map((d) => doorTile(n, d.cell)))
+            .filter((there) => (door.side === 'up' || door.side === 'down' ? there.x === here.x : there.y === here.y))
+            // Across the two rooms' walls: at most two tiles of padding each, plus one step.
+            .filter((there) => Math.abs(there.x - here.x) + Math.abs(there.y - here.y) <= 5);
+          expect(matches, `seed ${seed} ${room.floorRoom.id} ${door.side} at ${here.x},${here.y}`).toHaveLength(1);
+        }
+      }
+    }
   });
 });
 

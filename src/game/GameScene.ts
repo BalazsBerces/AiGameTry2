@@ -497,7 +497,7 @@ export class GameScene extends Phaser.Scene {
     if (this.currentRoom.floorRoom.kind === 'boss' && isFinalFloor(this.currentRoom.floorIndex)) this.endRun(true);
   }
 
-  /** Camera tracks the player, clamped to the room: fixed in 1x1 rooms, scrolling in the boss room. */
+  /** Camera tracks the player, clamped to the room: fixed in 1x1 rooms, scrolling in wide, tall and boss rooms. */
   private followInside(room: WorldRoom) {
     const b = roomBlock(room);
     this.cameras.main.setBounds(b.x, b.y, b.w, b.h).startFollow(this.player, true);

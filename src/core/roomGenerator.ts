@@ -1,5 +1,5 @@
-import { archetypeById, archetypesFor, fallbackArchetype } from './archetypes';
-import type { Cell, Direction, RoomKind } from './floorGenerator';
+import { archetypeById, archetypesFor, fallbackArchetype, supportsShape } from './archetypes';
+import { SHAPE_CELLS, type Cell, type Direction, type RoomKind, type RoomShape } from './floorGenerator';
 import { floodFill } from './grid';
 import { validateRoom } from './roomValidator';
 import type { Passive } from './weaponModel';
@@ -30,10 +30,18 @@ export interface RoomSpec {
   doors: (Direction | DoorSpec)[];
   /** Idea to build the room from, as assigned per floor; picked here if left out. */
   archetype?: string;
+  /** Map cells the room spans; a single cell if left out (the boss room is always 2x2). */
+  shape?: RoomShape;
 }
 
-export const roomSize = (kind: RoomKind) =>
-  kind === 'boss' ? { width: BOSS_WIDTH, height: BOSS_HEIGHT } : { width: ROOM_WIDTH, height: ROOM_HEIGHT };
+/** Interior size in tiles: one 13x7 room per map cell, plus the wall rings between cells. */
+export const roomSize = (kind: RoomKind, shape: RoomShape = '1x1') => {
+  if (kind === 'boss') return { width: BOSS_WIDTH, height: BOSS_HEIGHT };
+  const cells = SHAPE_CELLS[shape];
+  const cols = Math.max(...cells.map((c) => c.x)) + 1;
+  const rows = Math.max(...cells.map((c) => c.y)) + 1;
+  return { width: cols * ROOM_WIDTH, height: rows * ROOM_HEIGHT };
+};
 
 /** Wall thickness in tiles between the room's map-cell block edge and its interior. */
 export function roomPadding(width: number, height: number) {
@@ -285,12 +293,13 @@ const MAX_ARCHETYPE_ATTEMPTS = 40;
  * over, and if even that fails the room is left empty, which is always valid.
  */
 function buildFromArchetype(spec: RoomSpec, doors: Door[], floorIndex: number, rng: Rng) {
-  const { width, height } = roomSize(spec.kind);
+  const shape = spec.shape ?? '1x1';
+  const { width, height } = roomSize(spec.kind, shape);
   const sides = doors.map((d) => d.side);
-  const fitting = archetypesFor(floorIndex, spec.kind).filter((a) => a.fits(sides));
+  const fitting = archetypesFor(floorIndex, spec.kind, shape).filter((a) => a.fits(sides));
   const named = spec.archetype ? archetypeById(spec.archetype) : undefined;
-  const assigned = named?.fits(sides) ? named : undefined;
-  const fallback = fallbackArchetype(floorIndex, spec.kind);
+  const assigned = named && supportsShape(named, shape) && named.fits(sides) ? named : undefined;
+  const fallback = fallbackArchetype(floorIndex, spec.kind, shape);
   const chosen = assigned ?? (fitting.length ? rng.pick(fitting) : fallback);
   for (const archetype of [chosen, fallback]) {
     for (let attempt = 0; attempt < MAX_ARCHETYPE_ATTEMPTS; attempt++) {
@@ -302,11 +311,11 @@ function buildFromArchetype(spec: RoomSpec, doors: Door[], floorIndex: number, r
 }
 
 export function generateRoom(spec: RoomSpec, floorIndex: number, rng: Rng): RoomLayout {
-  const { width, height } = roomSize(spec.kind);
+  const { width, height } = roomSize(spec.kind, spec.shape);
   const doors = spec.doors
     .map((d): DoorSpec => (typeof d === 'string' ? { side: d, at: { x: 0, y: 0 } } : d))
     .map((d) => ({ side: d.side, cell: doorCell(d, width, height) }));
-  if (archetypesFor(floorIndex, spec.kind).length) {
+  if (archetypesFor(floorIndex, spec.kind, spec.shape ?? '1x1').length) {
     const built = buildFromArchetype(spec, doors, floorIndex, rng);
     const pickups = built.pickups.map((p) => placeLoot(p, rng));
     if (spec.kind === 'normal') pickups.push(...rollClearDrop(built.tiles, doors, built.enemies, pickups, rng));

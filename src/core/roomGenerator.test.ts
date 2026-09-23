@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createRng } from './rng';
-import { ARCHETYPES } from './archetypes';
-import { generateRoom, WORM_LENGTH } from './roomGenerator';
+import { ARCHETYPES, supportsShape } from './archetypes';
+import { generateRoom, WORM_LENGTH, type DoorSpec } from './roomGenerator';
 
 const ALL_DOORS = ['up', 'down', 'left', 'right'] as const;
 const room = (seed: number, doors: readonly (typeof ALL_DOORS)[number][] = ALL_DOORS) =>
@@ -368,6 +368,31 @@ const SIDES = ['up', 'down', 'left', 'right'] as const;
 const EVERY_DOOR_SET = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].map((m) => SIDES.filter((_, i) => m & (1 << i)));
 const STEP_OF = { up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 } } as const;
 
+/** Every wall slot a door can take in each shape: a side of one of its map cells on the room's edge. */
+const DOOR_SLOTS: Record<'1x1' | '2x1' | '1x2', DoorSpec[]> = {
+  '1x1': SIDES.map((side) => ({ side, at: { x: 0, y: 0 } })),
+  '2x1': [
+    { side: 'up', at: { x: 0, y: 0 } }, { side: 'up', at: { x: 1, y: 0 } },
+    { side: 'down', at: { x: 0, y: 0 } }, { side: 'down', at: { x: 1, y: 0 } },
+    { side: 'left', at: { x: 0, y: 0 } }, { side: 'right', at: { x: 1, y: 0 } },
+  ],
+  '1x2': [
+    { side: 'left', at: { x: 0, y: 0 } }, { side: 'left', at: { x: 0, y: 1 } },
+    { side: 'right', at: { x: 0, y: 0 } }, { side: 'right', at: { x: 0, y: 1 } },
+    { side: 'up', at: { x: 0, y: 0 } }, { side: 'down', at: { x: 0, y: 1 } },
+  ],
+};
+const subsets = <T,>(items: T[]) =>
+  Array.from({ length: (1 << items.length) - 1 }, (_, m) => items.filter((_, i) => (m + 1) & (1 << i)));
+const EVERY_SHAPED_DOOR_SET = {
+  '1x1': subsets(DOOR_SLOTS['1x1']),
+  '2x1': subsets(DOOR_SLOTS['2x1']),
+  '1x2': subsets(DOOR_SLOTS['1x2']),
+  // Not grown yet; listed so archetypes declaring the shape are swept once it is.
+  '2x2': [] as DoorSpec[][],
+};
+const SHAPE_SIZE = { '1x1': [13, 7], '2x1': [26, 7], '1x2': [13, 14], '2x2': [26, 14] };
+
 describe('The Jar (floor 1)', () => {
   const jar = (seed: number, doors: readonly (typeof SIDES)[number][]) =>
     generateRoom({ id: '0,0', kind: 'normal', doors: [...doors], archetype: 'jar' }, 0, createRng(seed));
@@ -427,28 +452,48 @@ describe('Sentry Island (floor 1)', () => {
 describe('every archetype', () => {
   const ROSTER = [['zombie', 'turret'], ['zombie', 'turret', 'worm'], ['zombie', 'turret', 'worm']];
 
-  it('builds its own idea for every door set it fits: deterministic, varied, within its floor roster', () => {
+  it('builds its own idea for every shape and door set it fits: deterministic, varied, within its floor roster', () => {
     for (const a of ARCHETYPES) {
       const layouts = new Set<string>();
-      for (const doors of EVERY_DOOR_SET.filter((d) => a.fits(d))) {
-        for (let seed = 0; seed < 25; seed++) {
-          const spec = { id: '0,0', kind: a.kind, doors: [...doors], archetype: a.id };
-          const r = generateRoom(spec, a.floor, createRng(seed));
-          const where = `${a.id} seed ${seed} doors ${doors}`;
-          expect(r.archetype, where).toBe(a.id);
-          expect(generateRoom(spec, a.floor, createRng(seed)), where).toEqual(r);
-          for (const e of r.enemies) expect(ROSTER[a.floor], where).toContain(e.type);
-          for (const w of r.enemies.filter((e) => e.type === 'worm')) {
-            const chain = [w.cell, ...(w.tail ?? [])];
-            expect(chain, where).toHaveLength(WORM_LENGTH);
-            for (let i = 1; i < chain.length; i++) {
-              expect(Math.abs(chain[i].x - chain[i - 1].x) + Math.abs(chain[i].y - chain[i - 1].y), where).toBe(1);
+      for (const shape of a.shapes ?? ['1x1' as const]) {
+        // Shaped rooms have many more door sets: a few fresh seeds each still covers every one.
+        const seeds = shape === '1x1' ? 25 : 3;
+        const doorSets = EVERY_SHAPED_DOOR_SET[shape].filter((d) => a.fits(d.map((door) => door.side)));
+        for (const [i, doors] of doorSets.entries()) {
+          const first = shape === '1x1' ? 0 : i * seeds;
+          for (let seed = first; seed < first + seeds; seed++) {
+            const spec = { id: '0,0', kind: a.kind, doors: [...doors], archetype: a.id, shape };
+            const r = generateRoom(spec, a.floor, createRng(seed));
+            const where = `${a.id} ${shape} seed ${seed} doors ${JSON.stringify(doors)}`;
+            expect(r.archetype, where).toBe(a.id);
+            expect([r.width, r.height], where).toEqual(SHAPE_SIZE[shape]);
+            // Not the empty room left when even the fallback keeps failing validation.
+            if (a.kind === 'normal') expect(r.enemies.length, where).toBeGreaterThan(0);
+            expect(generateRoom(spec, a.floor, createRng(seed)), where).toEqual(r);
+            for (const e of r.enemies) expect(ROSTER[a.floor], where).toContain(e.type);
+            for (const w of r.enemies.filter((e) => e.type === 'worm')) {
+              const chain = [w.cell, ...(w.tail ?? [])];
+              expect(chain, where).toHaveLength(WORM_LENGTH);
+              for (let i = 1; i < chain.length; i++) {
+                expect(Math.abs(chain[i].x - chain[i - 1].x) + Math.abs(chain[i].y - chain[i - 1].y), where).toBe(1);
+              }
             }
+            layouts.add(JSON.stringify([r.tiles, r.enemies]));
           }
-          layouts.add(JSON.stringify([r.tiles, r.enemies]));
         }
       }
       expect(layouts.size, a.id).toBeGreaterThan(3);
+    }
+  }, 30_000);
+
+  it.each([0, 1, 2])('gives floor %i a wide and a tall idea, one of each fitting every door set', (floorIndex) => {
+    for (const shape of ['2x1', '1x2'] as const) {
+      const own = ARCHETYPES.filter((a) => a.floor === floorIndex && a.kind === 'normal' && a.shapes?.includes(shape));
+      expect(own.some((a) => EVERY_DOOR_SET.every((d) => a.fits(d))), shape).toBe(true);
+      for (const doors of EVERY_SHAPED_DOOR_SET[shape].slice(0, 20)) {
+        const r = generateRoom({ id: '0,0', kind: 'normal', doors, shape }, floorIndex, createRng(doors.length));
+        expect(own.map((a) => a.id), `${shape} ${JSON.stringify(doors)}`).toContain(r.archetype);
+      }
     }
   });
 
@@ -457,7 +502,7 @@ describe('every archetype', () => {
     [2, ['courtyard', 'gallery', 'serpentGarden', 'track', 'twinJars', 'vault']],
     [3, ['crossfire', 'fortress', 'killbox', 'minefield', 'nest', 'ruins']],
   ])('gives floor %i its own set of ideas, one of them a breather that fits every door set', (floor, ids) => {
-    const own = ARCHETYPES.filter((a) => a.floor === floor - 1 && a.kind === 'normal');
+    const own = ARCHETYPES.filter((a) => a.floor === floor - 1 && a.kind === 'normal' && supportsShape(a, '1x1'));
     expect(own.map((a) => a.id).sort()).toEqual([...ids].sort());
     expect(own.some((a) => a.breather && EVERY_DOOR_SET.every((d) => a.fits(d)))).toBe(true);
     for (const doors of EVERY_DOOR_SET) {
@@ -522,6 +567,54 @@ describe('generateRoom', () => {
     // the centre of the neighbouring 15x9-tile cell (column 7 / row 4 of that cell).
     expect(boss.doors.find((d) => d.side === 'left')?.cell).toEqual({ x: 0, y: 9 + 4 - 2 });
     expect(boss.doors.find((d) => d.side === 'up')?.cell).toEqual({ x: 15 + 7 - 2, y: 0 });
+  });
+
+  it('builds a wide 2x1 room 26x7, with each door at the middle of its map cell’s wall', () => {
+    const wide = generateRoom(
+      {
+        id: '0,0',
+        kind: 'normal',
+        shape: '2x1',
+        doors: [
+          { side: 'up', at: { x: 1, y: 0 } },
+          { side: 'down', at: { x: 0, y: 0 } },
+          { side: 'right', at: { x: 1, y: 0 } },
+        ],
+      },
+      0,
+      createRng(1),
+    );
+    expect([wide.width, wide.height]).toEqual([26, 7]);
+    expect(wide.tiles).toHaveLength(7);
+    expect(wide.tiles.every((row) => row.length === 26)).toBe(true);
+    // A 2x1 block is 30x9 tiles with the interior 2 tiles in from the sides and 1 from top and
+    // bottom; doors sit on the centre column (7) or row (4) of their 15x9-tile cell.
+    expect(wide.doors.find((d) => d.side === 'up')?.cell).toEqual({ x: 15 + 7 - 2, y: 0 });
+    expect(wide.doors.find((d) => d.side === 'down')?.cell).toEqual({ x: 7 - 2, y: 6 });
+    expect(wide.doors.find((d) => d.side === 'right')?.cell).toEqual({ x: 25, y: 4 - 1 });
+  });
+
+  it('builds a tall 1x2 room 13x14, with each door at the middle of its map cell’s wall', () => {
+    const tall = generateRoom(
+      {
+        id: '0,0',
+        kind: 'normal',
+        shape: '1x2',
+        doors: [
+          { side: 'left', at: { x: 0, y: 1 } },
+          { side: 'right', at: { x: 0, y: 0 } },
+          { side: 'down', at: { x: 0, y: 1 } },
+        ],
+      },
+      0,
+      createRng(1),
+    );
+    expect([tall.width, tall.height]).toEqual([13, 14]);
+    expect(tall.tiles).toHaveLength(14);
+    expect(tall.tiles.every((row) => row.length === 13)).toBe(true);
+    expect(tall.doors.find((d) => d.side === 'left')?.cell).toEqual({ x: 0, y: 9 + 4 - 2 });
+    expect(tall.doors.find((d) => d.side === 'right')?.cell).toEqual({ x: 12, y: 4 - 2 });
+    expect(tall.doors.find((d) => d.side === 'down')?.cell).toEqual({ x: 7 - 1, y: 13 });
   });
 
   it('places doors at the middle of their wall', () => {

@@ -90,14 +90,14 @@ function buildFloor(world: World, rng: Rng, floor: FloorLayout) {
     floor.rooms.map((r) => [r.id, [...roomDoors(floor, r.id), ...crossFloorDoors(world.floors, floor.floorIndex, r)]]),
   );
   const archetypes = assignArchetypes(
-    floor.rooms.map((r) => ({ id: r.id, kind: r.kind, doors: doorsOf.get(r.id)!.map((d) => d.side) })),
+    floor.rooms.map((r) => ({ id: r.id, kind: r.kind, doors: doorsOf.get(r.id)!.map((d) => d.side), shape: r.shape })),
     floor.floorIndex,
     rng.fork('archetypes'),
   );
   for (const floorRoom of floor.rooms) {
     const doors = doorsOf.get(floorRoom.id)!;
     const layout = generateRoom(
-      { id: floorRoom.id, kind: floorRoom.kind, doors, archetype: archetypes.get(floorRoom.id) },
+      { id: floorRoom.id, kind: floorRoom.kind, doors, archetype: archetypes.get(floorRoom.id), shape: floorRoom.shape },
       floor.floorIndex,
       rng.fork(`room ${floorRoom.id}`),
     );

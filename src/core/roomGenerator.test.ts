@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createRng } from './rng';
-import { generateRoom } from './roomGenerator';
+import { ARCHETYPES } from './archetypes';
+import { generateRoom, WORM_LENGTH } from './roomGenerator';
 
 const ALL_DOORS = ['up', 'down', 'left', 'right'] as const;
 const room = (seed: number, doors: readonly (typeof ALL_DOORS)[number][] = ALL_DOORS) =>
@@ -53,7 +54,7 @@ describe('generateRoom terrain', () => {
 
   it('places obstacles and holes that vary between seeds on floors without archetypes yet', () => {
     const rooms = Array.from({ length: 40 }, (_, seed) =>
-      generateRoom({ id: '0,0', kind: 'normal', doors: [...ALL_DOORS] }, 1, createRng(seed)),
+      generateRoom({ id: '0,0', kind: 'normal', doors: [...ALL_DOORS] }, 2, createRng(seed)),
     );
     expect(rooms.filter((r) => count(r, 'obstacle') > 0).length).toBeGreaterThan(20);
     expect(rooms.filter((r) => count(r, 'hole') > 0).length).toBeGreaterThan(10);
@@ -251,10 +252,13 @@ describe('generateRoom enemy mix per floor', () => {
     expect(share(sample(2), ['worm', 'turret'])).toBeGreaterThan(0.6);
   });
 
-  it('has more enemies per room on each later floor', () => {
-    const mean = (floorIndex: number) => sample(floorIndex).reduce((sum, r) => sum + r.length, 0) / 600;
-    expect(mean(1)).toBeGreaterThan(mean(0) + 0.3);
-    expect(mean(2)).toBeGreaterThan(mean(1) + 0.3);
+  it('asks for more damage to clear a room on each later floor', () => {
+    // Hit points: zombie 3, turret 4, worm 4 segments of 2.
+    const HP: Record<string, number> = { zombie: 3, turret: 4, worm: 8 };
+    const mean = (floorIndex: number) =>
+      sample(floorIndex).reduce((sum, r) => sum + r.reduce((s, e) => s + HP[e.type], 0), 0) / 600;
+    expect(mean(1)).toBeGreaterThan(mean(0) + 1);
+    expect(mean(2)).toBeGreaterThan(mean(1) + 1);
   });
 });
 
@@ -425,6 +429,45 @@ describe('Sentry Island (floor 1)', () => {
         for (const e of r.enemies) expect(seen.has(`${e.cell.x},${e.cell.y}`), where).toBe(false);
         expect(count(r, 'hole'), where).toBeGreaterThan(0);
       }
+    }
+  });
+});
+
+describe('every archetype', () => {
+  const ROSTER = [['zombie', 'turret'], ['zombie', 'turret', 'worm'], ['zombie', 'turret', 'worm']];
+
+  it('builds its own idea for every door set it fits: deterministic, varied, within its floor roster', () => {
+    for (const a of ARCHETYPES) {
+      const layouts = new Set<string>();
+      for (const doors of EVERY_DOOR_SET.filter((d) => a.fits(d))) {
+        for (let seed = 0; seed < 25; seed++) {
+          const spec = { id: '0,0', kind: a.kind, doors: [...doors], archetype: a.id };
+          const r = generateRoom(spec, a.floor, createRng(seed));
+          const where = `${a.id} seed ${seed} doors ${doors}`;
+          expect(r.archetype, where).toBe(a.id);
+          expect(generateRoom(spec, a.floor, createRng(seed)), where).toEqual(r);
+          for (const e of r.enemies) expect(ROSTER[a.floor], where).toContain(e.type);
+          for (const w of r.enemies.filter((e) => e.type === 'worm')) {
+            const chain = [w.cell, ...(w.tail ?? [])];
+            expect(chain, where).toHaveLength(WORM_LENGTH);
+            for (let i = 1; i < chain.length; i++) {
+              expect(Math.abs(chain[i].x - chain[i - 1].x) + Math.abs(chain[i].y - chain[i - 1].y), where).toBe(1);
+            }
+          }
+          layouts.add(JSON.stringify([r.tiles, r.enemies]));
+        }
+      }
+      expect(layouts.size, a.id).toBeGreaterThan(3);
+    }
+  });
+
+  it('gives floor 2 its own set of six ideas, one of them a breather that fits every door set', () => {
+    const own = ARCHETYPES.filter((a) => a.floor === 1 && a.kind === 'normal');
+    expect(own.map((a) => a.id).sort()).toEqual(['courtyard', 'gallery', 'serpentGarden', 'track', 'twinJars', 'vault']);
+    expect(own.some((a) => a.breather && EVERY_DOOR_SET.every((d) => a.fits(d)))).toBe(true);
+    for (let seed = 0; seed < 100; seed++) {
+      const r = generateRoom({ id: '0,0', kind: 'normal', doors: ['left', 'up'] }, 1, createRng(seed));
+      expect(own.map((a) => a.id)).toContain(r.archetype);
     }
   });
 });

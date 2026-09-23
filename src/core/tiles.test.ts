@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Tile } from './roomGenerator';
 import { blocksShots, blocksSight, bombDestructible, flyersPass, hitsToBreak, hurtsOnTouch, isWalkable, phasingPasses, reflectsShots } from './tiles';
 
-const ALL: Tile[] = ['floor', 'obstacle', 'rock', 'hole'];
+const ALL: Tile[] = ['floor', 'obstacle', 'rock', 'hole', 'thorn'];
 const those = (holds: (t: Tile) => boolean) => ALL.filter(holds);
 
 describe('tile table', () => {
@@ -15,17 +15,25 @@ describe('tile table', () => {
     expect(those(blocksSight)).toEqual(['obstacle', 'rock']);
   });
 
-  it('flyers cross floor and holes but not stone or rock', () => {
-    expect(those(flyersPass)).toEqual(['floor', 'hole']);
+  it('flyers cross floor, holes and thorns but not stone or rock', () => {
+    expect(those(flyersPass)).toEqual(['floor', 'hole', 'thorn']);
   });
 
   it('phasing enemies pass through everything', () => {
     expect(those(phasingPasses)).toEqual(ALL);
   });
 
-  it('no existing tile hurts or reflects', () => {
-    expect(those(hurtsOnTouch)).toEqual([]);
+  it('only thorns hurt on touch; nothing reflects yet', () => {
+    expect(those(hurtsOnTouch)).toEqual(['thorn']);
     expect(those(reflectsShots)).toEqual([]);
+  });
+
+  it('a thorn bush stops feet but not shots, sight or flyers, and never breaks', () => {
+    expect(isWalkable('thorn')).toBe(false);
+    expect(blocksShots('thorn')).toBe(false);
+    expect(blocksSight('thorn')).toBe(false);
+    expect(hitsToBreak('thorn')).toBeUndefined();
+    expect(bombDestructible('thorn')).toBe(false);
   });
 
   it('rock breaks after three shots; nothing else breaks from shots', () => {

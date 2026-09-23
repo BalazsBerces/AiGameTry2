@@ -61,6 +61,20 @@ export const TILES: Record<Tile, TileProps> = {
     reflectsShots: false,
     bombDestructible: false,
   },
+  /**
+   * Thorn bush: solid to feet, and hurts the player or a walker that pushes into it. It is
+   * low, so shots, sight and flyers pass over it, making it a lure rather than cover.
+   */
+  thorn: {
+    walkable: false,
+    blocksShots: false,
+    blocksSight: false,
+    flyersPass: true,
+    phasingPasses: true,
+    hurtsOnTouch: true,
+    reflectsShots: false,
+    bombDestructible: false,
+  },
 };
 
 export const isWalkable = (tile: Tile) => TILES[tile].walkable;

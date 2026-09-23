@@ -25,6 +25,8 @@ export const TUNING = {
   /** `follow`: how hard it closes on its mirrored target (1/s); speed capped relative to the player's. */
   shadow: { hp: 45, follow: 10, maxSpeedFactor: 1.2 },
   hive: { radius: 40, hp: 60, spiralDelayMs: 150, spiralStep: 0.32, shotSpeed: 170, summonEveryMs: 5000, maxSummoned: 3 },
+  /** Touching a thorn bush: half a heart to the player; walker damage and i-frames are placeholders. */
+  thorn: { playerDamage: 1, walkerDamage: 1, walkerInvincibleMs: 600 },
 };
 
 /** Floor, wall, door and terrain colours come from each floor's theme (core/themes). */

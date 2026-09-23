@@ -14,8 +14,11 @@ export const BOSS_HEIGHT = 14;
 /** Tiles per map cell: a 13x7 room interior plus its one-tile wall ring. */
 export const CELL_TILES = { w: ROOM_WIDTH + 2, h: ROOM_HEIGHT + 2 };
 
-/** `obstacle` is stone; `rock` is the same but breaks after a few player shots. Behaviour lives in `TILES`. */
-export type Tile = 'floor' | 'obstacle' | 'rock' | 'hole';
+/**
+ * `obstacle` is stone; `rock` is the same but breaks after a few player shots; `thorn` is a
+ * bush that hurts whoever walks into it. Behaviour lives in `TILES`.
+ */
+export type Tile = 'floor' | 'obstacle' | 'rock' | 'hole' | 'thorn';
 
 export interface DoorSpec {
   side: Direction;

@@ -42,6 +42,8 @@ export const TUNING = {
   hive: { radius: 40, hp: 60, spiralDelayMs: 150, spiralStep: 0.32, shotSpeed: 170, summonEveryMs: 5000, maxSummoned: 3 },
   /** A woken crusher shudders for `windupMs`, then slides `msPerTile` per tile; it can wake again `cooldownMs` after settling. */
   crusher: { windupMs: 220, msPerTile: 60, cooldownMs: 800, enemyDamage: 8, playerDamage: 2 },
+  /** Small and quicker than a goblin; its zigzag lives in core/wasp. */
+  wasp: { hp: 2, speed: 175, size: 14 },
 };
 
 /** Floor, wall, door and terrain colours come from each floor's theme (core/themes). */
@@ -91,4 +93,6 @@ export const COLORS = {
   treantEyes: 0xf2d04a,
   rootTelegraph: 0xc89a5a,
   root: 0x7a4a22,
+  wasp: 0xf2c230,
+  waspStripe: 0x2a2216,
 };

@@ -42,6 +42,8 @@ export interface Enemy {
   onPlayerAttack?(ctx: EnemyContext, aim: Direction, weapon: Weapon): void;
   /** Damages one part. Returns the enemies that replace this one: itself, nothing (dead), or split pieces. */
   hit(part: EnemySprite, damage: number): Enemy[];
+  /** Flyers (with `collidesWithTerrain` false) still hit walls and stone, but cross holes and thorns. */
+  flies?: boolean;
 }
 
 /** Stat multipliers for a champion, or none for a regular enemy. */

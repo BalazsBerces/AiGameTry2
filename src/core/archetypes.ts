@@ -769,6 +769,48 @@ const descent = (floor: number): Archetype => ({
   },
 });
 
+/** One wasp swarm, the role a single spawn fills: 3-4 wasps packed into the 2x2 block from `corner`. */
+const swarm = (corner: Cell, rng: Rng): Cell[] =>
+  shuffled([corner, { x: corner.x + 1, y: corner.y }, { x: corner.x, y: corner.y + 1 }, { x: corner.x + 1, y: corner.y + 1 }], rng)
+    .slice(0, rng.int(3, 4));
+
+/**
+ * Floor 1, the wasp nest: swarms hang out of reach beyond a pond, either on twin islands either
+ * side of the middle or in pockets cut off in the corners. Nobody walks to them, but they fly
+ * straight over the water, so the fight is thinning a buzzing swarm as it comes. Sometimes a
+ * pair of goblins holds the middle too. Nothing touches a door approach, so it fits every door set.
+ */
+const waspNest: Archetype = {
+  id: 'waspNest',
+  floor: 0,
+  kind: 'normal',
+  fits: fitsAll,
+  build({ width, height, rng }) {
+    const axes: MirrorAxis[] = ['vertical', 'horizontal'];
+    const canvas = new Canvas(width, height, axes);
+    // Painted in the top-left quarter and mirrored; `nest` is the top-left of a swarm's 2x2 block.
+    const islands = rng.next() < 0.5;
+    const nest = islands ? { x: 3, y: rng.pick([2, 3]) } : { x: rng.pick([0, 1]), y: 0 };
+    const pond = islands
+      ? [{ x: 2, y: 1 }, { x: 3, y: 1 }, { x: 4, y: 1 }, { x: 5, y: 1 }, { x: 2, y: 2 }, { x: 5, y: 2 }, { x: 2, y: 3 }, { x: 5, y: 3 }]
+      : [{ x: 3, y: 0 }, { x: 3, y: 1 }, { x: 0, y: 2 }, { x: 1, y: 2 }, { x: 2, y: 2 }, { x: 3, y: 2 }];
+    canvas.paint(pond, 'hole');
+    // One nest, or two across the room from each other (their images through the centre).
+    const flip = rng.next() < 0.5;
+    const across = (c: Cell): Cell => ({ x: width - 1 - c.x, y: height - 1 - c.y });
+    const mirrorX = (c: Cell): Cell => ({ x: width - 1 - c.x, y: c.y });
+    const first = swarm(nest, rng).map((c) => (flip ? mirrorX(c) : c));
+    const wasps = rng.next() < 0.5 ? first : [...first, ...swarm(nest, rng).map((c) => across(flip ? mirrorX(c) : c))];
+    const guards = rng.next() < 0.5 ? walkersOf(0, canvas.images({ x: 6, y: 2 })) : [];
+    return {
+      tiles: canvas.tiles,
+      enemies: [...wasps.map((cell): EnemySpawn => ({ type: 'wasp', cell })), ...guards],
+      pickups: [],
+      symmetry: { axes },
+    };
+  },
+};
+
 function shuffled<T>(items: readonly T[], rng: Rng): T[] {
   const out = [...items];
   for (let i = out.length - 1; i > 0; i--) {
@@ -802,6 +844,7 @@ export const ARCHETYPES: readonly Archetype[] = [
   thornMaze,
   crusherCorridor,
   ...[0, 1, 2].flatMap((floor) => [gauntlet(floor), descent(floor)]),
+  waspNest,
 ];
 
 export const archetypeById = (id: string) => ARCHETYPES.find((a) => a.id === id);

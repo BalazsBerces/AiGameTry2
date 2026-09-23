@@ -171,7 +171,7 @@ describe('champions', () => {
 });
 
 describe('forest cast', () => {
-  it('fills floor 1 rooms with goblins and seed-spitters only, and valid rooms', () => {
+  it('fills floor 1 rooms with goblins, seed-spitters and wasps only, and valid rooms', () => {
     const seen = new Set<string>();
     for (let seed = 0; seed < 60; seed++) {
       const world = createWorld(seed);
@@ -184,7 +184,7 @@ describe('forest cast', () => {
         expect(violations, `seed ${seed} room ${layout.id}`).toEqual([]);
       }
     }
-    expect([...seen].sort()).toEqual(['goblin', 'seedSpitter']);
+    expect([...seen].sort()).toEqual(['goblin', 'seedSpitter', 'wasp']);
   });
 });
 

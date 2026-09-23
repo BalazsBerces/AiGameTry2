@@ -86,6 +86,17 @@ export const TILES: Record<Tile, TileProps> = {
     reflectsShots: false,
     bombDestructible: false,
   },
+  /** A cave crystal: a solid block that bounces every shot, the player's too (see `ricochet`). */
+  crystal: {
+    walkable: false,
+    blocksShots: true,
+    blocksSight: true,
+    flyersPass: false,
+    phasingPasses: true,
+    hurtsOnTouch: false,
+    reflectsShots: true,
+    bombDestructible: false,
+  },
 };
 
 export const isWalkable = (tile: Tile) => TILES[tile].walkable;

@@ -166,11 +166,17 @@ export class GameScene extends Phaser.Scene {
     this.aim = kb.addKeys({ up: 'UP', down: 'DOWN', left: 'LEFT', right: 'RIGHT' }) as Keys;
 
     this.shots = this.physics.add.group();
-    this.physics.add.collider(this.shots, this.walls, (shot, wall) => {
-      if (!(shot as Phaser.GameObjects.GameObject).active) return; // already spent on another wall this frame
-      shot.destroy();
-      this.hitTerrain(wall as Phaser.GameObjects.Rectangle);
-    });
+    // Player shots have no bounces of their own, so only crystals turn them around; the rest hit.
+    this.physics.add.collider(
+      this.shots,
+      this.walls,
+      (shot, wall) => {
+        if (!(shot as Phaser.GameObjects.GameObject).active) return; // already spent on another wall this frame
+        shot.destroy();
+        this.hitTerrain(wall as Phaser.GameObjects.Rectangle);
+      },
+      (shot, wall) => !this.ricochetEnemyShot(shot as Phaser.GameObjects.Arc, wall as Phaser.GameObjects.Shape),
+    );
 
     this.enemyParts = this.physics.add.group();
     this.walkers = this.physics.add.group();
@@ -376,7 +382,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * An enemy shot touches a wall piece: bounces it (core/ricochet) and returns true, or returns
+   * A shot (an enemy's, or the player's on a crystal) touches a wall piece: bounces it (core/ricochet) and returns true, or returns
    * false to let it be spent. Room walls and door locks count as stone. A shot already heading
    * away from the piece (it just bounced off a neighbouring piece) is left alone.
    */

@@ -65,3 +65,23 @@ describe('crusher tile', () => {
     expect(reflectsShots('crusher')).toBe(false);
   });
 });
+
+describe('crystal tile', () => {
+  it('is a solid block: not walked, flown or seen through', () => {
+    expect(isWalkable('crystal')).toBe(false);
+    expect(flyersPass('crystal')).toBe(false);
+    expect(blocksSight('crystal')).toBe(true);
+    expect(phasingPasses('crystal')).toBe(true);
+  });
+
+  it('turns shots back rather than letting them through', () => {
+    expect(blocksShots('crystal')).toBe(true);
+    expect(reflectsShots('crystal')).toBe(true);
+  });
+
+  it('cannot be shot or bombed away and does not hurt on touch', () => {
+    expect(hitsToBreak('crystal')).toBeUndefined();
+    expect(bombDestructible('crystal')).toBe(false);
+    expect(hurtsOnTouch('crystal')).toBe(false);
+  });
+});

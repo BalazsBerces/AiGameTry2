@@ -769,6 +769,43 @@ const descent = (floor: number): Archetype => ({
   },
 });
 
+/**
+ * Floor 2: a hall of mirrors built around bank shots. Crystals, mirrored into all four quarters,
+ * bounce every shot, so each crystal turret sits straight in line with one: its shots come back
+ * off it at angles, and the player can bank their own shots off it back at the turret. Ghouls
+ * sometimes roam the open middle. Nothing touches a door approach, so it fits every door set.
+ */
+const crystalGallery: Archetype = {
+  id: 'crystalGallery',
+  floor: 1,
+  kind: 'normal',
+  fits: fitsAll,
+  build({ width, height, rng }) {
+    const axes: MirrorAxis[] = ['vertical', 'horizontal'];
+    const canvas = new Canvas(width, height, axes);
+    // Each layout is a top-left quarter of crystals, a turret post in line with one, and a ghoul's spot.
+    const layout = rng.pick([
+      // Prism: a turret caged in crystal in the middle, open only to the sides; mirror posts in the corners.
+      { crystals: [{ x: 5, y: 2 }, { x: 6, y: 2 }, { x: 2, y: 1 }], post: { x: 6, y: 3 }, ghoul: { x: 3, y: 3 } },
+      // Corner mirrors: turrets in the corners, crystals down their wall and along their row.
+      { crystals: [{ x: 3, y: 0 }, { x: 0, y: 2 }], post: { x: 0, y: 0 }, ghoul: { x: 6, y: 2 } },
+      // Mirror screens: crystal bars across the room, a turret atop each.
+      { crystals: [{ x: 3, y: 1 }, { x: 3, y: 2 }], post: { x: 3, y: 0 }, ghoul: { x: 6, y: 2 } },
+    ]);
+    canvas.paint(layout.crystals, 'crystal');
+    const posts = canvas.images(layout.post);
+    // Every post manned, or (when there are four) just a diagonal pair.
+    const manned = posts.length > 2 && rng.next() < 0.5 ? [posts[0], posts[posts.length - 1]] : posts;
+    const ghouls = rng.next() < 0.5 ? canvas.images(layout.ghoul) : [];
+    return {
+      tiles: canvas.tiles,
+      enemies: [...turretsOf(1, manned), ...walkersOf(1, ghouls)],
+      pickups: [],
+      symmetry: { axes },
+    };
+  },
+};
+
 function shuffled<T>(items: readonly T[], rng: Rng): T[] {
   const out = [...items];
   for (let i = out.length - 1; i > 0; i--) {
@@ -802,6 +839,7 @@ export const ARCHETYPES: readonly Archetype[] = [
   thornMaze,
   crusherCorridor,
   ...[0, 1, 2].flatMap((floor) => [gauntlet(floor), descent(floor)]),
+  crystalGallery,
 ];
 
 export const archetypeById = (id: string) => ARCHETYPES.find((a) => a.id === id);

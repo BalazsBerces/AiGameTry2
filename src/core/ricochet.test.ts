@@ -45,4 +45,26 @@ describe('ricochet', () => {
   it('only bounces off stone, not off breakable rock', () => {
     expect(ricochet({ x: 4.8, y: 5.5, vx: 3, vy: 0, bouncesLeft: 1 }, 'rock', STONE)).toBeUndefined();
   });
+
+  it('bounces a player’s shot, which has no bounces, off a crystal', () => {
+    expect(ricochet({ x: 4.8, y: 5.5, vx: 3, vy: 1, bouncesLeft: 0 }, 'crystal', STONE)).toMatchObject({ vx: -3, vy: 1 });
+    expect(ricochet({ x: 5.5, y: 6.2, vx: 1, vy: -3, bouncesLeft: 0 }, 'crystal', STONE)).toMatchObject({ vx: 1, vy: 3 });
+  });
+
+  it('does not use up a bounce on a crystal, so a crystal-turret shot can still bounce off stone after', () => {
+    const shot = { x: 4.8, y: 5.5, vx: 3, vy: 0, bouncesLeft: CRYSTAL_TURRET_BOUNCES };
+    const offCrystal = ricochet(shot, 'crystal', STONE)!;
+    expect(offCrystal.bouncesLeft).toBe(CRYSTAL_TURRET_BOUNCES);
+    expect(ricochet({ x: 2.2, y: 5.5, ...offCrystal }, 'obstacle', { x: 1, y: 5 })).toBeDefined();
+  });
+
+  it('bounces a shot back and forth between crystals as often as it hits them', () => {
+    let shot = { x: 4.8, y: 5.5, vx: 3, vy: 0, bouncesLeft: 0 };
+    for (let i = 0; i < 5; i++) {
+      const cell = shot.vx > 0 ? STONE : { x: 1, y: 5 };
+      const out = ricochet(shot, 'crystal', cell);
+      expect(out, `bounce ${i + 1}`).toBeDefined();
+      shot = { ...shot, ...out!, x: shot.vx > 0 ? 2.2 : 4.8 };
+    }
+  });
 });

@@ -37,4 +37,9 @@ describe('floor themes', () => {
   it('shows a thorn as a thorn bush in the forest', () => {
     expect(themeForFloor(0).looks.thorn.name).toBe('thorn bush');
   });
+
+  it('gives crystal a look of its own on every floor, a crystal cluster in the caves', () => {
+    expect(themeForFloor(1).looks.crystal.name).toBe('crystal cluster');
+    expect(new Set([0, 1, 2].map((f) => themeForFloor(f).looks.crystal.name)).size).toBe(3);
+  });
 });

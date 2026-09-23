@@ -296,7 +296,7 @@ describe('generateRoom pickups', () => {
     }
   });
 
-  it('fills chests at generation: unlocked with 1-3 hearts/keys, locked with 2-3 pickups', () => {
+  it('fills chests at generation: unlocked with 1-3 hearts/keys/bombs, locked with 2-3 pickups', () => {
     const chests = Array.from({ length: 2000 }, (_, seed) => room(seed).pickups)
       .flat()
       .filter((p) => p.type === 'chest' || p.type === 'lockedChest');
@@ -312,8 +312,14 @@ describe('generateRoom pickups', () => {
       if (c.type === 'chest') expect(n).toBeGreaterThanOrEqual(1);
       else expect(n).toBeGreaterThanOrEqual(2);
       expect(n).toBeLessThanOrEqual(3);
-      for (const item of c.contents!) expect(['heart', 'key']).toContain(item.type);
+      for (const item of c.contents!) expect(['heart', 'key', 'bomb']).toContain(item.type);
     }
+  });
+
+  it('includes bombs among room-clear drops and chest contents', () => {
+    const pickups = Array.from({ length: 1500 }, (_, seed) => room(seed).pickups).flat();
+    expect(pickups.some((p) => p.type === 'bomb')).toBe(true);
+    expect(pickups.flatMap((p) => p.contents ?? []).some((item) => item.type === 'bomb')).toBe(true);
   });
 
   it('locked chests hold a passive item about 35% of the time', () => {

@@ -4,11 +4,14 @@ import { distanceField, lineOfSight } from '../core/grid';
 import { blocksSight, isWalkable, type EnemySpawn, type EnemyType } from '../core/roomGenerator';
 import { launchVelocity, resolveWeapon } from '../core/weaponModel';
 import {
+  BOMB_RADIUS,
   createWorld,
   damagePlayer,
+  detonateBomb,
   enterRoom,
   hitTile,
   isFinalFloor,
+  placeBomb,
   roomAtCell,
   shownPickups,
   touchPickup,
@@ -51,6 +54,7 @@ const PICKUP_SHAPES: Record<WorldPickup['type'], (scene: Phaser.Scene, x: number
     s.add.star(x, y, 5, 8, 18, COLORS.passive[p.passive ?? 'homing']).setStrokeStyle(2, 0xffffff),
   heart: (s, x, y) => s.add.circle(x, y, 10, COLORS.heart),
   key: (s, x, y) => s.add.rectangle(x, y, 10, 22, COLORS.key),
+  bomb: (s, x, y) => s.add.circle(x, y, 11, COLORS.bomb).setStrokeStyle(3, COLORS.bombFuse),
   chest: (s, x, y) => s.add.rectangle(x, y, 34, 26, COLORS.chest),
   lockedChest: (s, x, y) => s.add.rectangle(x, y, 34, 26, COLORS.lockedChest).setStrokeStyle(3, COLORS.key),
   openChest: (s, x, y) => s.add.rectangle(x, y, 34, 26, COLORS.openChest),
@@ -74,6 +78,8 @@ export class GameScene extends Phaser.Scene {
   private player!: PhysicsRect;
   private move!: Keys;
   private aim!: Keys;
+  /** Drawn rock and stone blocks, keyed `roomId|x,y`, so broken ones can be removed. */
+  private terrain = new Map<string, Phaser.GameObjects.GameObject>();
   private shots!: Phaser.Physics.Arcade.Group;
   /** Every hittable enemy part (shots and the player overlap these). */
   private enemyParts!: Phaser.Physics.Arcade.Group;
@@ -106,6 +112,7 @@ export class GameScene extends Phaser.Scene {
 
     this.walls = this.physics.add.staticGroup();
     this.holes = this.physics.add.staticGroup();
+    this.terrain = new Map();
     for (const room of this.world.rooms.values()) this.drawRoom(room);
 
     const start = this.world.rooms.get(this.world.currentRoomId)!;
@@ -134,6 +141,8 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.walkers, this.walkers);
     this.physics.add.overlap(this.shots, this.enemyParts, (shot, part) => this.hitEnemy(shot, part as EnemySprite));
     this.physics.add.overlap(this.player, this.enemyParts, () => this.hurtPlayer());
+    // An event rather than JustDown polling, so a tap shorter than a frame still counts.
+    kb.addKey('E').on('down', () => this.dropBomb());
 
     this.enemyShots = this.physics.add.group();
     this.physics.add.collider(this.enemyShots, this.walls, (shot) => shot.destroy());
@@ -315,9 +324,46 @@ export class GameScene extends Phaser.Scene {
   private hitTerrain(wall: Phaser.GameObjects.Rectangle) {
     const roomId = wall.getData('roomId') as string | undefined;
     if (!roomId || !wall.active) return;
-    const result = hitTile(this.world, roomId, wall.getData('tile') as Cell);
-    if (result === 'broken') wall.destroy();
+    const cell = wall.getData('tile') as Cell;
+    const result = hitTile(this.world, roomId, cell);
+    if (result === 'broken') this.removeTerrain(roomId, cell);
     else if (result === 'damaged') wall.setAlpha(wall.alpha - 0.25);
+  }
+
+  private removeTerrain(roomId: string, cell: Cell) {
+    const key = `${roomId}|${cell.x},${cell.y}`;
+    this.terrain.get(key)?.destroy();
+    this.terrain.delete(key);
+  }
+
+  /** Drops a lit bomb at the player's feet, if they have one. */
+  private dropBomb() {
+    if (this.runOver || !placeBomb(this.world)) return;
+    const roomId = this.world.currentRoomId;
+    const at = { x: this.player.x, y: this.player.y };
+    const bomb = this.add.circle(at.x, at.y, TUNING.bomb.radius, COLORS.bomb).setStrokeStyle(3, COLORS.bombFuse);
+    this.tweens.add({ targets: bomb, scale: 1.2, duration: 150, yoyo: true, repeat: -1 });
+    this.time.delayedCall(TUNING.bomb.fuseMs, () => {
+      bomb.destroy();
+      if (!this.runOver) this.explode(roomId, at);
+    });
+  }
+
+  /**
+   * Blows away rock and stone around the bomb (for good, via the world) and hurts every enemy
+   * part and the player caught in the blast, if the bomb went off in the room they're in.
+   */
+  private explode(roomId: string, at: { x: number; y: number }) {
+    const room = this.world.rooms.get(roomId)!;
+    for (const cell of detonateBomb(this.world, roomId, tileAt(room, at.x, at.y))) this.removeTerrain(roomId, cell);
+    const reach = BOMB_RADIUS * TUNING.tile;
+    const flash = this.add.circle(at.x, at.y, reach, COLORS.blast, 0.6).setDepth(DEPTH.player + 1);
+    this.tweens.add({ targets: flash, alpha: 0, duration: 300, onComplete: () => flash.destroy() });
+    if (roomId !== this.world.currentRoomId) return;
+    const caught = (o: { x: number; y: number; width: number }) =>
+      Phaser.Math.Distance.Between(at.x, at.y, o.x, o.y) <= reach + o.width / 2;
+    if (caught(this.player)) this.hurtPlayer(TUNING.bomb.playerDamage);
+    for (const part of this.enemies.flatMap((e) => e.parts).filter(caught)) this.damagePart(part, TUNING.bomb.enemyDamage);
   }
 
   private damagePart(part: EnemySprite, damage: number) {
@@ -339,10 +385,16 @@ export class GameScene extends Phaser.Scene {
     this.enemies.push(enemy);
   }
 
-  private hurtPlayer() {
+  /** Takes `halves` half-hearts, unless the player is still flashing from the last hit. */
+  private hurtPlayer(halves = 1) {
     if (this.time.now < this.invincibleUntil) return;
     this.invincibleUntil = this.time.now + TUNING.invincibleMs;
-    if (damagePlayer(this.world)) this.endRun(false);
+    for (let i = 0; i < halves; i++) {
+      if (damagePlayer(this.world)) {
+        this.endRun(false);
+        return;
+      }
+    }
   }
 
   /** Ends the run once; if death and the final boss's death land in the same frame, the first sticks. */
@@ -398,7 +450,7 @@ export class GameScene extends Phaser.Scene {
     const pickup = this.world.pickups.get(this.world.currentRoomId)?.find((p) => p.id === id);
     if (!pickup) return;
     // Chests stay touchable; everything that can drop out of one is locked out briefly after opening.
-    const isItem = pickup.type === 'heart' || pickup.type === 'key' || pickup.type === 'passive';
+    const isItem = pickup.type === 'heart' || pickup.type === 'key' || pickup.type === 'bomb' || pickup.type === 'passive';
     if (isItem && this.time.now < this.itemLockoutUntil) return;
     const result = touchPickup(this.world, this.world.currentRoomId, id);
     if (result === 'none') return;
@@ -475,12 +527,17 @@ export class GameScene extends Phaser.Scene {
       row.forEach((tile, tx) => {
         if (tile === 'floor') return;
         const c = tileCenter(room, tx, ty);
-        if (tile === 'obstacle') this.walls.add(this.add.rectangle(c.x, c.y, t - 4, t - 4, COLORS.obstacle));
-        else if (tile === 'rock') {
-          const rock = this.add.rectangle(c.x, c.y, t - 10, t - 10, COLORS.rock).setStrokeStyle(3, COLORS.rockCrack);
-          rock.setData({ roomId: room.floorRoom.id, tile: { x: tx, y: ty } });
-          this.walls.add(rock);
-        } else this.holes.add(this.add.rectangle(c.x, c.y, t, t, COLORS.hole));
+        if (tile === 'hole') {
+          this.holes.add(this.add.rectangle(c.x, c.y, t, t, COLORS.hole));
+          return;
+        }
+        const block =
+          tile === 'rock'
+            ? this.add.rectangle(c.x, c.y, t - 10, t - 10, COLORS.rock).setStrokeStyle(3, COLORS.rockCrack)
+            : this.add.rectangle(c.x, c.y, t - 4, t - 4, COLORS.obstacle);
+        block.setData({ roomId: room.floorRoom.id, tile: { x: tx, y: ty } });
+        this.walls.add(block);
+        this.terrain.set(`${room.floorRoom.id}|${tx},${ty}`, block);
       }),
     );
   }

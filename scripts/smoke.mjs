@@ -692,5 +692,37 @@ if (scenario === 'rocks') {
   await shot('04-chest');
 }
 
+if (scenario === 'bombs') {
+  // In a Stash room: bomb the bottom of the box and run, then stand on a second bomb.
+  const id = await page.evaluate(`[...${scene()}.world.rooms.values()].find((r) => r.layout.archetype === 'stash')?.floorRoom.id`);
+  if (!id) throw new Error('no stash room on this seed; try another SMOKE_SEED');
+  const row = (y) => page.evaluate(`${scene()}.world.rooms.get('${id}').layout.tiles[${y}].map((t) => t[0]).join('')`);
+  const player = () => page.evaluate(`(() => { const s = ${scene()}; return { bombs: s.world.player.bombs, health: s.world.player.health }; })()`);
+  await page.evaluate(`(() => { const s = ${scene()};
+    const room = s.world.rooms.get('${id}');
+    s.enterRoom(room, s.time.now);
+    s.enemiesWakeAt = Infinity;
+    const c = { x: room.floorRoom.cell.x * 720 + (6 + 1.5) * 48, y: room.floorRoom.cell.y * 432 + (5 + 1.5) * 48 };
+    s.player.body.reset(c.x, c.y);
+  })()`);
+  await page.waitForTimeout(400);
+  console.log('before:', await player(), 'row 4:', await row(4));
+  await page.keyboard.press('e');
+  await page.waitForTimeout(100);
+  await shot('02-bomb-lit');
+  await hold('a', 700);
+  await page.waitForTimeout(1000);
+  await shot('03-bomb-blast');
+  console.log('after running clear:', await player(), 'row 4:', await row(4));
+  await page.evaluate(`${scene()}.world.player.bombs = 1; ${scene()}.invincibleUntil = 0`);
+  await page.keyboard.press('e');
+  await page.waitForTimeout(1800);
+  console.log('after standing on it (expect health -2, bombs 0):', await player());
+  await page.keyboard.press('e');
+  await page.waitForTimeout(300);
+  console.log('pressing E with no bombs (expect bombs 0):', await player());
+  await shot('04-hud');
+}
+
 console.log(errors.length ? `ERRORS:\n${errors.join('\n')}` : 'no console errors');
 await browser.close();

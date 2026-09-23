@@ -12,6 +12,7 @@ import {
 } from './floorGenerator';
 import {
   generateRoom,
+  isBlastable,
   isBreakable,
   ROCK_HITS,
   type ChestItem,
@@ -34,6 +35,7 @@ export interface PlayerState {
   /** Maximum health in half-heart units (two per heart container). */
   maxHealth: number;
   keys: number;
+  bombs: number;
   passives: Passive[];
 }
 
@@ -67,6 +69,9 @@ export interface World {
 }
 
 export const STARTING_HEARTS = 3;
+export const STARTING_BOMBS = 1;
+/** Tiles whose centre lies within this many tiles of the bomb's are blown away: the 3x3 around it. */
+export const BOMB_RADIUS = 1.5;
 
 export const FLOOR_COUNT = 3;
 
@@ -111,7 +116,7 @@ function buildFloor(world: World, rng: Rng, floor: FloorLayout) {
   }
 }
 
-export type PickupResult = 'none' | 'healed' | 'key' | 'opened' | 'passive';
+export type PickupResult = 'none' | 'healed' | 'key' | 'bomb' | 'opened' | 'passive';
 
 /** The player touched a pickup. Applies its effect and updates the room's pickups. */
 export function touchPickup(world: World, roomId: string, pickupId: number): PickupResult {
@@ -130,6 +135,10 @@ export function touchPickup(world: World, roomId: string, pickupId: number): Pic
       player.keys++;
       remove();
       return 'key';
+    case 'bomb':
+      player.bombs++;
+      remove();
+      return 'bomb';
     case 'lockedChest':
       if (player.keys === 0) return 'none';
       player.keys--;
@@ -193,6 +202,34 @@ export function hitTile(world: World, roomId: string, cell: Cell): TileHitResult
   return 'broken';
 }
 
+/** Spends a bomb if the player has one; true if one was placed. */
+export function placeBomb(world: World): boolean {
+  if (world.player.bombs <= 0) return false;
+  world.player.bombs--;
+  return true;
+}
+
+/**
+ * A bomb went off on `cell`: every rock and stone tile within `BOMB_RADIUS` becomes floor,
+ * for good. Holes survive, and room walls aren't tiles at all. Returns the cells destroyed.
+ */
+export function detonateBomb(world: World, roomId: string, cell: Cell): Cell[] {
+  const tiles = world.rooms.get(roomId)?.layout.tiles;
+  if (!tiles) return [];
+  const reach = Math.floor(BOMB_RADIUS);
+  const destroyed: Cell[] = [];
+  for (let y = cell.y - reach; y <= cell.y + reach; y++) {
+    for (let x = cell.x - reach; x <= cell.x + reach; x++) {
+      const tile = tiles[y]?.[x];
+      if (!tile || !isBlastable(tile) || Math.hypot(x - cell.x, y - cell.y) > BOMB_RADIUS) continue;
+      tiles[y][x] = 'floor';
+      world.tileHits.delete(`${roomId}|${x},${y}`);
+      destroyed.push({ x, y });
+    }
+  }
+  return destroyed;
+}
+
 /** Pickups on show in a room: everything once it is cleared, before that only loot placed in plain sight. */
 export function shownPickups(world: World, roomId: string): WorldPickup[] {
   const all = world.pickups.get(roomId) ?? [];
@@ -239,7 +276,7 @@ export function createWorld(seed: number): World {
     currentRoomId: floors[0].startRoomId,
     cleared: new Set(),
     visited: new Set([floors[0].startRoomId]),
-    player: { health: STARTING_HEARTS * 2, maxHealth: STARTING_HEARTS * 2, keys: 0, passives: [] },
+    player: { health: STARTING_HEARTS * 2, maxHealth: STARTING_HEARTS * 2, keys: 0, bombs: STARTING_BOMBS, passives: [] },
     pickups: new Map(),
     nextPickupId: 1,
     tileHits: new Map(),

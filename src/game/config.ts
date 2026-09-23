@@ -18,6 +18,8 @@ export const TUNING = {
   zombie: { hp: 3, speed: 85, size: 28 },
   turret: { hp: 4, size: 34, fireDelayMs: 1600, shotSpeed: 230 },
   enemyShotRadius: 6,
+  /** Damage to enemy parts is a placeholder; the player always loses a full heart. */
+  bomb: { fuseMs: 1500, enemyDamage: 6, playerDamage: 2, radius: 12 },
   worm: { segmentSize: 30, segmentHp: 2, stepMs: 300 },
   wormBoss: { segmentSize: 42, segmentHp: 5, stepMs: 240 },
   /** `follow`: how hard it closes on its mirrored target (1/s); speed capped relative to the player's. */
@@ -52,6 +54,9 @@ export const COLORS = {
   lockedDoor: 0x3a2515,
   heart: 0xd8323c,
   key: 0xf2c94c,
+  bomb: 0x2a2a33,
+  bombFuse: 0xff9a3c,
+  blast: 0xffd27a,
   chest: 0x9a6a36,
   lockedChest: 0xc9a227,
   openChest: 0x4a3420,

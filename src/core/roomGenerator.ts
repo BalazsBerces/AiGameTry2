@@ -65,10 +65,10 @@ export interface RoomLayout {
   archetype?: string;
 }
 
-export type PickupType = 'heart' | 'key' | 'chest' | 'lockedChest' | 'passive';
+export type PickupType = 'heart' | 'key' | 'bomb' | 'chest' | 'lockedChest' | 'passive';
 
 /** Something a chest releases. */
-export type ChestItem = { type: 'heart' } | { type: 'key' } | { type: 'passive'; passive: Passive };
+export type ChestItem = { type: 'heart' } | { type: 'key' } | { type: 'bomb' } | { type: 'passive'; passive: Passive };
 
 export interface PickupSpawn {
   type: PickupType;
@@ -330,6 +330,8 @@ export const isWalkable = (tile: Tile) => tile === 'floor';
 /** Tiles that stop shots and line of sight; holes do not. */
 export const blocksSight = (tile: Tile) => tile === 'obstacle' || tile === 'rock';
 export const isBreakable = (tile: Tile) => tile === 'rock';
+/** Bombs blow away stone as well as rock; holes stay holes. */
+export const isBlastable = (tile: Tile) => tile === 'rock' || tile === 'obstacle';
 
 const roomOrigin = (tiles: Tile[][], doors: Door[]): Cell =>
   doors[0]?.cell ?? { x: Math.floor(tiles[0].length / 2), y: Math.floor(tiles.length / 2) };
@@ -454,7 +456,7 @@ export function generateRoom(spec: RoomSpec, floorIndex: number, rng: Rng): Room
 /** Pickup odds; all numbers are placeholders for playtest tuning. */
 export const PICKUPS = {
   roomChance: 0.45,
-  weights: { heart: 35, key: 30, chest: 20, lockedChest: 15 } as Record<'heart' | 'key' | 'chest' | 'lockedChest', number>,
+  weights: { heart: 30, key: 25, bomb: 15, chest: 18, lockedChest: 12 } as Record<'heart' | 'key' | 'bomb' | 'chest' | 'lockedChest', number>,
   chestContents: { min: 1, max: 3 },
   lockedChestContents: { min: 2, max: 3 },
   lockedChestPassiveChance: 0.35,
@@ -483,7 +485,7 @@ function rollClearDrop(tiles: Tile[][], doors: Door[], enemies: EnemySpawn[], pl
 
 function rollPickup(cell: Cell, rng: Rng): PickupSpawn {
   const type = weighted(PICKUPS.weights, rng);
-  if (type === 'heart' || type === 'key') return { type, cell };
+  if (type === 'heart' || type === 'key' || type === 'bomb') return { type, cell };
   return { type, cell, contents: rollChestContents(type, rng) };
 }
 
@@ -492,7 +494,7 @@ function rollChestContents(type: 'chest' | 'lockedChest', rng: Rng): ChestItem[]
     return [{ type: 'passive', passive: rng.pick(PASSIVE_POOL) }];
   }
   const range = type === 'chest' ? PICKUPS.chestContents : PICKUPS.lockedChestContents;
-  return Array.from({ length: rng.int(range.min, range.max) }, () => ({ type: rng.pick(['heart', 'key'] as const) }));
+  return Array.from({ length: rng.int(range.min, range.max) }, () => ({ type: rng.pick(['heart', 'key', 'bomb'] as const) }));
 }
 
 /** Loot an idea placed: shown from the start, with any chest filled here. */

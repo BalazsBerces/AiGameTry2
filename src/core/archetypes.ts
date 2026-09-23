@@ -106,7 +106,41 @@ const fourCorners: Archetype = {
   },
 };
 
-export const ARCHETYPES: readonly Archetype[] = [pillaredHall, fourCorners];
+/**
+ * Floor 1 puzzle: a chest in the middle, boxed in by stone with a rock set into the middle of
+ * each wall, so shooting (or bombing) through is the only way in. Two zombies keep watch.
+ */
+const stash: Archetype = {
+  id: 'stash',
+  floor: 0,
+  kind: 'normal',
+  fits: fitsAll,
+  build({ width, height, rng }) {
+    const axes: MirrorAxis[] = ['vertical', 'horizontal'];
+    const canvas = new Canvas(width, height, axes);
+    const centre = { x: (width - 1) / 2, y: (height - 1) / 2 };
+    // Half-width of the box: 1 is a snug 3x3, 2 a wider 5x3 vault.
+    const half = rng.int(1, 2);
+    const left = centre.x - half;
+    canvas.paint(
+      Array.from({ length: half + 1 }, (_, i) => ({ x: left + i, y: centre.y - 1 })).concat({ x: left, y: centre.y }),
+      'obstacle',
+    );
+    const rocks = [{ x: centre.x, y: centre.y - 1 }, { x: left, y: centre.y }];
+    // A wide vault breaks open on the long walls only; its short ends stay stone.
+    canvas.paint(half === 1 ? rocks : rocks.slice(0, 1), 'rock');
+    // Two guards: either side of the box, or on opposite corners.
+    const images = canvas.images(rng.pick([{ x: 2, y: 3 }, { x: 3, y: 1 }, { x: 2, y: 1 }]));
+    return {
+      tiles: canvas.tiles,
+      enemies: zombies([images[0], images[images.length - 1]]),
+      pickups: [{ type: 'chest', cell: centre }],
+      symmetry: { axes },
+    };
+  },
+};
+
+export const ARCHETYPES: readonly Archetype[] = [pillaredHall, fourCorners, stash];
 
 export const archetypeById = (id: string) => ARCHETYPES.find((a) => a.id === id);
 

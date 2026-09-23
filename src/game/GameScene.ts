@@ -7,8 +7,10 @@ import {
   createWorld,
   damagePlayer,
   enterRoom,
+  hitTile,
   isFinalFloor,
   roomAtCell,
+  shownPickups,
   touchPickup,
   type World,
   type WorldPickup,
@@ -119,7 +121,11 @@ export class GameScene extends Phaser.Scene {
     this.aim = kb.addKeys({ up: 'UP', down: 'DOWN', left: 'LEFT', right: 'RIGHT' }) as Keys;
 
     this.shots = this.physics.add.group();
-    this.physics.add.collider(this.shots, this.walls, (shot) => shot.destroy());
+    this.physics.add.collider(this.shots, this.walls, (shot, wall) => {
+      if (!(shot as Phaser.GameObjects.GameObject).active) return; // already spent on another wall this frame
+      shot.destroy();
+      this.hitTerrain(wall as Phaser.GameObjects.Rectangle);
+    });
 
     this.enemyParts = this.physics.add.group();
     this.walkers = this.physics.add.group();
@@ -305,6 +311,15 @@ export class GameScene extends Phaser.Scene {
     this.damagePart(part, damage);
   }
 
+  /** A player shot hit a wall piece; rocks crack and eventually break open. */
+  private hitTerrain(wall: Phaser.GameObjects.Rectangle) {
+    const roomId = wall.getData('roomId') as string | undefined;
+    if (!roomId || !wall.active) return;
+    const result = hitTile(this.world, roomId, wall.getData('tile') as Cell);
+    if (result === 'broken') wall.destroy();
+    else if (result === 'damaged') wall.setAlpha(wall.alpha - 0.25);
+  }
+
   private damagePart(part: EnemySprite, damage: number) {
     const enemy = this.enemies.find((e) => e.parts.includes(part));
     if (!enemy) return;
@@ -366,12 +381,11 @@ export class GameScene extends Phaser.Scene {
     this.showPickups();
   }
 
-  /** Redraws the current room's pickups; they only show once the room is cleared. */
+  /** Redraws the current room's pickups: loot placed in plain sight, and the rest once the room is cleared. */
   private showPickups() {
     this.pickupGroup.clear(true, true);
     const room = this.currentRoom;
-    if (!this.world.cleared.has(room.floorRoom.id)) return;
-    for (const p of this.world.pickups.get(room.floorRoom.id) ?? []) {
+    for (const p of shownPickups(this.world, room.floorRoom.id)) {
       const c = tileCenter(room, p.cell.x, p.cell.y);
       const sprite = PICKUP_SHAPES[p.type](this, c.x, c.y, p).setData('pickupId', p.id);
       this.pickupGroup.add(sprite);
@@ -462,7 +476,11 @@ export class GameScene extends Phaser.Scene {
         if (tile === 'floor') return;
         const c = tileCenter(room, tx, ty);
         if (tile === 'obstacle') this.walls.add(this.add.rectangle(c.x, c.y, t - 4, t - 4, COLORS.obstacle));
-        else this.holes.add(this.add.rectangle(c.x, c.y, t, t, COLORS.hole));
+        else if (tile === 'rock') {
+          const rock = this.add.rectangle(c.x, c.y, t - 10, t - 10, COLORS.rock).setStrokeStyle(3, COLORS.rockCrack);
+          rock.setData({ roomId: room.floorRoom.id, tile: { x: tx, y: ty } });
+          this.walls.add(rock);
+        } else this.holes.add(this.add.rectangle(c.x, c.y, t, t, COLORS.hole));
       }),
     );
   }

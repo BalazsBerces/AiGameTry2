@@ -10,7 +10,14 @@ import {
   type FloorRoom,
   type RoomDoor,
 } from './floorGenerator';
-import { generateRoom, type ChestItem, type PickupType, type RoomLayout } from './roomGenerator';
+import {
+  generateRoom,
+  isBreakable,
+  ROCK_HITS,
+  type ChestItem,
+  type PickupType,
+  type RoomLayout,
+} from './roomGenerator';
 import type { Passive } from './weaponModel';
 
 export interface WorldRoom {
@@ -36,6 +43,8 @@ export interface WorldPickup {
   cell: Cell;
   passive?: Passive;
   contents?: ChestItem[];
+  /** Shown before the room is cleared. */
+  visible?: boolean;
 }
 
 export const HEART_HEAL = 2;
@@ -53,6 +62,8 @@ export interface World {
   /** Pickups still lying in each room (shown once the room is cleared). */
   pickups: Map<string, WorldPickup[]>;
   nextPickupId: number;
+  /** Player hits taken so far by rocks still standing, keyed `roomId|x,y`. */
+  tileHits: Map<string, number>;
 }
 
 export const STARTING_HEARTS = 3;
@@ -156,9 +167,36 @@ function openChest(world: World, roomId: string, chest: WorldPickup) {
   chest.type = 'openChest';
   (chest.contents ?? []).forEach((item, i) => {
     const passive = item.type === 'passive' ? item.passive : undefined;
-    list.push({ id: world.nextPickupId++, type: item.type, passive, cell: around[i] ?? chest.cell });
+    list.push({ id: world.nextPickupId++, type: item.type, passive, cell: around[i] ?? chest.cell, visible: chest.visible });
   });
   chest.contents = undefined;
+}
+
+export type TileHitResult = 'none' | 'damaged' | 'broken';
+
+/**
+ * A player shot hit a terrain tile. Rocks break into floor after `ROCK_HITS` hits; the room's
+ * tiles are the world's, so a broken rock stays broken for the rest of the run.
+ */
+export function hitTile(world: World, roomId: string, cell: Cell): TileHitResult {
+  const tiles = world.rooms.get(roomId)?.layout.tiles;
+  const tile = tiles?.[cell.y]?.[cell.x];
+  if (!tiles || !tile || !isBreakable(tile)) return 'none';
+  const key = `${roomId}|${cell.x},${cell.y}`;
+  const hits = (world.tileHits.get(key) ?? 0) + 1;
+  if (hits < ROCK_HITS) {
+    world.tileHits.set(key, hits);
+    return 'damaged';
+  }
+  world.tileHits.delete(key);
+  tiles[cell.y][cell.x] = 'floor';
+  return 'broken';
+}
+
+/** Pickups on show in a room: everything once it is cleared, before that only loot placed in plain sight. */
+export function shownPickups(world: World, roomId: string): WorldPickup[] {
+  const all = world.pickups.get(roomId) ?? [];
+  return world.cleared.has(roomId) ? all : all.filter((p) => p.visible);
 }
 
 export function enterRoom(world: World, roomId: string) {
@@ -204,6 +242,7 @@ export function createWorld(seed: number): World {
     player: { health: STARTING_HEARTS * 2, maxHealth: STARTING_HEARTS * 2, keys: 0, passives: [] },
     pickups: new Map(),
     nextPickupId: 1,
+    tileHits: new Map(),
   };
   for (const floor of floors) buildFloor(world, rng.fork(`floor ${floor.floorIndex}`), floor);
   for (const [id, room] of world.rooms) if (room.layout.enemies.length === 0) world.cleared.add(id);

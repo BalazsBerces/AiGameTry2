@@ -664,5 +664,33 @@ if (scenario === 'rooms') {
   }
 }
 
+if (scenario === 'rocks') {
+  // Finds a Stash room, shows its chest before clearing, and shoots the rock below it open.
+  const id = await page.evaluate(`[...${scene()}.world.rooms.values()].find((r) => r.layout.archetype === 'stash')?.floorRoom.id`);
+  if (!id) throw new Error('no stash room on this seed; try another SMOKE_SEED');
+  const tileAt = (x, y) => page.evaluate(`${scene()}.world.rooms.get('${id}').layout.tiles[${y}][${x}]`);
+  await page.evaluate(`(() => { const s = ${scene()};
+    s.invincibleUntil = Infinity;
+    const room = s.world.rooms.get('${id}');
+    s.enterRoom(room, s.time.now);
+    s.enemiesWakeAt = Infinity;
+    const c = { x: room.floorRoom.cell.x * 720 + (6 + 1.5) * 48, y: room.floorRoom.cell.y * 432 + (5 + 1.5) * 48 };
+    s.player.body.reset(c.x, c.y);
+    s.world.player.passives = [];
+  })()`);
+  await page.waitForTimeout(500);
+  await shot('02-stash');
+  console.log('room', id, 'shown pickups before clear:', await page.evaluate(`${scene()}.pickupGroup.getChildren().length`), 'tile below chest:', await tileAt(6, 4));
+  for (let i = 1; i <= 3; i++) {
+    await hold('ArrowUp', 60);
+    await page.waitForTimeout(450);
+    console.log(`after shot ${i}: tile (6,4) =`, await tileAt(6, 4));
+  }
+  await shot('03-rock-broken');
+  await hold('w', 500);
+  console.log('walked in; pickups left:', await page.evaluate(`${scene()}.world.pickups.get('${id}').map((p) => p.type).join(',')`));
+  await shot('04-chest');
+}
+
 console.log(errors.length ? `ERRORS:\n${errors.join('\n')}` : 'no console errors');
 await browser.close();

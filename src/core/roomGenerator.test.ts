@@ -7,15 +7,16 @@ const room = (seed: number, doors: readonly (typeof ALL_DOORS)[number][] = ALL_D
   generateRoom({ id: '0,0', kind: 'normal', doors: [...doors] }, 0, createRng(seed));
 const count = (r: ReturnType<typeof room>, tile: string) => r.tiles.flat().filter((t) => t === tile).length;
 
-/** Walkable cells reachable from `from`, 4-connected. */
-function reachable(r: ReturnType<typeof room>, from: { x: number; y: number }) {
+/** Walkable cells reachable from `from`, 4-connected; optionally as if every rock were already broken. */
+function reachable(r: ReturnType<typeof room>, from: { x: number; y: number }, rocksBroken = false) {
   const seen = new Set<string>();
   const stack = [from];
   while (stack.length) {
     const c = stack.pop()!;
     const key = `${c.x},${c.y}`;
     if (seen.has(key) || c.x < 0 || c.y < 0 || c.x >= r.width || c.y >= r.height) continue;
-    if (r.tiles[c.y][c.x] !== 'floor') continue;
+    const tile = r.tiles[c.y][c.x];
+    if (tile !== 'floor' && !(rocksBroken && tile === 'rock')) continue;
     seen.add(key);
     stack.push({ x: c.x + 1, y: c.y }, { x: c.x - 1, y: c.y }, { x: c.x, y: c.y + 1 }, { x: c.x, y: c.y - 1 });
   }
@@ -23,14 +24,15 @@ function reachable(r: ReturnType<typeof room>, from: { x: number; y: number }) {
 }
 
 describe('generateRoom terrain', () => {
-  it('keeps every door and every floor cell mutually reachable', () => {
+  it('keeps every door reachable, and every floor cell once rocks are broken', () => {
     const doorSets = [ALL_DOORS, ['left'], ['up', 'right'], ['down', 'left', 'right']] as const;
     for (let seed = 0; seed < 500; seed++) {
       for (const doors of doorSets) {
         const r = room(seed, doors);
         const seen = reachable(r, r.doors[0].cell);
         for (const d of r.doors) expect(seen.has(`${d.cell.x},${d.cell.y}`), `seed ${seed} door ${d.side}`).toBe(true);
-        expect(seen.size, `seed ${seed} doors ${doors}`).toBe(count(r, 'floor'));
+        const opened = reachable(r, r.doors[0].cell, true);
+        expect(opened.size, `seed ${seed} doors ${doors}`).toBe(count(r, 'floor') + count(r, 'rock'));
       }
     }
   });
@@ -258,7 +260,7 @@ describe('generateRoom pickups', () => {
     for (let seed = 0; seed < 400; seed++) {
       const r = room(seed);
       if (r.pickups.length) withPickups++;
-      const seen = reachable(r, r.doors[0].cell);
+      const seen = reachable(r, r.doors[0].cell, true);
       const taken = new Set(r.enemies.flatMap((e) => [e.cell, ...(e.tail ?? [])]).map((c) => `${c.x},${c.y}`));
       for (const p of r.pickups) {
         const key = `${p.cell.x},${p.cell.y}`;
@@ -273,7 +275,13 @@ describe('generateRoom pickups', () => {
   });
 
   it('puts the room-clear drop in the middle of the room when the middle is free', () => {
-    const drops = Array.from({ length: 200 }, (_, seed) => room(seed).pickups).flat();
+    const drops = ['pillaredHall', 'fourCorners']
+      .flatMap((archetype) =>
+        Array.from({ length: 100 }, (_, seed) =>
+          generateRoom({ id: '0,0', kind: 'normal', doors: [...ALL_DOORS], archetype }, 0, createRng(seed)).pickups,
+        ),
+      )
+      .flat();
     expect(drops.length).toBeGreaterThan(40);
     for (const p of drops) expect(p.cell).toEqual({ x: 6, y: 3 });
   });
@@ -322,6 +330,31 @@ describe('generateRoom pickups', () => {
       expect(['homing', 'fireRate', 'sword']).toContain(r.pickups[0].passive);
       const c = r.pickups[0].cell;
       expect(r.tiles[c.y][c.x]).toBe('floor');
+    }
+  });
+});
+
+describe('The Stash (floor 1 puzzle)', () => {
+  const stash = (seed: number, doors: readonly (typeof ALL_DOORS)[number][] = ALL_DOORS) =>
+    generateRoom({ id: '0,0', kind: 'normal', doors: [...doors], archetype: 'stash' }, 0, createRng(seed));
+  const walkable = (r: ReturnType<typeof room>, breakRocks: boolean) => ({
+    ...r,
+    tiles: r.tiles.map((row) => row.map((t) => (breakRocks && t === 'rock' ? 'floor' : t))),
+  });
+
+  it('shows a chest from the start that only breaking rocks can reach', () => {
+    for (let seed = 0; seed < 200; seed++) {
+      for (const doors of [ALL_DOORS, ['left'], ['up', 'right']] as const) {
+        const r = stash(seed, doors);
+        expect(r.archetype).toBe('stash');
+        const chests = r.pickups.filter((p) => p.visible);
+        expect(chests.map((p) => p.type), `seed ${seed}`).toEqual(['chest']);
+        const at = `${chests[0].cell.x},${chests[0].cell.y}`;
+        expect(reachable(walkable(r, false), r.doors[0].cell).has(at), `seed ${seed}`).toBe(false);
+        expect(reachable(walkable(r, true), r.doors[0].cell).has(at), `seed ${seed}`).toBe(true);
+        expect(r.enemies.every((e) => e.type === 'zombie')).toBe(true);
+        expect(r.enemies).toHaveLength(2);
+      }
     }
   });
 });

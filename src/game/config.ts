@@ -33,6 +33,8 @@ export const COLORS = {
   wall: 0x1c1720,
   door: 0x7a5230,
   obstacle: 0x7d7468,
+  rock: 0xc2b28f,
+  rockCrack: 0x5c5040,
   hole: 0x050407,
   player: 0xe8d7b0,
   shot: 0x9ad0ff,

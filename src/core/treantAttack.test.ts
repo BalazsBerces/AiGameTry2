@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import type { Cell } from './floorGenerator';
 import type { Tile } from './roomGenerator';
-import { planRootEruption, planSeedVolley, rootEruptionAt, type SeedPod } from './treantAttack';
+import {
+  branchSweepHits,
+  branchSweepPhase,
+  inSweepRange,
+  planBranchSweep,
+  planRootEruption,
+  planSeedVolley,
+  rootEruptionAt,
+  SWEEP,
+  type SeedPod,
+} from './treantAttack';
 import { floodFill } from './grid';
 import { createRng } from './rng';
 import { doorApproach } from './roomValidator';
@@ -214,5 +224,51 @@ describe('planSeedVolley', () => {
     const volley = planSeedVolley(tiles, doors, treant, { x: treant.x - 5, y: treant.y }, createRng(1));
     expect(volley.flightMs).toBeGreaterThan(0);
     expect(volley.durationMs).toBeGreaterThanOrEqual(volley.flightMs);
+  });
+});
+
+describe('branch sweep', () => {
+  const treant = { x: 10.5, y: 6.5 };
+  const around = (distance: number, angle: number) => ({ x: treant.x + Math.cos(angle) * distance, y: treant.y + Math.sin(angle) * distance });
+  const angles = Array.from({ length: 16 }, (_, i) => (i / 16) * 2 * Math.PI);
+
+  it('triggers when the player is close on any side, never when they keep their distance', () => {
+    for (const a of angles) {
+      expect(inSweepRange(treant, around(1.2, a)), `angle ${a}`).toBe(true);
+      expect(inSweepRange(treant, around(SWEEP.range * 0.95, a)), `angle ${a}`).toBe(true);
+      expect(inSweepRange(treant, around(SWEEP.range * 1.05, a)), `angle ${a}`).toBe(false);
+      expect(inSweepRange(treant, around(6, a)), `angle ${a}`).toBe(false);
+    }
+  });
+
+  it('hurts a player it was aimed at only once its telegraph is over, and only while it swings', () => {
+    for (const a of angles) {
+      const player = around(1.5, a);
+      const sweep = planBranchSweep(treant, player);
+      expect(sweep.telegraphMs).toBeGreaterThan(0);
+      for (let t = 0; t < sweep.telegraphMs; t += 25) expect(branchSweepHits(sweep, t, player), `t ${t}`).toBe(false);
+      expect(branchSweepHits(sweep, sweep.telegraphMs, player)).toBe(true);
+      expect(branchSweepHits(sweep, sweep.durationMs + 1, player)).toBe(false);
+      expect(branchSweepPhase(sweep, 0)).toBe('telegraph');
+      expect(branchSweepPhase(sweep, sweep.telegraphMs)).toBe('swing');
+      expect(branchSweepPhase(sweep, sweep.durationMs + 1)).toBe('over');
+    }
+  });
+
+  it('misses a player who stepped out of the arc: behind the treant, off to the side, or out of reach', () => {
+    for (const a of angles) {
+      const sweep = planBranchSweep(treant, around(1.5, a));
+      const swinging = sweep.telegraphMs;
+      expect(branchSweepHits(sweep, swinging, around(1.5, a + Math.PI))).toBe(false);
+      expect(branchSweepHits(sweep, swinging, around(1.5, a + sweep.halfArc + 0.2))).toBe(false);
+      expect(branchSweepHits(sweep, swinging, around(1.5, a - sweep.halfArc - 0.2))).toBe(false);
+      expect(branchSweepHits(sweep, swinging, around(sweep.range + 1, a))).toBe(false);
+    }
+  });
+
+  it('still catches a player who moved within the arc during the telegraph', () => {
+    const sweep = planBranchSweep(treant, around(2, 0));
+    expect(branchSweepHits(sweep, sweep.telegraphMs + 1, around(1.2, sweep.halfArc * 0.8))).toBe(true);
+    expect(branchSweepHits(sweep, sweep.telegraphMs + 1, around(1.2, -sweep.halfArc * 0.8))).toBe(true);
   });
 });

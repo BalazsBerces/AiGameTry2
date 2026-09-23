@@ -1,14 +1,26 @@
 import type Phaser from 'phaser';
 import type { Cell } from '../../core/floorGenerator';
 import { createRng } from '../../core/rng';
-import { planRootEruption, planSeedVolley, rootEruptionAt, type RootEruption, type SeedVolley } from '../../core/treantAttack';
+import {
+  branchSweepHits,
+  branchSweepPhase,
+  inSweepRange,
+  planBranchSweep,
+  planRootEruption,
+  planSeedVolley,
+  rootEruptionAt,
+  SWEEP,
+  type BranchSweep,
+  type RootEruption,
+  type SeedVolley,
+} from '../../core/treantAttack';
 import { COLORS, TUNING } from '../config';
 import { singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
 
 /**
  * Floor 1 boss, rooted at the cave mouth: sends fans of roots erupting along the ground toward
  * the player, taking turns with volleys of seed pods lobbed around them that sprout rock or
- * thorn where they land. Each fan is telegraphed on the ground before it bursts, each pod's
+ * thorn where they land; whoever comes close gets a telegraphed sweep of its branches. Each fan is telegraphed on the ground before it bursts, each pod's
  * landing spot is shadowed while it flies; the attacks are planned by core/treantAttack, this
  * only draws them, hurts the player standing on an erupting cell and lands the pods.
  */
@@ -35,6 +47,50 @@ export function createTreant(scene: Phaser.Scene, x: number, y: number, cell: Ce
   let throwSeedsNext = false;
   const rng = createRng(Math.floor(Math.random() * 2 ** 31));
   const pods = scene.add.graphics().setDepth(12);
+  // The branch sweep runs alongside the other attacks whenever the player comes close.
+  let sweep: BranchSweep | undefined;
+  let sweepStart = 0;
+  let nextSweepAt = 0;
+  const branches = scene.add.graphics().setDepth(9);
+  const home = { x: cell.x + 0.5, y: cell.y + 0.5 };
+
+  /** The arc fills in while telegraphed, then the branches lash across it. */
+  const drawSweep = (s: BranchSweep, elapsed: number) => {
+    branches.clear();
+    const phase = branchSweepPhase(s, elapsed);
+    if (phase === 'over') return;
+    const reach = s.range * TUNING.tile;
+    if (phase === 'telegraph') {
+      const warn = elapsed / s.telegraphMs;
+      branches.fillStyle(COLORS.sweepTelegraph, 0.12 + 0.25 * warn).slice(x, y, reach, s.aim - s.halfArc, s.aim + s.halfArc).fillPath();
+      branches.lineStyle(2, COLORS.sweepTelegraph, 0.8).slice(x, y, reach, s.aim - s.halfArc, s.aim + s.halfArc).strokePath();
+      return;
+    }
+    const swing = (elapsed - s.telegraphMs) / (s.durationMs - s.telegraphMs);
+    const at = s.aim - s.halfArc + 2 * s.halfArc * Math.min(1, swing);
+    branches.fillStyle(COLORS.sweep, 0.45).slice(x, y, reach, s.aim - s.halfArc, at).fillPath();
+    for (const spread of [-0.12, 0, 0.12]) {
+      branches.lineStyle(7, COLORS.treantBark, 1).lineBetween(x, y, x + Math.cos(at + spread) * reach, y + Math.sin(at + spread) * reach);
+    }
+  };
+
+  const updateSweep = (ctx: EnemyContext) => {
+    const origin = ctx.tileCenter({ x: 0, y: 0 });
+    const player = { x: (ctx.player.x - origin.x) / TUNING.tile + 0.5, y: (ctx.player.y - origin.y) / TUNING.tile + 0.5 };
+    if (!sweep && ctx.time >= nextSweepAt && inSweepRange(home, player)) {
+      sweep = planBranchSweep(home, player);
+      sweepStart = ctx.time;
+    }
+    if (!sweep) return;
+    const elapsed = ctx.time - sweepStart;
+    drawSweep(sweep, elapsed);
+    if (branchSweepHits(sweep, elapsed, player)) ctx.hurtPlayer();
+    if (branchSweepPhase(sweep, elapsed) === 'over') {
+      sweep = undefined;
+      branches.clear();
+      nextSweepAt = ctx.time + SWEEP.cooldownMs;
+    }
+  };
 
   const drawRoots = (ctx: EnemyContext, telegraph: Cell[], hurting: Cell[]) => {
     const t = TUNING.tile;
@@ -81,6 +137,7 @@ export function createTreant(scene: Phaser.Scene, x: number, y: number, cell: Ce
   const enemy = singlePartEnemy(scene, sprite, hp, (ctx: EnemyContext) => {
     sprite.body.setVelocity(0, 0);
     if (nextAttackAt === 0) nextAttackAt = ctx.time;
+    updateSweep(ctx);
     if (!attack && !volley && ctx.time >= nextAttackAt) {
       if (throwSeedsNext) {
         volley = planSeedVolley(ctx.tiles, ctx.doors, cell, ctx.playerTile, rng);
@@ -110,6 +167,7 @@ export function createTreant(scene: Phaser.Scene, x: number, y: number, cell: Ce
       for (const d of decor) d.destroy();
       ground.destroy();
       pods.destroy();
+      branches.destroy();
     }
     return remaining;
   };

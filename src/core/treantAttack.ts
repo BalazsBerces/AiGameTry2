@@ -143,3 +143,66 @@ export function planSeedVolley(tiles: Tile[][], doors: Door[], treant: Cell, pla
   }
   return { pods, flightMs: SEEDS.flightMs, durationMs: SEEDS.flightMs + SEEDS.settleMs };
 }
+
+/** Branch sweep reach and timing; all numbers are placeholders for playtest tuning. */
+export const SWEEP = {
+  /** Reach from the treant's centre, in tiles; the player closer than this provokes a sweep. */
+  range: 2.4,
+  /** Width of the swept arc, centred on where the player stood when the sweep began. */
+  arcDeg: 150,
+  /** How long the arc is shown before the branches come round. */
+  telegraphMs: 600,
+  /** How long the swing lasts, hurting whoever is inside the arc. */
+  swingMs: 220,
+  /** Pause after a sweep before the treant can sweep again. */
+  cooldownMs: 900,
+};
+
+/** A point in tile units (10.5 is the centre of tile 10). */
+export interface Point {
+  x: number;
+  y: number;
+}
+
+export interface BranchSweep {
+  from: Point;
+  /** Direction of the arc's centre, in radians. */
+  aim: number;
+  halfArc: number;
+  range: number;
+  telegraphMs: number;
+  /** Time from the start until the swing is over. */
+  durationMs: number;
+}
+
+/** True when the player is close enough for the treant to sweep its branches at them. */
+export const inSweepRange = (treant: Point, player: Point) => Math.hypot(player.x - treant.x, player.y - treant.y) < SWEEP.range;
+
+/** A branch sweep from the treant, its arc centred on the player. */
+export function planBranchSweep(treant: Point, player: Point): BranchSweep {
+  return {
+    from: treant,
+    aim: Math.atan2(player.y - treant.y, player.x - treant.x),
+    halfArc: (SWEEP.arcDeg / 2) * (Math.PI / 180),
+    range: SWEEP.range,
+    telegraphMs: SWEEP.telegraphMs,
+    durationMs: SWEEP.telegraphMs + SWEEP.swingMs,
+  };
+}
+
+export type SweepPhase = 'telegraph' | 'swing' | 'over';
+
+export function branchSweepPhase(sweep: BranchSweep, elapsedMs: number): SweepPhase {
+  if (elapsedMs < sweep.telegraphMs) return 'telegraph';
+  return elapsedMs <= sweep.durationMs ? 'swing' : 'over';
+}
+
+/** True if the sweep hurts a player at `player` `elapsedMs` in: only while swinging, and only inside its arc. */
+export function branchSweepHits(sweep: BranchSweep, elapsedMs: number, player: Point): boolean {
+  if (branchSweepPhase(sweep, elapsedMs) !== 'swing') return false;
+  const dx = player.x - sweep.from.x;
+  const dy = player.y - sweep.from.y;
+  if (Math.hypot(dx, dy) > sweep.range) return false;
+  const off = Math.atan2(dy, dx) - sweep.aim;
+  return Math.abs(Math.atan2(Math.sin(off), Math.cos(off))) <= sweep.halfArc;
+}

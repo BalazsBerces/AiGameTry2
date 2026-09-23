@@ -93,4 +93,6 @@ export const COLORS = {
   root: 0x7a4a22,
   seedPod: 0x8a6a2a,
   podShadow: 0x1a1208,
+  sweepTelegraph: 0xd8b25a,
+  sweep: 0x6a8a3a,
 };

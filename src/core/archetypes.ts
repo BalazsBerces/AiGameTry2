@@ -383,6 +383,167 @@ const vault: Archetype = {
   },
 };
 
+/**
+ * Floor 3: a stone keep in the middle with turrets inside, firing out through arrow slits
+ * (holes: shots pass, feet don't). Worms patrol the grounds around it.
+ */
+const fortress: Archetype = {
+  id: 'fortress',
+  floor: 2,
+  kind: 'normal',
+  fits: fitsAll,
+  build({ width, height, rng }) {
+    const axes: MirrorAxis[] = ['vertical', 'horizontal'];
+    const canvas = new Canvas(width, height, axes);
+    const half = rng.int(2, 3);
+    canvas.paint(Array.from({ length: half + 1 }, (_, i) => ({ x: 6 - i, y: 2 })).concat({ x: 6 - half, y: 3 }), 'obstacle');
+    // Slits in line with the turrets: above/below them, or in the end walls beside them.
+    const post = { x: 6 - half + 1, y: 3 };
+    const slits = rng.pick([['top'], ['side'], ['top', 'side']]);
+    if (slits.includes('top')) canvas.paint([{ x: post.x, y: 2 }], 'hole');
+    if (slits.includes('side')) canvas.paint([{ x: 6 - half, y: 3 }], 'hole');
+    const turrets = canvas.images(post).map((cell): EnemySpawn => ({ type: 'turret', cell }));
+    const first = straight({ x: 4, y: 0 }, -1);
+    const worms = [first, first.map((c) => opposite(c, width, height))].slice(0, rng.int(1, 2));
+    return { tiles: canvas.tiles, enemies: [...turrets, ...worms.map(worm)], pickups: [], symmetry: { axes } };
+  },
+};
+
+/**
+ * Floor 3: the floor has fallen away except for a cross of narrow walkways joining the doors.
+ * Turrets on the far corners rake whoever is out on the cross.
+ */
+const killbox: Archetype = {
+  id: 'killbox',
+  floor: 2,
+  kind: 'normal',
+  fits: fitsAll,
+  build({ width, height, rng }) {
+    const axes: MirrorAxis[] = ['vertical', 'horizontal'];
+    const canvas = new Canvas(width, height, axes);
+    const walkway = rng.pick([1, 3]);
+    const quadrant: Cell[] = [];
+    for (let x = 0; x < 6; x++) for (let y = 0; y < (walkway === 1 ? 3 : 2); y++) quadrant.push({ x, y });
+    canvas.paint(quadrant, 'hole');
+    const perches = canvas.images(rng.pick([{ x: 0, y: 0 }, { x: 2, y: 0 }]));
+    // All four corners, or just a diagonal pair; unused perches stay fallen away.
+    const chosen = rng.next() < 0.5 ? perches : [perches[0], perches[perches.length - 1]];
+    for (const c of chosen) canvas.tiles[c.y][c.x] = 'floor';
+    return {
+      tiles: canvas.tiles,
+      enemies: chosen.map((cell): EnemySpawn => ({ type: 'turret', cell })),
+      pickups: [],
+      // A diagonal pair is only point-symmetric; the perches are the idea's own feature.
+      symmetry: { axes, feature: chosen },
+    };
+  },
+};
+
+/**
+ * Floor 3: a long nest across the room, packed with worms and zombies, with one opening on a
+ * wall without a door. Its top and bottom walls would block those doors, so it only fits
+ * rooms entered from the sides.
+ */
+const nest: Archetype = {
+  id: 'nest',
+  floor: 2,
+  kind: 'normal',
+  fits: (doors) => !doors.includes('up') && !doors.includes('down'),
+  build({ width, height, doors, rng }) {
+    const sides = doors.map((d) => d.side);
+    const shape: JarShape = {
+      x0: 2, x1: 10, y0: 1, y1: 5,
+      axes: ['vertical', 'horizontal'],
+      openings: { up: { x: 6, y: 1 }, down: { x: 6, y: 5 }, left: { x: 2, y: 3 }, right: { x: 10, y: 3 } },
+    };
+    const facing = rng.pick((['up', 'down', 'left', 'right'] as const).filter((s) => !sides.includes(s)));
+    const opening = shape.openings[facing];
+    const canvas = new Canvas(width, height, []);
+    canvas.paint(jarWall(shape), 'obstacle');
+    canvas.paint([opening], 'floor');
+    const worms = [straight({ x: 3, y: 2 }, 1), straight({ x: 9, y: 4 }, -1)];
+    const zombieCells = shuffled([{ x: 3, y: 3 }, { x: 5, y: 3 }, { x: 7, y: 3 }, { x: 9, y: 3 }], rng).slice(0, rng.int(2, 3));
+    return {
+      tiles: canvas.tiles,
+      enemies: [...worms.map(worm), ...zombies(zombieCells)],
+      pickups: [],
+      symmetry: { axes: shape.axes, feature: [opening] },
+    };
+  },
+};
+
+/**
+ * Floor 3: two lanes along the top and bottom walls, each walled off from the middle and
+ * guarded by a turret at both ends, so anyone cutting through a lane is caught between them.
+ */
+const crossfire: Archetype = {
+  id: 'crossfire',
+  floor: 2,
+  kind: 'normal',
+  fits: fitsAll,
+  build({ width, height, rng }) {
+    const axes: MirrorAxis[] = ['vertical', 'horizontal'];
+    const canvas = new Canvas(width, height, axes);
+    const length = rng.int(2, 3);
+    canvas.paint(Array.from({ length }, (_, i) => ({ x: 2 + i, y: 2 })), 'obstacle');
+    if (rng.next() < 0.6) canvas.paint([{ x: 2 + length, y: 2 }], 'rock');
+    const end = { x: rng.pick([0, 1]), y: 1 };
+    const turrets = canvas.images(end).map((cell): EnemySpawn => ({ type: 'turret', cell }));
+    return { tiles: canvas.tiles, enemies: turrets, pickups: [], symmetry: { axes } };
+  },
+};
+
+/**
+ * Floor 3 breather: broken rock walls, mirrored into every corner, with a pair of worms
+ * nosing around them. Nothing touches a door approach, so it fits every door set.
+ */
+const ruins: Archetype = {
+  id: 'ruins',
+  floor: 2,
+  kind: 'normal',
+  breather: true,
+  fits: fitsAll,
+  build({ width, height, rng }) {
+    const axes: MirrorAxis[] = ['vertical', 'horizontal'];
+    const canvas = new Canvas(width, height, axes);
+    const fragment = rng.pick([
+      [{ x: 2, y: 2 }, { x: 3, y: 2 }, { x: 4, y: 1 }],
+      [{ x: 3, y: 1 }, { x: 3, y: 2 }, { x: 4, y: 2 }],
+      [{ x: 2, y: 1 }, { x: 2, y: 2 }, { x: 4, y: 2 }, { x: 5, y: 2 }],
+    ]);
+    canvas.paint(fragment, 'rock');
+    if (rng.next() < 0.5) canvas.paint([{ x: 1, y: 1 }], 'rock');
+    const first = straight({ x: 4, y: 0 }, -1);
+    const second = rng.next() < 0.5 ? first.map((c) => opposite(c, width, height)) : first.map((c) => ({ x: width - 1 - c.x, y: c.y }));
+    return { tiles: canvas.tiles, enemies: [worm(first), worm(second)], pickups: [], symmetry: { axes } };
+  },
+};
+
+/**
+ * Floor 3 puzzle: a chest buried in the middle of a dense field of rocks, with turrets
+ * covering it; digging in means standing still under fire (or spending a bomb).
+ */
+const minefield: Archetype = {
+  id: 'minefield',
+  floor: 2,
+  kind: 'normal',
+  fits: fitsAll,
+  build({ width, height, rng }) {
+    const axes: MirrorAxis[] = ['vertical', 'horizontal'];
+    const canvas = new Canvas(width, height, axes);
+    const reach = rng.int(2, 3);
+    const field: Cell[] = [];
+    for (let x = 6 - reach; x <= 6; x++) for (let y = 2; y <= 3; y++) field.push({ x, y });
+    canvas.paint(field, 'rock');
+    canvas.paint([{ x: 6, y: 3 }], 'floor');
+    if (rng.next() < 0.5) canvas.paint([{ x: 6 - reach, y: 1 }], 'rock');
+    const guard = rng.pick([{ x: 1, y: 1 }, { x: 2, y: 0 }]);
+    const images = canvas.images(guard);
+    const turrets = [images[0], images[images.length - 1]].map((cell): EnemySpawn => ({ type: 'turret', cell }));
+    return { tiles: canvas.tiles, enemies: turrets, pickups: [{ type: 'chest', cell: { x: 6, y: 3 } }], symmetry: { axes } };
+  },
+};
+
 function shuffled<T>(items: readonly T[], rng: Rng): T[] {
   const out = [...items];
   for (let i = out.length - 1; i > 0; i--) {
@@ -404,6 +565,12 @@ export const ARCHETYPES: readonly Archetype[] = [
   gallery,
   serpentGarden,
   vault,
+  ruins,
+  fortress,
+  killbox,
+  nest,
+  crossfire,
+  minefield,
 ];
 
 export const archetypeById = (id: string) => ARCHETYPES.find((a) => a.id === id);

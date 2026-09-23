@@ -51,15 +51,6 @@ describe('generateRoom terrain', () => {
   it('is identical for the same seed', () => {
     expect(room(9)).toEqual(room(9));
   });
-
-  it('places obstacles and holes that vary between seeds on floors without archetypes yet', () => {
-    const rooms = Array.from({ length: 40 }, (_, seed) =>
-      generateRoom({ id: '0,0', kind: 'normal', doors: [...ALL_DOORS] }, 2, createRng(seed)),
-    );
-    expect(rooms.filter((r) => count(r, 'obstacle') > 0).length).toBeGreaterThan(20);
-    expect(rooms.filter((r) => count(r, 'hole') > 0).length).toBeGreaterThan(10);
-    expect(new Set(rooms.map((r) => JSON.stringify(r.tiles))).size).toBeGreaterThan(30);
-  });
 });
 
 describe('generateRoom worm boss arena (floor 1)', () => {
@@ -461,13 +452,19 @@ describe('every archetype', () => {
     }
   });
 
-  it('gives floor 2 its own set of six ideas, one of them a breather that fits every door set', () => {
-    const own = ARCHETYPES.filter((a) => a.floor === 1 && a.kind === 'normal');
-    expect(own.map((a) => a.id).sort()).toEqual(['courtyard', 'gallery', 'serpentGarden', 'track', 'twinJars', 'vault']);
+  it.each([
+    [1, ['jar', 'fourCorners', 'pillaredHall', 'sentryIsland', 'stash']],
+    [2, ['courtyard', 'gallery', 'serpentGarden', 'track', 'twinJars', 'vault']],
+    [3, ['crossfire', 'fortress', 'killbox', 'minefield', 'nest', 'ruins']],
+  ])('gives floor %i its own set of ideas, one of them a breather that fits every door set', (floor, ids) => {
+    const own = ARCHETYPES.filter((a) => a.floor === floor - 1 && a.kind === 'normal');
+    expect(own.map((a) => a.id).sort()).toEqual([...ids].sort());
     expect(own.some((a) => a.breather && EVERY_DOOR_SET.every((d) => a.fits(d)))).toBe(true);
-    for (let seed = 0; seed < 100; seed++) {
-      const r = generateRoom({ id: '0,0', kind: 'normal', doors: ['left', 'up'] }, 1, createRng(seed));
-      expect(own.map((a) => a.id)).toContain(r.archetype);
+    for (const doors of EVERY_DOOR_SET) {
+      for (let seed = 0; seed < 10; seed++) {
+        const r = generateRoom({ id: '0,0', kind: 'normal', doors: [...doors] }, floor - 1, createRng(seed));
+        expect(ids).toContain(r.archetype);
+      }
     }
   });
 });

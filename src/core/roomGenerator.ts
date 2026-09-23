@@ -462,12 +462,15 @@ function weighted<K extends string>(weights: Record<K, number>, rng: Rng): K {
   return entries[entries.length - 1][0];
 }
 
-/** The pickup a normal room may reveal once cleared, on a reachable cell nothing else uses. */
+/** The pickup a normal room may reveal once cleared, on the free reachable cell nearest the room's middle. */
 function rollClearDrop(tiles: Tile[][], doors: Door[], enemies: EnemySpawn[], placed: PickupSpawn[], rng: Rng): PickupSpawn[] {
   if (rng.next() >= PICKUPS.roomChance) return [];
   const taken = new Set([...enemies.flatMap((e) => [e.cell, ...(e.tail ?? [])]), ...placed.map((p) => p.cell)].map((c) => `${c.x},${c.y}`));
-  const pool = reachableCells(tiles, doors).filter((c) => !taken.has(`${c.x},${c.y}`));
-  return pool.length ? [rollPickup(rng.pick(pool), rng)] : [];
+  const centre = { x: (tiles[0].length - 1) / 2, y: (tiles.length - 1) / 2 };
+  const spot = reachableCells(tiles, doors)
+    .filter((c) => !taken.has(`${c.x},${c.y}`))
+    .sort((a, b) => Math.hypot(a.x - centre.x, a.y - centre.y) - Math.hypot(b.x - centre.x, b.y - centre.y))[0];
+  return spot ? [rollPickup(spot, rng)] : [];
 }
 
 function rollPickup(cell: Cell, rng: Rng): PickupSpawn {

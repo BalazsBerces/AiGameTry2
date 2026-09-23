@@ -272,6 +272,12 @@ describe('generateRoom pickups', () => {
     expect(withPickups).toBeLessThan(320);
   });
 
+  it('puts the room-clear drop in the middle of the room when the middle is free', () => {
+    const drops = Array.from({ length: 200 }, (_, seed) => room(seed).pickups).flat();
+    expect(drops.length).toBeGreaterThan(40);
+    for (const p of drops) expect(p.cell).toEqual({ x: 6, y: 3 });
+  });
+
   it('never puts pickups in the start room', () => {
     for (let seed = 0; seed < 50; seed++) {
       expect(generateRoom({ id: '0,0', kind: 'start', doors: ['up'] }, 0, createRng(seed)).pickups).toEqual([]);

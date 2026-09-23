@@ -638,5 +638,31 @@ if (scenario === 'chest-passive') {
   console.log('passives after the lockout (expect [homing]):', await page.evaluate(`${scene()}.world.player.passives`));
 }
 
+if (scenario === 'rooms') {
+  // Enters every normal and item room on one floor (SMOKE_FLOOR, default 0) and screenshots it with its enemies.
+  const floor = Number(process.env.SMOKE_FLOOR ?? 0);
+  const ids = await page.evaluate(`[...${scene()}.world.rooms.values()]
+    .filter((r) => r.floorIndex === ${floor} && (r.floorRoom.kind === 'normal' || r.floorRoom.kind === 'item'))
+    .map((r) => r.floorRoom.id)`);
+  for (const id of ids) {
+    const info = await page.evaluate(`(() => { const s = ${scene()};
+      for (const e of s.enemies) for (const p of e.parts) p.destroy();
+      s.enemies = [];
+      for (const l of s.doorLocks) l.destroy();
+      s.doorLocks = [];
+      s.invincibleUntil = Infinity;
+      const room = s.world.rooms.get('${id}');
+      const door = room.layout.doors[0];
+      s.player.body.reset(room.floorRoom.cell.x * 720 + (door.cell.x + 1.5) * 48, room.floorRoom.cell.y * 432 + (door.cell.y + 1.5) * 48);
+      s.enterRoom(room, s.time.now);
+      s.enemiesWakeAt = Infinity;
+      return { archetype: room.layout.archetype, doors: room.layout.doors.map((d) => d.side).join(','), enemies: room.layout.enemies.map((e) => e.type).join(',') };
+    })()`);
+    await page.waitForTimeout(600);
+    await shot(`room-f${floor}-${id.replace(',', '_')}`);
+    console.log(id, JSON.stringify(info));
+  }
+}
+
 console.log(errors.length ? `ERRORS:\n${errors.join('\n')}` : 'no console errors');
 await browser.close();

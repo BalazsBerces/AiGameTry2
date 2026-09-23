@@ -1,3 +1,4 @@
+import { assignArchetypes } from './archetypes';
 import { createRng, type Rng } from './rng';
 import {
   cellKey,
@@ -76,10 +77,18 @@ function crossFloorDoors(floors: FloorLayout[], floorIndex: number, room: FloorR
 }
 
 function buildFloor(world: World, rng: Rng, floor: FloorLayout) {
+  const doorsOf = new Map(
+    floor.rooms.map((r) => [r.id, [...roomDoors(floor, r.id), ...crossFloorDoors(world.floors, floor.floorIndex, r)]]),
+  );
+  const archetypes = assignArchetypes(
+    floor.rooms.map((r) => ({ id: r.id, kind: r.kind, doors: doorsOf.get(r.id)!.map((d) => d.side) })),
+    floor.floorIndex,
+    rng.fork('archetypes'),
+  );
   for (const floorRoom of floor.rooms) {
-    const doors = [...roomDoors(floor, floorRoom.id), ...crossFloorDoors(world.floors, floor.floorIndex, floorRoom)];
+    const doors = doorsOf.get(floorRoom.id)!;
     const layout = generateRoom(
-      { id: floorRoom.id, kind: floorRoom.kind, doors },
+      { id: floorRoom.id, kind: floorRoom.kind, doors, archetype: archetypes.get(floorRoom.id) },
       floor.floorIndex,
       rng.fork(`room ${floorRoom.id}`),
     );

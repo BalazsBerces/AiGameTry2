@@ -1,5 +1,7 @@
+import { archetypeById, archetypesFor, fallbackArchetype } from './archetypes';
 import type { Cell, Direction, RoomKind } from './floorGenerator';
 import { floodFill } from './grid';
+import { validateRoom } from './roomValidator';
 import type { Passive } from './weaponModel';
 import type { Rng } from './rng';
 
@@ -23,6 +25,8 @@ export interface RoomSpec {
   kind: RoomKind;
   /** A bare side is shorthand for a door in the room's top-left cell. */
   doors: (Direction | DoorSpec)[];
+  /** Idea to build the room from, as assigned per floor; picked here if left out. */
+  archetype?: string;
 }
 
 export const roomSize = (kind: RoomKind) =>
@@ -53,6 +57,8 @@ export interface RoomLayout {
   pickups: PickupSpawn[];
   /** Cells where a boss may summon enemies during the fight (validated like any spawn). */
   summonPoints: Cell[];
+  /** The idea the room was built from, if any. */
+  archetype?: string;
 }
 
 export type PickupType = 'heart' | 'key' | 'chest' | 'lockedChest' | 'passive';
@@ -315,6 +321,8 @@ function placeCover(tiles: Tile[][], rng: Rng, keepClear: (c: Cell) => boolean) 
 }
 
 export const isWalkable = (tile: Tile) => tile === 'floor';
+/** Tiles that stop shots and line of sight; holes do not. */
+export const blocksSight = (tile: Tile) => tile === 'obstacle';
 
 const roomOrigin = (tiles: Tile[][], doors: Door[]): Cell =>
   doors[0]?.cell ?? { x: Math.floor(tiles[0].length / 2), y: Math.floor(tiles.length / 2) };
@@ -329,11 +337,40 @@ function isConnected(tiles: Tile[][], doors: Door[]): boolean {
 const emptyTiles = (width: number, height: number): Tile[][] =>
   Array.from({ length: height }, () => Array<Tile>(width).fill('floor'));
 
+const MAX_ARCHETYPE_ATTEMPTS = 40;
+
+/**
+ * Builds the room from its archetype (or one picked here if none was assigned), rerolling
+ * until it passes validation; after too many failures the floor's fallback breather takes
+ * over, and if even that fails the room is left empty, which is always valid.
+ */
+function buildFromArchetype(spec: RoomSpec, doors: Door[], floorIndex: number, rng: Rng) {
+  const { width, height } = roomSize(spec.kind);
+  const sides = doors.map((d) => d.side);
+  const fitting = archetypesFor(floorIndex, spec.kind).filter((a) => a.fits(sides));
+  const assigned = spec.archetype ? archetypeById(spec.archetype) : undefined;
+  const fallback = fallbackArchetype(floorIndex, spec.kind);
+  const chosen = assigned ?? (fitting.length ? rng.pick(fitting) : fallback);
+  for (const archetype of [chosen, fallback]) {
+    for (let attempt = 0; attempt < MAX_ARCHETYPE_ATTEMPTS; attempt++) {
+      const built = archetype.build({ width, height, doors, rng });
+      if (validateRoom({ ...built, doors }, built.symmetry).length === 0) return { ...built, archetype: archetype.id };
+    }
+  }
+  return { tiles: emptyTiles(width, height), enemies: [] as EnemySpawn[], pickups: [] as PickupSpawn[], archetype: fallback.id };
+}
+
 export function generateRoom(spec: RoomSpec, floorIndex: number, rng: Rng): RoomLayout {
   const { width, height } = roomSize(spec.kind);
   const doors = spec.doors
     .map((d): DoorSpec => (typeof d === 'string' ? { side: d, at: { x: 0, y: 0 } } : d))
     .map((d) => ({ side: d.side, cell: doorCell(d, width, height) }));
+  if (archetypesFor(floorIndex, spec.kind).length) {
+    const built = buildFromArchetype(spec, doors, floorIndex, rng);
+    const pickups = [...built.pickups];
+    if (spec.kind === 'normal') pickups.push(...rollClearDrop(built.tiles, doors, built.enemies, pickups, rng));
+    return { id: spec.id, width, height, tiles: built.tiles, doors, enemies: built.enemies, pickups, summonPoints: [], archetype: built.archetype };
+  }
   const isDoor = (c: Cell) => doors.some((d) => d.cell.x === c.x && d.cell.y === c.y);
   let tiles = emptyTiles(width, height);
   const terrain = terrainFor(spec.kind, floorIndex);
@@ -395,11 +432,7 @@ export function generateRoom(spec: RoomSpec, floorIndex: number, rng: Rng): Room
     );
   }
   const pickups: PickupSpawn[] = [];
-  if (spec.kind === 'normal' && rng.next() < PICKUPS.roomChance) {
-    const taken = new Set(enemies.flatMap((e) => [e.cell, ...(e.tail ?? [])]).map((c) => `${c.x},${c.y}`));
-    const pool = reachableCells(tiles, doors).filter((c) => !taken.has(`${c.x},${c.y}`));
-    if (pool.length) pickups.push(rollPickup(rng.pick(pool), rng));
-  }
+  if (spec.kind === 'normal') pickups.push(...rollClearDrop(tiles, doors, enemies, pickups, rng));
   if (spec.kind === 'item') {
     const centre = { x: (width - 1) / 2, y: (height - 1) / 2 };
     const spot = reachableCells(tiles, doors).sort(
@@ -427,6 +460,14 @@ function weighted<K extends string>(weights: Record<K, number>, rng: Rng): K {
     if (roll < 0) return key;
   }
   return entries[entries.length - 1][0];
+}
+
+/** The pickup a normal room may reveal once cleared, on a reachable cell nothing else uses. */
+function rollClearDrop(tiles: Tile[][], doors: Door[], enemies: EnemySpawn[], placed: PickupSpawn[], rng: Rng): PickupSpawn[] {
+  if (rng.next() >= PICKUPS.roomChance) return [];
+  const taken = new Set([...enemies.flatMap((e) => [e.cell, ...(e.tail ?? [])]), ...placed.map((p) => p.cell)].map((c) => `${c.x},${c.y}`));
+  const pool = reachableCells(tiles, doors).filter((c) => !taken.has(`${c.x},${c.y}`));
+  return pool.length ? [rollPickup(rng.pick(pool), rng)] : [];
 }
 
 function rollPickup(cell: Cell, rng: Rng): PickupSpawn {

@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { DIRECTIONS, STEP, type Cell, type Direction, type RoomKind } from '../core/floorGenerator';
 import { distanceField, lineOfSight } from '../core/grid';
-import { isWalkable, type EnemySpawn, type EnemyType } from '../core/roomGenerator';
+import { blocksSight, isWalkable, type EnemySpawn, type EnemyType } from '../core/roomGenerator';
 import { launchVelocity, resolveWeapon } from '../core/weaponModel';
 import {
   createWorld,
@@ -271,7 +271,7 @@ export class GameScene extends Phaser.Scene {
       tileCenter: (tile: Cell) => tileCenter(room, tile.x, tile.y),
       isWalkable: (tile: Cell) => room.layout.tiles[tile.y]?.[tile.x] === 'floor',
       canSeePlayer: (from) =>
-        lineOfSight(room.layout.tiles, this.toTileUnits(room, from), this.toTileUnits(room, this.player), (t) => t === 'obstacle'),
+        lineOfSight(room.layout.tiles, this.toTileUnits(room, from), this.toTileUnits(room, this.player), blocksSight),
       fireEnemyShot: (x, y, vx, vy, homing = false) => {
         const shot = this.add.circle(x, y, TUNING.enemyShotRadius, COLORS.enemyShot).setData('homing', homing);
         this.enemyShots.add(shot);

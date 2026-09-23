@@ -1,15 +1,16 @@
 import Phaser from 'phaser';
 import { DIRECTIONS, STEP, type Cell, type Direction, type RoomKind } from '../core/floorGenerator';
 import { distanceField, lineOfSight } from '../core/grid';
-import type { EnemySpawn, EnemyType, Tile } from '../core/roomGenerator';
+import type { ChampionDrop, EnemySpawn, EnemyType, Tile } from '../core/roomGenerator';
 import { themeForFloor, type Palette, type TileLook } from '../core/themes';
-import { blocksShots, blocksSight, isWalkable } from '../core/tiles';
+import { blocksShots, blocksSight, hurtsOnTouch, isWalkable } from '../core/tiles';
 import { launchVelocity, resolveWeapon } from '../core/weaponModel';
 import {
   BOMB_RADIUS,
   createWorld,
   damagePlayer,
   detonateBomb,
+  dropChampionLoot,
   enterRoom,
   hitTile,
   isFinalFloor,
@@ -23,12 +24,18 @@ import {
 } from '../core/world';
 import { COLORS, TUNING } from './config';
 import type { Enemy, EnemyContext, EnemySprite } from './entities/enemy';
-import { createHive } from './entities/hive';
 import { createShadow } from './entities/shadow';
 import { createTurret } from './entities/turret';
-import { BOSS_WORM, spawnWorm } from './entities/worm';
+import { BOSS_WORM, championWorm, REGULAR_WORM, spawnWorm } from './entities/worm';
 import { createZombie } from './entities/zombie';
+import { createGhoul } from './entities/ghoul';
+import { createCrystalTurret } from './entities/crystalTurret';
+import { ricochet } from '../core/ricochet';
+import { createGargoyle } from './entities/gargoyle';
+import { createTreant } from './entities/treant';
 import { doorCorridor, mapCellAt, roomBlock, tileAt, tileCenter } from './geometry';
+import { createGoblin } from './entities/goblin';
+import { createSeedSpitter } from './entities/seedSpitter';
 
 type Keys = Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
 type PhysicsRect = Phaser.GameObjects.Rectangle & { body: Phaser.Physics.Arcade.Body };
@@ -37,17 +44,17 @@ const DEPTH = { player: 10 };
 
 type At = (c: Cell) => { x: number; y: number };
 const ENEMY_FACTORIES: Record<EnemyType, (scene: Phaser.Scene, spawn: EnemySpawn, at: At) => Enemy> = {
-  zombie: (scene, s, at) => createZombie(scene, at(s.cell).x, at(s.cell).y),
-  turret: (scene, s, at) => createTurret(scene, at(s.cell).x, at(s.cell).y),
-  worm: (scene, s, at) => spawnWorm(scene, [s.cell, ...(s.tail ?? [])], at),
+  zombie: (scene, s, at) => createZombie(scene, at(s.cell).x, at(s.cell).y, !!s.champion, s.hp),
+  turret: (scene, s, at) => createTurret(scene, at(s.cell).x, at(s.cell).y, !!s.champion),
+  worm: (scene, s, at) => spawnWorm(scene, [s.cell, ...(s.tail ?? [])], at, s.champion ? championWorm(REGULAR_WORM) : REGULAR_WORM),
   wormBoss: (scene, s, at) => spawnWorm(scene, [s.cell, ...(s.tail ?? [])], at, BOSS_WORM),
   shadowBoss: (scene, s, at) => createShadow(scene, at(s.cell).x, at(s.cell).y),
-  // The core covers 2x2 tiles; `cell` is its top-left.
-  hiveBoss: (scene, s, at) => {
-    const a = at(s.cell);
-    const b = at({ x: s.cell.x + 1, y: s.cell.y + 1 });
-    return createHive(scene, (a.x + b.x) / 2, (a.y + b.y) / 2);
-  },
+  goblin: (scene, s, at) => createGoblin(scene, at(s.cell).x, at(s.cell).y),
+  seedSpitter: (scene, s, at) => createSeedSpitter(scene, at(s.cell).x, at(s.cell).y),
+  ghoul: (scene, s, at) => createGhoul(scene, at(s.cell).x, at(s.cell).y),
+  crystalTurret: (scene, s, at) => createCrystalTurret(scene, at(s.cell).x, at(s.cell).y),
+  gargoyle: (scene, s, at) => createGargoyle(scene, at(s.cell).x, at(s.cell).y),
+  treantBoss: (scene, s, at) => createTreant(scene, at(s.cell).x, at(s.cell).y, s.cell),
 };
 
 type Shape = Phaser.GameObjects.Shape;
@@ -85,6 +92,8 @@ export class GameScene extends Phaser.Scene {
   private walls!: Phaser.Physics.Arcade.StaticGroup;
   /** Blocks movement only; shots fly over. */
   private holes!: Phaser.Physics.Arcade.StaticGroup;
+  /** Blocks movement like holes, and hurts whoever pushes into it. */
+  private thorns!: Phaser.Physics.Arcade.StaticGroup;
   private player!: PhysicsRect;
   private move!: Keys;
   private aim!: Keys;
@@ -97,6 +106,8 @@ export class GameScene extends Phaser.Scene {
   private walkers!: Phaser.Physics.Arcade.Group;
   private enemyShots!: Phaser.Physics.Arcade.Group;
   private enemies: Enemy[] = [];
+  /** Living champions (a split worm's pieces all count) and the pickup each drops once fully dead. */
+  private champions = new Map<Enemy, ChampionDrop>();
   private doorLocks: Phaser.GameObjects.GameObject[] = [];
   private pickupGroup!: Phaser.Physics.Arcade.Group;
   private itemLockoutUntil = 0;
@@ -115,6 +126,7 @@ export class GameScene extends Phaser.Scene {
     const seed = data.seed ?? (Number.isFinite(urlSeed) ? urlSeed : Math.floor(Math.random() * 2 ** 31));
     this.world = createWorld(seed);
     this.enemies = [];
+    this.champions = new Map();
     this.doorLocks = [];
     this.nextShotAt = 0;
     this.invincibleUntil = 0;
@@ -122,6 +134,7 @@ export class GameScene extends Phaser.Scene {
 
     this.walls = this.physics.add.staticGroup();
     this.holes = this.physics.add.staticGroup();
+    this.thorns = this.physics.add.staticGroup();
     this.terrain = new Map();
     for (const room of this.world.rooms.values()) this.drawRoom(room);
 
@@ -132,6 +145,7 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.existing(this.player);
     this.physics.add.collider(this.player, this.walls);
     this.physics.add.collider(this.player, this.holes);
+    this.physics.add.collider(this.player, this.thorns, () => this.hurtPlayer(TUNING.thorn.playerDamage));
 
     const kb = this.input.keyboard!;
     this.move = kb.addKeys({ up: 'W', down: 'S', left: 'A', right: 'D' }) as Keys;
@@ -148,6 +162,7 @@ export class GameScene extends Phaser.Scene {
     this.walkers = this.physics.add.group();
     this.physics.add.collider(this.walkers, this.walls);
     this.physics.add.collider(this.walkers, this.holes);
+    this.physics.add.collider(this.walkers, this.thorns, (part) => this.thornWalker(part as EnemySprite));
     this.physics.add.collider(this.walkers, this.walkers);
     this.physics.add.overlap(this.shots, this.enemyParts, (shot, part) => this.hitEnemy(shot, part as EnemySprite));
     this.physics.add.overlap(this.player, this.enemyParts, () => this.hurtPlayer());
@@ -155,7 +170,13 @@ export class GameScene extends Phaser.Scene {
     kb.addKey('E').on('down', () => this.dropBomb());
 
     this.enemyShots = this.physics.add.group();
-    this.physics.add.collider(this.enemyShots, this.walls, (shot) => shot.destroy());
+    // Shots that ricochet are turned around before physics would stop them; the rest are spent.
+    this.physics.add.collider(
+      this.enemyShots,
+      this.walls,
+      (shot) => shot.destroy(),
+      (shot, wall) => !this.ricochetEnemyShot(shot as Phaser.GameObjects.Arc, wall as Phaser.GameObjects.Shape),
+    );
     this.physics.add.overlap(this.player, this.enemyShots, (_p, shot) => {
       shot.destroy();
       this.hurtPlayer();
@@ -300,21 +321,17 @@ export class GameScene extends Phaser.Scene {
       },
       canSeePlayer: (from) =>
         lineOfSight(room.layout.tiles, this.toTileUnits(room, from), this.toTileUnits(room, this.player), blocksSight),
-      fireEnemyShot: (x, y, vx, vy, homing = false) => {
-        const shot = this.add.circle(x, y, TUNING.enemyShotRadius, COLORS.enemyShot).setData('homing', homing);
+      fireEnemyShot: (x, y, vx, vy, homing = false, bounces = 0) => {
+        const color = bounces > 0 ? COLORS.crystalShot : COLORS.enemyShot;
+        const shot = this.add.circle(x, y, TUNING.enemyShotRadius, color).setData({ homing, bounces });
         this.enemyShots.add(shot);
         (shot.body as Phaser.Physics.Arcade.Body).setCircle(TUNING.enemyShotRadius).setVelocity(vx, vy);
       },
       swingAtPlayer: (from, aim) => {
         if (this.sweepArc(from, aim, COLORS.shadowEdge)(this.player)) this.hurtPlayer();
       },
-      summonPoints: room.layout.summonPoints,
-      summonZombie: (cell: Cell) => {
-        const p = tileCenter(room, cell.x, cell.y);
-        const zombie = createZombie(this, p.x, p.y);
-        this.addEnemy(zombie);
-        return zombie;
-      },
+      tiles: room.layout.tiles,
+      hurtPlayer: () => this.hurtPlayer(),
     };
   }
 
@@ -341,6 +358,31 @@ export class GameScene extends Phaser.Scene {
     const result = hitTile(this.world, roomId, cell);
     if (result === 'broken') this.removeTerrain(roomId, cell);
     else if (result === 'damaged') wall.setAlpha(wall.alpha - 0.25);
+  }
+
+  /**
+   * An enemy shot touches a wall piece: bounces it (core/ricochet) and returns true, or returns
+   * false to let it be spent. Room walls and door locks count as stone. A shot already heading
+   * away from the piece (it just bounced off a neighbouring piece) is left alone.
+   */
+  private ricochetEnemyShot(shot: Phaser.GameObjects.Arc, wall: Phaser.GameObjects.Shape): boolean {
+    if (!shot.active) return true;
+    const room = this.currentRoom;
+    const pos = this.toTileUnits(room, shot);
+    const roomId = wall.getData('roomId') as string | undefined;
+    const tileCell = wall.getData('tile') as Cell | undefined;
+    const centre = this.toTileUnits(room, wall);
+    const cell = tileCell && roomId === room.floorRoom.id ? tileCell : { x: Math.floor(centre.x), y: Math.floor(centre.y) };
+    const tile: Tile = (tileCell && roomId ? this.world.rooms.get(roomId)?.layout.tiles[tileCell.y]?.[tileCell.x] : undefined) ?? 'obstacle';
+    const body = shot.body as Phaser.Physics.Arcade.Body;
+    const { x: vx, y: vy } = body.velocity;
+    const heading = (cell.x + 0.5 - pos.x) * vx + (cell.y + 0.5 - pos.y) * vy;
+    if (heading <= 0) return true;
+    const out = ricochet({ ...pos, vx, vy, bouncesLeft: (shot.getData('bounces') as number | undefined) ?? 0 }, tile, cell);
+    if (!out) return false;
+    body.setVelocity(out.vx, out.vy);
+    shot.setData('bounces', out.bouncesLeft);
+    return true;
   }
 
   private removeTerrain(roomId: string, cell: Cell) {
@@ -382,8 +424,18 @@ export class GameScene extends Phaser.Scene {
   private damagePart(part: EnemySprite, damage: number) {
     const enemy = this.enemies.find((e) => e.parts.includes(part));
     if (!enemy) return;
+    const where = { x: part.x, y: part.y };
     const replacements = enemy.hit(part, damage);
     this.enemies = this.enemies.flatMap((e) => (e === enemy ? replacements : [e]));
+    const drop = this.champions.get(enemy);
+    if (drop) {
+      this.champions.delete(enemy);
+      for (const r of replacements) this.champions.set(r, drop);
+      if (![...this.champions.values()].includes(drop)) {
+        dropChampionLoot(this.world, this.world.currentRoomId, drop, tileAt(this.currentRoom, where.x, where.y));
+        this.showPickups();
+      }
+    }
     if (this.enemies.length === 0) this.clearRoom();
   }
 
@@ -408,6 +460,13 @@ export class GameScene extends Phaser.Scene {
         return;
       }
     }
+  }
+
+  /** A walker pushed into thorns; each part has its own brief invincibility so it isn't shredded in a frame. */
+  private thornWalker(part: EnemySprite) {
+    if (!part.active || this.time.now < ((part.getData('thornSafeUntil') as number | undefined) ?? 0)) return;
+    part.setData('thornSafeUntil', this.time.now + TUNING.thorn.walkerInvincibleMs);
+    this.damagePart(part, TUNING.thorn.walkerDamage);
   }
 
   /** Ends the run once; if death and the final boss's death land in the same frame, the first sticks. */
@@ -474,7 +533,11 @@ export class GameScene extends Phaser.Scene {
 
   private spawnEnemies(room: WorldRoom) {
     const at = (c: Cell) => tileCenter(room, c.x, c.y);
-    for (const spawn of room.layout.enemies) this.addEnemy(ENEMY_FACTORIES[spawn.type](this, spawn, at));
+    for (const spawn of room.layout.enemies) {
+      const enemy = ENEMY_FACTORIES[spawn.type](this, spawn, at);
+      if (spawn.champion) this.champions.set(enemy, spawn.champion.drop);
+      this.addEnemy(enemy);
+    }
   }
 
   private lockDoors(room: WorldRoom) {
@@ -545,7 +608,7 @@ export class GameScene extends Phaser.Scene {
         const shape = drawTile(this, c.x, c.y, looks[tile as Exclude<Tile, 'floor'>]);
         // Shot-blocking tiles are walls to physics; the rest (holes) only stop walking.
         if (!blocksShots(tile)) {
-          this.holes.add(shape);
+          (hurtsOnTouch(tile) ? this.thorns : this.holes).add(shape);
           return;
         }
         shape.setData({ roomId: room.floorRoom.id, tile: { x: tx, y: ty } });

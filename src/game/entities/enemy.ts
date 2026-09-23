@@ -1,6 +1,8 @@
 import type Phaser from 'phaser';
 import type { Cell, Direction } from '../../core/floorGenerator';
+import type { Tile } from '../../core/roomGenerator';
 import type { Weapon } from '../../core/weaponModel';
+import { COLORS, TUNING } from '../config';
 
 export type Body = Phaser.Physics.Arcade.Body;
 export type EnemySprite = Phaser.GameObjects.Shape & { body: Body };
@@ -18,16 +20,16 @@ export interface EnemyContext {
   isWalkable(tile: Cell): boolean;
   /** Obstacles block sight; holes do not. */
   canSeePlayer(from: { x: number; y: number }): boolean;
-  /** Homing enemy shots steer toward the player. */
-  fireEnemyShot(x: number, y: number, vx: number, vy: number, homing?: boolean): void;
+  /** Homing enemy shots steer toward the player; `bounces` is how often it ricochets off stone. */
+  fireEnemyShot(x: number, y: number, vx: number, vy: number, homing?: boolean, bounces?: number): void;
   /** A sword arc from `from` in direction `aim`; hurts the player if they're inside it. */
   swingAtPlayer(from: { x: number; y: number }, aim: Direction): void;
   /** World position of the room's centre. */
   roomCenter: { x: number; y: number };
-  /** Cells the room generator validated for mid-fight summons. */
-  summonPoints: Cell[];
-  /** Brings in a new zombie at a summon point; returns it so the summoner can track it. */
-  summonZombie(cell: Cell): Enemy;
+  /** The current room's tiles, for enemies that plan attacks over the terrain. */
+  tiles: Tile[][];
+  /** Hurts the player directly (for ground attacks such as the Treant's roots); invincibility frames apply. */
+  hurtPlayer(): void;
 }
 
 export interface Enemy {
@@ -40,6 +42,21 @@ export interface Enemy {
   onPlayerAttack?(ctx: EnemyContext, aim: Direction, weapon: Weapon): void;
   /** Damages one part. Returns the enemies that replace this one: itself, nothing (dead), or split pieces. */
   hit(part: EnemySprite, damage: number): Enemy[];
+}
+
+/** Stat multipliers for a champion, or none for a regular enemy. */
+export const championBoost = (champion: boolean) => (champion ? TUNING.champion : { scale: 1, hp: 1, speed: 1 });
+
+/** A champion's colour: its own blended halfway to gold. */
+export function championColor(color: number, champion: boolean) {
+  if (!champion) return color;
+  const mix = (shift: number) => Math.round((((color >> shift) & 0xff) + ((COLORS.champion >> shift) & 0xff)) / 2) << shift;
+  return mix(16) | mix(8) | mix(0);
+}
+
+/** Outlines a champion's sprite in gold. */
+export function markChampion(sprite: Phaser.GameObjects.Shape, champion: boolean) {
+  if (champion) sprite.setStrokeStyle(3, COLORS.champion);
 }
 
 /** Flash a part briefly to show it took damage. */

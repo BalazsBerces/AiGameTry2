@@ -14,8 +14,11 @@ export const BOSS_HEIGHT = 14;
 /** Tiles per map cell: a 13x7 room interior plus its one-tile wall ring. */
 export const CELL_TILES = { w: ROOM_WIDTH + 2, h: ROOM_HEIGHT + 2 };
 
-/** `obstacle` is stone; `rock` is the same but breaks after a few player shots. Behaviour lives in `TILES`. */
-export type Tile = 'floor' | 'obstacle' | 'rock' | 'hole';
+/**
+ * `obstacle` is stone; `rock` is the same but breaks after a few player shots; `thorn` is a
+ * bush that hurts whoever walks into it. Behaviour lives in `TILES`.
+ */
+export type Tile = 'floor' | 'obstacle' | 'rock' | 'hole' | 'thorn';
 
 export interface DoorSpec {
   side: Direction;
@@ -66,8 +69,6 @@ export interface RoomLayout {
   enemies: EnemySpawn[];
   /** Rolled at generation; revealed once the room is cleared. */
   pickups: PickupSpawn[];
-  /** Cells where a boss may summon enemies during the fight (validated like any spawn). */
-  summonPoints: Cell[];
   /** The idea the room was built from, if any. */
   archetype?: string;
 }
@@ -90,7 +91,18 @@ export interface PickupSpawn {
 
 export const PASSIVE_POOL: readonly Passive[] = ['homing', 'fireRate', 'sword'];
 
-export type EnemyType = 'zombie' | 'turret' | 'worm' | 'wormBoss' | 'hiveBoss' | 'shadowBoss';
+export type EnemyType =
+  | 'zombie'
+  | 'turret'
+  | 'worm'
+  | 'wormBoss'
+  | 'shadowBoss'
+  | 'treantBoss'
+  | 'goblin'
+  | 'seedSpitter'
+  | 'ghoul'
+  | 'crystalTurret'
+  | 'gargoyle';
 
 export interface EnemySpawn {
   type: EnemyType;
@@ -98,7 +110,14 @@ export interface EnemySpawn {
   cell: Cell;
   /** A worm's body behind the head, in order. */
   tail?: Cell[];
+  /** Tougher and always drops `drop` (from the normal room-clear pool) when killed. */
+  champion?: { drop: ChampionDrop };
+  /** Hit points overriding the type's default: a floor's tougher variant (the dungeon's zombies). */
+  hp?: number;
 }
+
+/** A champion's extra pickup; it lands wherever the champion dies. */
+export type ChampionDrop = Omit<PickupSpawn, 'cell'>;
 
 /** Doors sit at the centre of the wall of the map cell they belong to. */
 function doorCell({ side, at }: DoorSpec, width: number, height: number): Cell {
@@ -194,14 +213,14 @@ function placeLabyrinth(tiles: Tile[][], rng: Rng, keepClear: (c: Cell) => boole
 
 type TerrainStrategy = (tiles: Tile[][], rng: Rng, keepClear: (c: Cell) => boolean) => void;
 
-export type BossType = 'wormBoss' | 'hiveBoss' | 'shadowBoss';
+export type BossType = 'wormBoss' | 'shadowBoss' | 'treantBoss';
 
 export const bossForFloor = (floorIndex: number): BossType => themeForFloor(floorIndex).boss;
 
 const BOSS_ARENAS: Record<BossType, TerrainStrategy> = {
   wormBoss: placeLabyrinth,
-  hiveBoss: placeCover,
   shadowBoss: placePillars,
+  treantBoss: placeCaveMouth,
 };
 
 /**
@@ -239,36 +258,39 @@ function shuffle<T>(items: readonly T[], rng: Rng): T[] {
   return out;
 }
 
-/** Top-left tile of the Hive's 2x2 core: the middle of the 26x14 arena. */
-export const HIVE_CORE: Cell = { x: 12, y: 6 };
-
-const COVER_SHAPES: readonly Cell[][] = [
-  [{ x: 0, y: 0 }, { x: 1, y: 0 }],
-  [{ x: 0, y: 0 }, { x: 0, y: 1 }],
-  [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }],
-  [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }],
-];
+/** Treant arena rock: how deep the jagged rim reaches in from each wall, and how many loose boulders. */
+const CAVE_MOUTH = { maxDepth: 3, boulders: { min: 2, max: 4 } };
 
 /**
- * Hive arena: blocks of cover mirrored into all four quadrants, leaving the core's
- * surroundings open so the player can reach it and use the cover against its spirals.
+ * Treant arena, a clearing at the mouth of the cave: a jagged rim of rock grows in from every
+ * wall (kept off the doorways), with a few boulders near the edges. The middle stays open, so
+ * root lines can be read and dodged sideways.
  */
-function placeCover(tiles: Tile[][], rng: Rng, keepClear: (c: Cell) => boolean) {
+function placeCaveMouth(tiles: Tile[][], rng: Rng, keepClear: (c: Cell) => boolean) {
   const height = tiles.length;
   const width = tiles[0].length;
-  const nearCore = (c: Cell) => c.x >= HIVE_CORE.x - 3 && c.x <= HIVE_CORE.x + 4 && c.y >= HIVE_CORE.y - 2 && c.y <= HIVE_CORE.y + 3;
+  const { maxDepth } = CAVE_MOUTH;
   const nearDoor = (c: Cell) =>
-    [-1, 0, 1].some((dx) => [-1, 0, 1].some((dy) => keepClear({ x: c.x + dx, y: c.y + dy })));
-  const blocks = rng.int(3, 5);
-  for (let i = 0; i < blocks; i++) {
-    const shape = rng.pick(COVER_SHAPES);
-    const ox = rng.int(1, Math.floor(width / 2) - 3);
-    const oy = rng.int(1, Math.floor(height / 2) - 2);
-    for (const p of shape) {
-      const c = { x: ox + p.x, y: oy + p.y };
-      const mirrored = [c, { x: width - 1 - c.x, y: c.y }, { x: c.x, y: height - 1 - c.y }, { x: width - 1 - c.x, y: height - 1 - c.y }];
-      for (const m of mirrored) if (!nearCore(m) && !nearDoor(m)) tiles[m.y][m.x] = 'obstacle';
-    }
+    [-2, -1, 0, 1, 2].some((dx) => [-2, -1, 0, 1, 2].some((dy) => keepClear({ x: c.x + dx, y: c.y + dy })));
+  const block = (c: Cell) => {
+    if (!nearDoor(c)) tiles[c.y][c.x] = 'obstacle';
+  };
+  /** A random walk of rim depths, one per cell along a wall. */
+  const rim = (length: number) => {
+    let depth = rng.int(0, maxDepth);
+    return Array.from({ length }, () => (depth = Math.min(maxDepth, Math.max(0, depth + rng.int(-1, 1)))));
+  };
+  rim(width).forEach((d, x) => { for (let y = 0; y < d; y++) block({ x, y }); });
+  rim(width).forEach((d, x) => { for (let y = 0; y < d; y++) block({ x, y: height - 1 - y }); });
+  rim(height).forEach((d, y) => { for (let x = 0; x < d; x++) block({ x, y }); });
+  rim(height).forEach((d, y) => { for (let x = 0; x < d; x++) block({ x: width - 1 - x, y }); });
+  // Boulders sit in the band between the rim and the open middle.
+  const boulders = rng.int(CAVE_MOUTH.boulders.min, CAVE_MOUTH.boulders.max);
+  for (let i = 0; i < boulders; i++) {
+    const x = rng.next() < 0.5 ? rng.int(3, 5) : rng.int(width - 6, width - 4);
+    const y = rng.int(2, height - 3);
+    block({ x, y });
+    if (rng.next() < 0.5) block({ x, y: y + 1 });
   }
 }
 
@@ -319,7 +341,11 @@ export function generateRoom(spec: RoomSpec, floorIndex: number, rng: Rng): Room
     const built = buildFromArchetype(spec, doors, floorIndex, rng);
     const pickups = built.pickups.map((p) => placeLoot(p, rng));
     if (spec.kind === 'normal') pickups.push(...rollClearDrop(built.tiles, doors, built.enemies, pickups, rng));
-    return { id: spec.id, width, height, tiles: built.tiles, doors, enemies: built.enemies, pickups, summonPoints: [], archetype: built.archetype };
+    const { walker, walkerHp } = themeForFloor(floorIndex);
+    const floorEnemies = built.enemies.map((e) => (walkerHp && e.type === walker ? { ...e, hp: walkerHp } : e));
+    // Its own stream, so champion rolls never shift the room's layout.
+    const enemies = spec.kind === 'normal' ? crownChampion(floorEnemies, rng.fork('champion')) : floorEnemies;
+    return { id: spec.id, width, height, tiles: built.tiles, doors, enemies, pickups, archetype: built.archetype };
   }
   // Normal and item rooms come from archetypes above; boss arenas are built here, start rooms stay empty.
   const isDoor = (c: Cell) => doors.some((d) => d.cell.x === c.x && d.cell.y === c.y);
@@ -356,19 +382,19 @@ export function generateRoom(spec: RoomSpec, floorIndex: number, rng: Rng): Room
     )[0];
     enemies.push({ type: 'shadowBoss', cell });
   }
-  const summonPoints: Cell[] = [];
-  if (spec.kind === 'boss' && bossForFloor(floorIndex) === 'hiveBoss') {
-    enemies.push({ type: 'hiveBoss', cell: HIVE_CORE });
-    const core = [0, 1].flatMap((dx) => [0, 1].map((dy) => `${HIVE_CORE.x + dx},${HIVE_CORE.y + dy}`));
-    const nearDoor = (c: Cell) => doors.some((d) => Math.abs(d.cell.x - c.x) <= 1 && Math.abs(d.cell.y - c.y) <= 1);
-    const ringDistance = (c: Cell) => Math.max(Math.abs(c.x - (HIVE_CORE.x + 0.5)), Math.abs(c.y - (HIVE_CORE.y + 0.5)));
-    summonPoints.push(
-      ...reachableCells(tiles, doors).filter(
-        (c) => !core.includes(`${c.x},${c.y}`) && !nearDoor(c) && ringDistance(c) >= 2 && ringDistance(c) <= 3,
-      ),
-    );
+  if (spec.kind === 'boss' && bossForFloor(floorIndex) === 'treantBoss') {
+    // The Treant roots itself across the clearing from the entrance, on open ground it can fill.
+    const entrance = doors[0]?.cell ?? { x: 0, y: 0 };
+    const centre = { x: (width - 1) / 2, y: (height - 1) / 2 };
+    const target = { x: centre.x + (centre.x - entrance.x) * 0.65, y: centre.y + (centre.y - entrance.y) * 0.65 };
+    const open = (c: Cell) => [-1, 0, 1].every((dx) => [-1, 0, 1].every((dy) => tiles[c.y + dy]?.[c.x + dx] === 'floor'));
+    const farFromDoors = (c: Cell) => doors.every((d) => Math.abs(d.cell.x - c.x) + Math.abs(d.cell.y - c.y) > 3);
+    const cell = reachableCells(tiles, doors)
+      .filter((c) => open(c) && farFromDoors(c))
+      .sort((a, b) => Math.hypot(a.x - target.x, a.y - target.y) - Math.hypot(b.x - target.x, b.y - target.y))[0];
+    if (cell) enemies.push({ type: 'treantBoss', cell });
   }
-  return { id: spec.id, width, height, tiles, doors, enemies, pickups: [], summonPoints };
+  return { id: spec.id, width, height, tiles, doors, enemies, pickups: [] };
 }
 
 /** Pickup odds; all numbers are placeholders for playtest tuning. */
@@ -379,6 +405,16 @@ export const PICKUPS = {
   lockedChestContents: { min: 2, max: 3 },
   lockedChestPassiveChance: 0.35,
 };
+
+/** Chance a normal room with enemies makes one of them a champion; a placeholder for playtest tuning. */
+export const CHAMPION_CHANCE = 0.15;
+
+function crownChampion(enemies: EnemySpawn[], rng: Rng): EnemySpawn[] {
+  if (!enemies.length || rng.next() >= CHAMPION_CHANCE) return enemies;
+  const index = rng.int(0, enemies.length - 1);
+  const { cell: _, ...drop } = rollPickup(enemies[index].cell, rng);
+  return enemies.map((e, i) => (i === index ? { ...e, champion: { drop } } : e));
+}
 
 function weighted<K extends string>(weights: Record<K, number>, rng: Rng): K {
   const entries = Object.entries(weights) as [K, number][];

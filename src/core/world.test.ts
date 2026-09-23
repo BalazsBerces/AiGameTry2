@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { validateRoom } from './roomValidator';
 import { createWorld, detonateBomb, hitTile, placeBomb, shownPickups, touchPickup, type WorldRoom } from './world';
 import { archetypeById, supportsShape } from './archetypes';
 import { CELL_TILES, roomPadding } from './roomGenerator';
@@ -143,5 +144,94 @@ describe('shownPickups', () => {
     world.rooms.get(id)!.layout.tiles.forEach((row) => row.fill('floor'));
     expect(touchPickup(world, id, 1)).toBe('opened');
     expect(shownPickups(world, id).map((p) => p.type).sort()).toEqual(['heart', 'key', 'openChest']);
+  });
+});
+
+describe('champions', () => {
+  const worlds = Array.from({ length: 150 }, (_, seed) => createWorld(seed));
+  const championsIn = (world: ReturnType<typeof createWorld>, kind: string) =>
+    [...world.rooms.values()].filter((r) => r.floorRoom.kind === kind).flatMap((r) => r.layout.enemies.filter((e) => e.champion));
+
+  it('appear in normal rooms across runs, but never in boss or item rooms', () => {
+    expect(worlds.some((w) => championsIn(w, 'normal').length > 0)).toBe(true);
+    for (const w of worlds) {
+      expect(championsIn(w, 'boss'), `seed ${w.seed}`).toEqual([]);
+      expect(championsIn(w, 'item'), `seed ${w.seed}`).toEqual([]);
+    }
+  });
+
+  it('are the same for the same seed', () => {
+    const crowned = (w: ReturnType<typeof createWorld>) =>
+      [...w.rooms.values()].flatMap((r) => r.layout.enemies.filter((e) => e.champion).map((e) => ({ room: r.floorRoom.id, ...e })));
+    for (const seed of [3, 17, 42]) {
+      expect(crowned(worlds[seed]).length).toBeGreaterThan(0);
+      expect(crowned(createWorld(seed))).toEqual(crowned(worlds[seed]));
+    }
+  });
+});
+
+describe('forest cast', () => {
+  it('fills floor 1 rooms with goblins and seed-spitters only, and valid rooms', () => {
+    const seen = new Set<string>();
+    for (let seed = 0; seed < 60; seed++) {
+      const world = createWorld(seed);
+      for (const room of world.rooms.values()) {
+        if (room.floorIndex !== 0 || room.floorRoom.kind === 'boss') continue;
+        const { layout } = room;
+        for (const e of layout.enemies) seen.add(e.type);
+        // Symmetry is checked per archetype in the room generator sweeps; here, everything else.
+        const violations = validateRoom(layout, { axes: [] }).filter((v) => v.rule !== 'asymmetric');
+        expect(violations, `seed ${seed} room ${layout.id}`).toEqual([]);
+      }
+    }
+    expect([...seen].sort()).toEqual(['goblin', 'seedSpitter']);
+  });
+});
+
+describe('the caves cast', () => {
+  it('fills floor 2 rooms with ghouls, crystal turrets and worms only', () => {
+    const types = new Set<string>();
+    for (let seed = 0; seed < 40; seed++) {
+      for (const room of createWorld(seed).rooms.values()) {
+        if (room.floorIndex !== 1 || room.floorRoom.kind === 'boss') continue;
+        for (const e of room.layout.enemies) types.add(e.type);
+      }
+    }
+    expect([...types].sort()).toEqual(['crystalTurret', 'ghoul', 'worm']);
+  });
+});
+
+describe('floor casts across whole runs', () => {
+  const castOf = (seed: number) => {
+    const types: Set<string>[] = [new Set(), new Set(), new Set()];
+    const hp: (number | undefined)[][] = [[], [], []];
+    for (const room of createWorld(seed).rooms.values()) {
+      if (room.floorRoom.kind !== 'normal') continue;
+      for (const e of room.layout.enemies) {
+        types[room.floorIndex].add(e.type);
+        if (e.type === 'zombie') hp[room.floorIndex].push(e.hp);
+      }
+    }
+    return { types, hp };
+  };
+  const runs = Array.from({ length: 60 }, (_, seed) => castOf(seed));
+
+  it('never spawns worms or plain turrets on floor 3, whose turret is the gargoyle', () => {
+    for (const { types } of runs) {
+      expect(types[2].has('worm')).toBe(false);
+      expect(types[2].has('turret')).toBe(false);
+    }
+    expect(runs.some(({ types }) => types[2].has('gargoyle'))).toBe(true);
+  });
+
+  it('keeps gargoyles off floors 1 and 2', () => {
+    for (const { types } of runs) for (const f of [0, 1]) expect(types[f].has('gargoyle')).toBe(false);
+  });
+
+  it('makes floor 3 zombies tougher than the plain zombie (3 hit points) of floors 1 and 2', () => {
+    const dungeon = runs.flatMap(({ hp }) => hp[2]);
+    expect(dungeon.length).toBeGreaterThan(0);
+    for (const h of dungeon) expect(h).toBeGreaterThan(3);
+    for (const h of runs.flatMap(({ hp }) => [...hp[0], ...hp[1]])) expect(h).toBeUndefined();
   });
 });

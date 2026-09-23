@@ -24,7 +24,21 @@ export const TUNING = {
   wormBoss: { segmentSize: 42, segmentHp: 5, stepMs: 240 },
   /** `follow`: how hard it closes on its mirrored target (1/s); speed capped relative to the player's. */
   shadow: { hp: 45, follow: 10, maxSpeedFactor: 1.2 },
-  hive: { radius: 40, hp: 60, spiralDelayMs: 150, spiralStep: 0.32, shotSpeed: 170, summonEveryMs: 5000, maxSummoned: 3 },
+  /** Multipliers for a room's champion: size, hit points, and movement (or firing) speed. */
+  champion: { scale: 1.35, hp: 2, speed: 1.15 },
+  /** Faster than a zombie; runs off to regroup when hurt (core/forestCast). */
+  goblin: { hp: 3, speed: 130, retreatSpeed: 110, size: 24 },
+  /** Fires a 3-shot fan (core/forestCast). */
+  seedSpitter: { hp: 4, radius: 17, fireDelayMs: 2000, shotSpeed: 200 },
+  /** Slow stalker; `lungeSpeed` while lunging (range and timing live in core/ghoul). */
+  ghoul: { hp: 4, speed: 55, lungeSpeed: 330, size: 28 },
+  crystalTurret: { hp: 4, size: 34, fireDelayMs: 1700, shotSpeed: 220 },
+  /** Wake range and burst timing live in core/gargoyle. */
+  gargoyle: { hp: 5, size: 34, shotSpeed: 250 },
+  /** Touching a thorn bush: half a heart to the player; walker damage and i-frames are placeholders. */
+  thorn: { playerDamage: 1, walkerDamage: 1, walkerInvincibleMs: 600 },
+  /** `restMs`: pause between root eruptions. Root timing itself lives in core/treantAttack. */
+  treant: { radius: 46, hp: 70, restMs: 700 },
 };
 
 /** Floor, wall, door and terrain colours come from each floor's theme (core/themes). */
@@ -37,10 +51,9 @@ export const COLORS = {
   wormBody: 0xb0703a,
   shadow: 0x15121a,
   shadowEdge: 0x8a7fa0,
-  hive: 0x7a3fa0,
-  hiveRing: 0xd9a8ff,
   wormBossHead: 0xe0453a,
   wormBossBody: 0x9c2f2a,
+  champion: 0xf2b632,
   enemyShot: 0xff6b5a,
   lockedDoor: 0x3a2515,
   heart: 0xd8323c,
@@ -59,4 +72,20 @@ export const COLORS = {
   minimapCurrent: 0xf0ecf5,
   minimapItem: 0xf2c94c,
   minimapBoss: 0xd8323c,
+  goblin: 0xa8c236,
+  goblinEdge: 0x4a3a1c,
+  seedSpitter: 0xc0584a,
+  seedSpitterEdge: 0xf0d27a,
+  ghoul: 0x9aa89c,
+  ghoulEye: 0xe8f06a,
+  crystalTurret: 0x5fc8d8,
+  crystalTurretEdge: 0xd8f6ff,
+  crystalShot: 0x9ff0ff,
+  gargoyle: 0x5e5a66,
+  gargoyleEyes: 0xff3b2a,
+  treantBark: 0x5a3a1e,
+  treantCanopy: 0x3f8a2e,
+  treantEyes: 0xf2d04a,
+  rootTelegraph: 0xc89a5a,
+  root: 0x7a4a22,
 };

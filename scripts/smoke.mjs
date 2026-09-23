@@ -493,12 +493,12 @@ if (scenario === 'full-run') {
     const ok = await walkTo(boss.id);
     console.log(`floor ${f + 1}: reached boss ${boss.id}: ${ok}, HUD floor ${await floorNow()}, locks ${await page.evaluate(`${scene()}.doorLocks.length`)}`);
     if (!ok) break;
-    if (f === 1) {
-      await page.waitForTimeout(6000);
-      await shot('03-hive');
-      console.log('  hive fight after 6s:', await page.evaluate(`(() => { const s = ${scene()}; return {
-        enemies: s.enemies.map((e) => e.parts.length === 1 && e.parts[0].radius ? 'hive' : 'other').join(','),
-        enemyShots: s.enemyShots.getLength() }; })()`));
+    if (f === 0) {
+      await page.waitForTimeout(1000);
+      await shot('03-treant-roots');
+      console.log('  treant fight after 1s:', await page.evaluate(`(() => { const s = ${scene()}; return {
+        enemies: s.enemies.map((e) => e.parts.length === 1 && e.parts[0].radius ? 'treant' : 'other').join(','),
+        health: s.world.player.health }; })()`));
     }
     if (f === 2) {
       const shadowInfo = () => page.evaluate(`(() => { const s = ${scene()}; const ctx = s.enemyContext(s.time.now);
@@ -587,7 +587,7 @@ if (scenario === 'immovable') {
     return { before, after, moved: Math.round(Math.hypot(after[0] - before[0], after[1] - before[1])) };
   };
   console.log('turret pushed by zombies (moved should be 0):', await pushTest(`{ type: 'turret', cell: { x: 6, y: 4 } }`));
-  console.log('hive pushed by zombies (moved should be 0):', await pushTest(`{ type: 'hiveBoss', cell: { x: 5, y: 3 } }`));
+  console.log('treant pushed by zombies (moved should be 0):', await pushTest(`{ type: 'treantBoss', cell: { x: 5, y: 3 } }`));
 }
 
 if (scenario === 'end-race') {

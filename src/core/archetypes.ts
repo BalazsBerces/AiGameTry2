@@ -66,12 +66,18 @@ class Canvas {
   }
 }
 
-const zombies = (cells: Cell[]): EnemySpawn[] => cells.map((cell) => ({ type: 'zombie', cell }));
+/** The floor theme's walker (goblin in the forest, ...) on each cell. */
+const walkersOf = (floorIndex: number, cells: Cell[]): EnemySpawn[] =>
+  cells.map((cell) => ({ type: themeForFloor(floorIndex).walker, cell }));
+
+/** The floor theme's turret (seed-spitter in the forest, ...) on each cell. */
+const turretsOf = (floorIndex: number, cells: Cell[]): EnemySpawn[] =>
+  cells.map((cell) => ({ type: themeForFloor(floorIndex).turret, cell }));
 
 /**
- * Floor 1 breather: rows of pillars mirrored into all four quadrants, and a pair of zombies
- * facing each other across the open centre row. Pillars never touch a door approach, so it
- * fits every door set.
+ * Floor 1 breather, a glade: rows of trees mirrored into all four quadrants, and a pair of
+ * goblins facing each other across the open centre row. Trees never touch a door approach, so
+ * it fits every door set.
  */
 const pillaredHall: Archetype = {
   id: 'pillaredHall',
@@ -91,11 +97,11 @@ const pillaredHall: Archetype = {
     ]);
     canvas.paint(layout.cols.map((x) => ({ x, y: layout.row })), 'obstacle');
     const x = rng.int(3, 4);
-    return { tiles: canvas.tiles, enemies: zombies(canvas.images({ x, y: 3 }).slice(0, 2)), pickups: [], symmetry: { axes } };
+    return { tiles: canvas.tiles, enemies: walkersOf(0, canvas.images({ x, y: 3 }).slice(0, 2)), pickups: [], symmetry: { axes } };
   },
 };
 
-/** Floor 1: an L of cover hugging every corner, with a zombie tucked into each one. */
+/** Floor 1: an L of thicket or pond hugging every corner, with a goblin lurking in each one. */
 const fourCorners: Archetype = {
   id: 'fourCorners',
   floor: 0,
@@ -107,13 +113,14 @@ const fourCorners: Archetype = {
     const arm = rng.int(2, 4);
     const cover: Tile = rng.next() < 0.3 ? 'hole' : 'obstacle';
     canvas.paint([...Array.from({ length: arm }, (_, i) => ({ x: 1 + i, y: 1 })), { x: 1, y: 2 }], cover);
-    return { tiles: canvas.tiles, enemies: zombies(canvas.images({ x: 2, y: 2 })), pickups: [], symmetry: { axes } };
+    return { tiles: canvas.tiles, enemies: walkersOf(0, canvas.images({ x: 2, y: 2 })), pickups: [], symmetry: { axes } };
   },
 };
 
 /**
- * Floor 1 puzzle: a chest in the middle, boxed in by stone with a rock set into the middle of
- * each wall, so shooting (or bombing) through is the only way in. Two zombies keep watch.
+ * Floor 1 puzzle, a goblin hoard: a chest in the middle, boxed in by trees with a bush set into
+ * the middle of each wall, so shooting (or bombing) through is the only way in. Two goblins
+ * keep watch.
  */
 const stash: Archetype = {
   id: 'stash',
@@ -138,7 +145,7 @@ const stash: Archetype = {
     const images = canvas.images(rng.pick([{ x: 2, y: 3 }, { x: 3, y: 1 }, { x: 2, y: 1 }]));
     return {
       tiles: canvas.tiles,
-      enemies: zombies([images[0], images[images.length - 1]]),
+      enemies: walkersOf(0, [images[0], images[images.length - 1]]),
       pickups: [{ type: 'chest', cell: centre }],
       symmetry: { axes },
     };
@@ -187,8 +194,8 @@ function jarInside(shape: JarShape): Cell[] {
 }
 
 /**
- * Floor 1: a stone jar holding a horde of zombies that can only pour out of one small
- * opening. The opening (the room's one asymmetry) never faces a door, so the horde doesn't
+ * Floor 1, the goblin den: a ring of trees holding a pack of goblins that can only pour out of
+ * one small gap. The gap (the room's one asymmetry) never faces a door, so the pack doesn't
  * spill straight onto the player walking in.
  */
 const jar: Archetype = {
@@ -210,13 +217,13 @@ const jar: Archetype = {
     canvas.paint(jarWall(shape), 'obstacle');
     canvas.paint([opening], 'floor');
     const horde = shuffled(jarInside(shape), rng).slice(0, rng.int(4, 5));
-    return { tiles: canvas.tiles, enemies: zombies(horde), pickups: [], symmetry: { axes: shape.axes, feature: [opening] } };
+    return { tiles: canvas.tiles, enemies: walkersOf(0, horde), pickups: [], symmetry: { axes: shape.axes, feature: [opening] } };
   },
 };
 
 /**
- * Floor 1: turrets on an island ringed by holes. Nobody can walk out to them, but shots fly
- * over holes both ways, so it's a shootout across the moat; stone pillars offer cover.
+ * Floor 1: seed-spitters on an island in a pond. Nobody can walk out to them, but shots fly
+ * over water both ways, so it's a shootout across the pond; trees offer cover.
  */
 const sentryIsland: Archetype = {
   id: 'sentryIsland',
@@ -235,8 +242,7 @@ const sentryIsland: Archetype = {
     ]);
     canvas.paint(layout.moat, 'hole');
     if (rng.next() < 0.5) canvas.paint([{ x: 1, y: 1 }], 'obstacle');
-    const turrets = canvas.images(layout.turret).map((cell): EnemySpawn => ({ type: 'turret', cell }));
-    return { tiles: canvas.tiles, enemies: turrets, pickups: [], symmetry: { axes } };
+    return { tiles: canvas.tiles, enemies: turretsOf(0, canvas.images(layout.turret)), pickups: [], symmetry: { axes } };
   },
 };
 
@@ -246,6 +252,10 @@ const worm = (chain: Cell[]): EnemySpawn => ({ type: 'worm', cell: chain[0], tai
 /** `length` cells in a row from `from`, stepping by `dx`: a worm lying straight. */
 const straight = (from: Cell, dx: number, length = WORM_LENGTH): Cell[] =>
   Array.from({ length }, (_, i) => ({ x: from.x + dx * i, y: from.y }));
+
+/** The caves' own walker (ghouls) and turret (crystal turrets), from floor 2's theme. */
+const caveWalkers = (cells: Cell[]): EnemySpawn[] => cells.map((cell) => ({ type: themeForFloor(1).walker, cell }));
+const caveTurret = (cell: Cell): EnemySpawn => ({ type: themeForFloor(1).turret, cell });
 
 /** Point-mirror through the room centre: where the second of a pair of worms lies. */
 const opposite = (c: Cell, width: number, height: number): Cell => ({ x: width - 1 - c.x, y: height - 1 - c.y });
@@ -275,7 +285,7 @@ const track: Archetype = {
 };
 
 /**
- * Floor 2: two jars facing each other across the middle of the room. One holds zombies, the
+ * Floor 2: two jars facing each other across the middle of the room. One holds ghouls, the
  * other a worm; both spill into the same narrow gap between them.
  */
 const twinJars: Archetype = {
@@ -297,14 +307,14 @@ const twinJars: Archetype = {
     const coiled = rng.next() < 0.5
       ? [{ x: a, y: 2 }, { x: a, y: 3 }, { x: a, y: 4 }, { x: b, y: 4 }]
       : [{ x: b, y: 2 }, { x: b, y: 3 }, { x: b, y: 4 }, { x: a, y: 4 }];
-    return { tiles: canvas.tiles, enemies: [...zombies(horde), worm(coiled)], pickups: [], symmetry: { axes } };
+    return { tiles: canvas.tiles, enemies: [...caveWalkers(horde), worm(coiled)], pickups: [], symmetry: { axes } };
   },
 };
 
 /**
- * Floor 2: a firing line of turrets along one wall, behind a moat of holes, facing open floor
- * with a few rocks to duck behind (which the turrets slowly force you out of). The line sits
- * on a wall with no door.
+ * Floor 2: a firing line of crystal turrets along one wall, behind a moat of holes, facing open
+ * floor with a few rocks to duck behind (which the turrets slowly force you out of). Their shots
+ * ricochet off the stone walls, so the far wall is no refuge. The line sits on a wall with no door.
  */
 const gallery: Archetype = {
   id: 'gallery',
@@ -319,7 +329,7 @@ const gallery: Archetype = {
     canvas.paint(Array.from({ length: 7 }, (_, i) => ({ x: i, y: row(1) })), 'hole');
     const cover = rng.pick([[{ x: 3, y: 4 }, { x: 4, y: 4 }], [{ x: 2, y: 4 }, { x: 5, y: 4 }], [{ x: 4, y: 3 }, { x: 4, y: 4 }]]);
     canvas.paint(cover.map((c) => ({ x: c.x, y: row(c.y) })), 'rock');
-    const turrets = [2, 6, 10].map((x): EnemySpawn => ({ type: 'turret', cell: { x, y: row(0) } }));
+    const turrets = [2, 6, 10].map((x) => caveTurret({ x, y: row(0) }));
     return { tiles: canvas.tiles, enemies: turrets, pickups: [], symmetry: { axes } };
   },
 };
@@ -342,7 +352,7 @@ const serpentGarden: Archetype = {
 };
 
 /**
- * Floor 2 breather: an open courtyard framed by stone in its corners, three zombies milling
+ * Floor 2 breather: an open courtyard framed by stone in its corners, three ghouls milling
  * about the middle. Nothing touches a door approach, so it fits every door set.
  */
 const courtyard: Archetype = {
@@ -362,13 +372,13 @@ const courtyard: Archetype = {
     canvas.paint(corner, 'obstacle');
     if (rng.next() < 0.5) canvas.paint([{ x: 3, y: 0 }], 'obstacle');
     const x = rng.int(3, 4);
-    return { tiles: canvas.tiles, enemies: zombies([{ x, y: 3 }, { x: 6, y: 3 }, { x: width - 1 - x, y: 3 }]), pickups: [], symmetry: { axes } };
+    return { tiles: canvas.tiles, enemies: caveWalkers([{ x, y: 3 }, { x: 6, y: 3 }, { x: width - 1 - x, y: 3 }]), pickups: [], symmetry: { axes } };
   },
 };
 
 /**
  * Floor 2 puzzle: a locked chest in a stone alcove set into a doorless wall, its mouth plugged
- * with a rock and a turret standing guard on either side.
+ * with a rock and a crystal turret standing guard on either side.
  */
 const vault: Archetype = {
   id: 'vault',
@@ -383,14 +393,18 @@ const vault: Archetype = {
     canvas.paint([{ x: 4, y: 0 }, { x: 4, y: 1 }, { x: 5, y: 1 }].map(at), 'obstacle');
     canvas.paint([at({ x: 6, y: 1 })], 'rock');
     const guard = rng.pick([{ x: 3, y: 1 }, { x: 3, y: 2 }, { x: 2, y: 1 }]);
-    const turrets = [guard, { x: width - 1 - guard.x, y: guard.y }].map((c): EnemySpawn => ({ type: 'turret', cell: at(c) }));
+    const turrets = [guard, { x: width - 1 - guard.x, y: guard.y }].map((c) => caveTurret(at(c)));
     return { tiles: canvas.tiles, enemies: turrets, pickups: [{ type: 'lockedChest', cell: at({ x: 6, y: 0 }) }], symmetry: { axes } };
   },
 };
 
+/** The dungeon's walker (its tougher zombie) and turret (the gargoyle), from its theme. */
+const dungeonWalkers = (cells: Cell[]): EnemySpawn[] => cells.map((cell) => ({ type: themeForFloor(2).walker, cell }));
+const dungeonTurrets = (cells: Cell[]): EnemySpawn[] => cells.map((cell) => ({ type: themeForFloor(2).turret, cell }));
+
 /**
- * Floor 3: a stone keep in the middle with turrets inside, firing out through arrow slits
- * (holes: shots pass, feet don't). Worms patrol the grounds around it.
+ * Floor 3: a stone keep in the middle with gargoyles inside, firing out through arrow slits
+ * (holes: shots pass, feet don't). Zombies patrol the grounds around it.
  */
 const fortress: Archetype = {
   id: 'fortress',
@@ -407,16 +421,16 @@ const fortress: Archetype = {
     const slits = rng.pick([['top'], ['side'], ['top', 'side']]);
     if (slits.includes('top')) canvas.paint([{ x: post.x, y: 2 }], 'hole');
     if (slits.includes('side')) canvas.paint([{ x: 6 - half, y: 3 }], 'hole');
-    const turrets = canvas.images(post).map((cell): EnemySpawn => ({ type: 'turret', cell }));
-    const first = straight({ x: 4, y: 0 }, -1);
-    const worms = [first, first.map((c) => opposite(c, width, height))].slice(0, rng.int(1, 2));
-    return { tiles: canvas.tiles, enemies: [...turrets, ...worms.map(worm)], pickups: [], symmetry: { axes } };
+    const turrets = dungeonTurrets(canvas.images(post));
+    const first = { x: rng.int(2, 4), y: 0 };
+    const patrol = [first, opposite(first, width, height)].slice(0, rng.int(1, 2));
+    return { tiles: canvas.tiles, enemies: [...turrets, ...dungeonWalkers(patrol)], pickups: [], symmetry: { axes } };
   },
 };
 
 /**
  * Floor 3: the floor has fallen away except for a cross of narrow walkways joining the doors.
- * Turrets on the far corners rake whoever is out on the cross.
+ * Gargoyles on the far corners rake whoever is out on the cross.
  */
 const killbox: Archetype = {
   id: 'killbox',
@@ -436,7 +450,7 @@ const killbox: Archetype = {
     for (const c of chosen) canvas.tiles[c.y][c.x] = 'floor';
     return {
       tiles: canvas.tiles,
-      enemies: chosen.map((cell): EnemySpawn => ({ type: 'turret', cell })),
+      enemies: dungeonTurrets(chosen),
       pickups: [],
       // A diagonal pair is only point-symmetric; the perches are the idea's own feature.
       symmetry: { axes, feature: chosen },
@@ -445,7 +459,7 @@ const killbox: Archetype = {
 };
 
 /**
- * Floor 3: a long nest across the room, packed with worms and zombies, with one opening on a
+ * Floor 3: a long nest across the room, packed with zombies and roosting gargoyles, with one opening on a
  * wall without a door. Its top and bottom walls would block those doors, so it only fits
  * rooms entered from the sides.
  */
@@ -466,11 +480,12 @@ const nest: Archetype = {
     const canvas = new Canvas(width, height, []);
     canvas.paint(jarWall(shape), 'obstacle');
     canvas.paint([opening], 'floor');
-    const worms = [straight({ x: 3, y: 2 }, 1), straight({ x: 9, y: 4 }, -1)];
+    // Gargoyles roost in two opposite corners of the nest, zombies crowd its middle row.
+    const roosts = rng.next() < 0.5 ? [{ x: 3, y: 2 }, { x: 9, y: 4 }] : [{ x: 9, y: 2 }, { x: 3, y: 4 }];
     const zombieCells = shuffled([{ x: 3, y: 3 }, { x: 5, y: 3 }, { x: 7, y: 3 }, { x: 9, y: 3 }], rng).slice(0, rng.int(2, 3));
     return {
       tiles: canvas.tiles,
-      enemies: [...worms.map(worm), ...zombies(zombieCells)],
+      enemies: [...dungeonTurrets(roosts), ...dungeonWalkers(zombieCells)],
       pickups: [],
       symmetry: { axes: shape.axes, feature: [opening] },
     };
@@ -479,7 +494,7 @@ const nest: Archetype = {
 
 /**
  * Floor 3: two lanes along the top and bottom walls, each walled off from the middle and
- * guarded by a turret at both ends, so anyone cutting through a lane is caught between them.
+ * guarded by a gargoyle at both ends, so anyone cutting through a lane is caught between them.
  */
 const crossfire: Archetype = {
   id: 'crossfire',
@@ -493,14 +508,14 @@ const crossfire: Archetype = {
     canvas.paint(Array.from({ length }, (_, i) => ({ x: 2 + i, y: 2 })), 'obstacle');
     if (rng.next() < 0.6) canvas.paint([{ x: 2 + length, y: 2 }], 'rock');
     const end = { x: rng.pick([0, 1]), y: 1 };
-    const turrets = canvas.images(end).map((cell): EnemySpawn => ({ type: 'turret', cell }));
+    const turrets = dungeonTurrets(canvas.images(end));
     return { tiles: canvas.tiles, enemies: turrets, pickups: [], symmetry: { axes } };
   },
 };
 
 /**
- * Floor 3 breather: broken rock walls, mirrored into every corner, with a pair of worms
- * nosing around them. Nothing touches a door approach, so it fits every door set.
+ * Floor 3 breather: broken rock walls, mirrored into every corner, with a pair of zombies
+ * shambling around them. Nothing touches a door approach, so it fits every door set.
  */
 const ruins: Archetype = {
   id: 'ruins',
@@ -518,14 +533,14 @@ const ruins: Archetype = {
     ]);
     canvas.paint(fragment, 'rock');
     if (rng.next() < 0.5) canvas.paint([{ x: 1, y: 1 }], 'rock');
-    const first = straight({ x: 4, y: 0 }, -1);
-    const second = rng.next() < 0.5 ? first.map((c) => opposite(c, width, height)) : first.map((c) => ({ x: width - 1 - c.x, y: c.y }));
-    return { tiles: canvas.tiles, enemies: [worm(first), worm(second)], pickups: [], symmetry: { axes } };
+    const first = { x: rng.int(2, 4), y: 0 };
+    const second = rng.next() < 0.5 ? opposite(first, width, height) : { x: width - 1 - first.x, y: first.y };
+    return { tiles: canvas.tiles, enemies: dungeonWalkers([first, second]), pickups: [], symmetry: { axes } };
   },
 };
 
 /**
- * Floor 3 puzzle: a chest buried in the middle of a dense field of rocks, with turrets
+ * Floor 3 puzzle: a chest buried in the middle of a dense field of rocks, with gargoyles
  * covering it; digging in means standing still under fire (or spending a bomb).
  */
 const minefield: Archetype = {
@@ -544,7 +559,7 @@ const minefield: Archetype = {
     if (rng.next() < 0.5) canvas.paint([{ x: 6 - reach, y: 1 }], 'rock');
     const guard = rng.pick([{ x: 1, y: 1 }, { x: 2, y: 0 }]);
     const images = canvas.images(guard);
-    const turrets = [images[0], images[images.length - 1]].map((cell): EnemySpawn => ({ type: 'turret', cell }));
+    const turrets = dungeonTurrets([images[0], images[images.length - 1]]);
     return { tiles: canvas.tiles, enemies: turrets, pickups: [{ type: 'chest', cell: { x: 6, y: 3 } }], symmetry: { axes } };
   },
 };
@@ -604,6 +619,39 @@ const reliquary: Archetype = {
 };
 
 /**
+ * Floor 1: thorn hedges wind through the room, mirrored into all four quadrants, with goblins
+ * loose in the lanes between them. The hedges never seal floor away or touch a door approach,
+ * so it fits every door set; shots fly over them, so the fight is about luring walkers into
+ * the thorns while not brushing against them yourself.
+ */
+const thornMaze: Archetype = {
+  id: 'thornMaze',
+  floor: 0,
+  kind: 'normal',
+  fits: fitsAll,
+  build({ width, height, rng }) {
+    const axes: MirrorAxis[] = ['vertical', 'horizontal'];
+    const canvas = new Canvas(width, height, axes);
+    // Each layout is a top-left quarter of hedge plus a lane cell a goblin prowls.
+    const layout = rng.pick([
+      // Hedgerows: an L in each corner, lanes along the walls and through the middle.
+      { hedge: [{ x: 2, y: 1 }, { x: 3, y: 1 }, { x: 4, y: 1 }, { x: 2, y: 2 }], lane: { x: 3, y: 2 } },
+      // Crossed hedges: a stub off the wall meets a post, leaving a crooked lane.
+      { hedge: [{ x: 4, y: 1 }, { x: 4, y: 2 }, { x: 1, y: 2 }, { x: 2, y: 2 }], lane: { x: 3, y: 1 } },
+      // Zigzag: staggered hedges the walkers have to snake through.
+      { hedge: [{ x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 2 }, { x: 4, y: 2 }, { x: 5, y: 1 }], lane: { x: 2, y: 2 } },
+    ]);
+    canvas.paint(layout.hedge, 'thorn');
+    // Sometimes a bush in each corner nook as well.
+    if (rng.next() < 0.5) canvas.paint([{ x: 0, y: 1 }], 'thorn');
+    const lanes = canvas.images(layout.lane);
+    // A pack in every quarter, or just a diagonal pair.
+    const chosen = rng.next() < 0.5 ? lanes : [lanes[0], lanes[lanes.length - 1]];
+    return { tiles: canvas.tiles, enemies: walkersOf(0, chosen), pickups: [], symmetry: { axes } };
+  },
+};
+
+/**
  * Wide room, every floor: run the gauntlet down a long hall. The floor's turrets line ledges
  * along the top and bottom walls behind a moat of holes, a pack of its walkers holds the middle,
  * and scattered cover breaks up the lane. Door columns and the side doors' row stay clear, so
@@ -616,7 +664,6 @@ const gauntlet = (floor: number): Archetype => ({
   shapes: ['2x1'],
   fits: fitsAll,
   build({ width, height, rng }) {
-    const { walker, turret } = themeForFloor(floor);
     const axes: MirrorAxis[] = ['vertical', 'horizontal'];
     const canvas = new Canvas(width, height, axes);
     // The ledge spans the middle of each long wall, sealed at its ends; doors sit at x 5 and 20.
@@ -640,8 +687,8 @@ const gauntlet = (floor: number): Archetype => ({
     return {
       tiles: canvas.tiles,
       enemies: [
-        ...manned.map((cell): EnemySpawn => ({ type: turret, cell })),
-        ...pack.map((cell): EnemySpawn => ({ type: walker, cell })),
+        ...turretsOf(floor, manned),
+        ...walkersOf(floor, pack),
       ],
       pickups: [],
       symmetry: { axes },
@@ -662,7 +709,6 @@ const descent = (floor: number): Archetype => ({
   shapes: ['1x2'],
   fits: fitsAll,
   build({ width, height, rng }) {
-    const { walker, turret } = themeForFloor(floor);
     const axes: MirrorAxis[] = ['vertical', 'horizontal'];
     const canvas = new Canvas(width, height, axes);
     // Drops on rows 4 and 9 (mirror images); stairs in the middle or down both sides.
@@ -677,15 +723,14 @@ const descent = (floor: number): Archetype => ({
     return {
       tiles: canvas.tiles,
       enemies: [
-        ...turrets.map((cell): EnemySpawn => ({ type: turret, cell })),
-        ...walkers.map((cell): EnemySpawn => ({ type: walker, cell })),
+        ...turretsOf(floor, turrets),
+        ...walkersOf(floor, walkers),
       ],
       pickups: [],
       symmetry: { axes },
     };
   },
 });
-
 function shuffled<T>(items: readonly T[], rng: Rng): T[] {
   const out = [...items];
   for (let i = out.length - 1; i > 0; i--) {
@@ -716,6 +761,7 @@ export const ARCHETYPES: readonly Archetype[] = [
   altar,
   shrine,
   reliquary,
+  thornMaze,
   ...[0, 1, 2].flatMap((floor) => [gauntlet(floor), descent(floor)]),
 ];
 

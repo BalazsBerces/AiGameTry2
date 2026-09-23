@@ -600,7 +600,7 @@ describe('every archetype', () => {
 
   it.each([
     [1, ['jar', 'fourCorners', 'pillaredHall', 'sentryIsland', 'stash', 'thornMaze']],
-    [2, ['courtyard', 'gallery', 'serpentGarden', 'track', 'twinJars', 'vault']],
+    [2, ['courtyard', 'gallery', 'serpentGarden', 'track', 'twinJars', 'vault', 'crystalGallery']],
     [3, ['crossfire', 'fortress', 'killbox', 'minefield', 'nest', 'ruins', 'crusherCorridor']],
   ])('gives floor %i its own set of ideas, one of them a breather that fits every door set', (floor, ids) => {
     const own = ARCHETYPES.filter((a) => a.floor === floor - 1 && a.kind === 'normal' && supportsShape(a, '1x1'));
@@ -779,5 +779,58 @@ describe('generateRoom', () => {
     expect(at('down')).toEqual({ x: 6, y: 6 });
     expect(at('left')).toEqual({ x: 0, y: 3 });
     expect(at('right')).toEqual({ x: 12, y: 3 });
+  });
+});
+
+describe('Crystal Gallery (floor 2)', () => {
+  const gallery = (seed: number, doors: readonly (typeof SIDES)[number][]) =>
+    generateRoom({ id: '0,0', kind: 'normal', doors: [...doors], archetype: 'crystalGallery' }, 1, createRng(seed));
+
+  /** The first tile a shot flying straight from `from` along (dx, dy) runs into, past open floor and holes. */
+  const firstSolid = (r: ReturnType<typeof gallery>, from: { x: number; y: number }, dx: number, dy: number) => {
+    for (let x = from.x + dx, y = from.y + dy; r.tiles[y]?.[x] !== undefined; x += dx, y += dy) {
+      if (r.tiles[y][x] !== 'floor' && r.tiles[y][x] !== 'hole') return r.tiles[y][x];
+    }
+    return undefined;
+  };
+
+  it('sets crystals and crystal turrets in a valid mirrored room, for every door set', () => {
+    for (const doors of EVERY_DOOR_SET) {
+      for (let seed = 0; seed < 30; seed++) {
+        const r = gallery(seed, doors);
+        const where = `seed ${seed} doors ${doors}`;
+        expect(r.archetype, where).toBe('crystalGallery');
+        expect(count(r, 'crystal'), where).toBeGreaterThanOrEqual(4);
+        expect(r.enemies.some((e) => e.type === 'crystalTurret'), where).toBe(true);
+        expect(validateRoom(r, { axes: ['vertical', 'horizontal'] }), where).toEqual([]);
+      }
+    }
+  });
+
+  it('is built around bank shots: every turret has a crystal straight in line with it', () => {
+    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    for (let seed = 0; seed < 40; seed++) {
+      const r = gallery(seed, ALL_DOORS);
+      for (const t of r.enemies.filter((e) => e.type === 'crystalTurret')) {
+        expect(dirs.map(([dx, dy]) => firstSolid(r, t.cell, dx, dy)), `seed ${seed} turret ${JSON.stringify(t.cell)}`).toContain('crystal');
+      }
+    }
+  });
+
+  it('is the same room for the same seed, and varies across seeds', () => {
+    expect(gallery(7, ALL_DOORS)).toEqual(gallery(7, ALL_DOORS));
+    const layouts = new Set(Array.from({ length: 30 }, (_, seed) => JSON.stringify(gallery(seed, ALL_DOORS).tiles)));
+    expect(layouts.size).toBeGreaterThanOrEqual(3);
+  });
+
+  it('only grows crystals in the caves', () => {
+    for (const floorIndex of [0, 2]) {
+      for (const doors of EVERY_DOOR_SET) {
+        for (let seed = 0; seed < 10; seed++) {
+          const r = generateRoom({ id: '0,0', kind: 'normal', doors: [...doors] }, floorIndex, createRng(seed));
+          expect(count(r, 'crystal'), `floor ${floorIndex + 1} seed ${seed} doors ${doors}`).toBe(0);
+        }
+      }
+    }
   });
 });

@@ -28,6 +28,7 @@ import { createShadow } from './entities/shadow';
 import { createTurret } from './entities/turret';
 import { BOSS_WORM, spawnWorm } from './entities/worm';
 import { createZombie } from './entities/zombie';
+import { createGargoyle } from './entities/gargoyle';
 import { doorCorridor, mapCellAt, roomBlock, tileAt, tileCenter } from './geometry';
 
 type Keys = Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
@@ -37,7 +38,7 @@ const DEPTH = { player: 10 };
 
 type At = (c: Cell) => { x: number; y: number };
 const ENEMY_FACTORIES: Record<EnemyType, (scene: Phaser.Scene, spawn: EnemySpawn, at: At) => Enemy> = {
-  zombie: (scene, s, at) => createZombie(scene, at(s.cell).x, at(s.cell).y),
+  zombie: (scene, s, at) => createZombie(scene, at(s.cell).x, at(s.cell).y, s.hp),
   turret: (scene, s, at) => createTurret(scene, at(s.cell).x, at(s.cell).y),
   worm: (scene, s, at) => spawnWorm(scene, [s.cell, ...(s.tail ?? [])], at),
   wormBoss: (scene, s, at) => spawnWorm(scene, [s.cell, ...(s.tail ?? [])], at, BOSS_WORM),
@@ -48,6 +49,7 @@ const ENEMY_FACTORIES: Record<EnemyType, (scene: Phaser.Scene, spawn: EnemySpawn
     const b = at({ x: s.cell.x + 1, y: s.cell.y + 1 });
     return createHive(scene, (a.x + b.x) / 2, (a.y + b.y) / 2);
   },
+  gargoyle: (scene, s, at) => createGargoyle(scene, at(s.cell).x, at(s.cell).y),
 };
 
 type Shape = Phaser.GameObjects.Shape;

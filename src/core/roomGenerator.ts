@@ -82,7 +82,7 @@ export interface PickupSpawn {
 
 export const PASSIVE_POOL: readonly Passive[] = ['homing', 'fireRate', 'sword'];
 
-export type EnemyType = 'zombie' | 'turret' | 'worm' | 'wormBoss' | 'hiveBoss' | 'shadowBoss';
+export type EnemyType = 'zombie' | 'turret' | 'worm' | 'wormBoss' | 'hiveBoss' | 'shadowBoss' | 'gargoyle';
 
 export interface EnemySpawn {
   type: EnemyType;
@@ -90,6 +90,8 @@ export interface EnemySpawn {
   cell: Cell;
   /** A worm's body behind the head, in order. */
   tail?: Cell[];
+  /** Hit points overriding the type's default: a floor's tougher variant (the dungeon's zombies). */
+  hp?: number;
 }
 
 /** Doors sit at the centre of the wall of the map cell they belong to. */
@@ -310,7 +312,9 @@ export function generateRoom(spec: RoomSpec, floorIndex: number, rng: Rng): Room
     const built = buildFromArchetype(spec, doors, floorIndex, rng);
     const pickups = built.pickups.map((p) => placeLoot(p, rng));
     if (spec.kind === 'normal') pickups.push(...rollClearDrop(built.tiles, doors, built.enemies, pickups, rng));
-    return { id: spec.id, width, height, tiles: built.tiles, doors, enemies: built.enemies, pickups, summonPoints: [], archetype: built.archetype };
+    const { walker, walkerHp } = themeForFloor(floorIndex);
+    const enemies = built.enemies.map((e) => (walkerHp && e.type === walker ? { ...e, hp: walkerHp } : e));
+    return { id: spec.id, width, height, tiles: built.tiles, doors, enemies, pickups, summonPoints: [], archetype: built.archetype };
   }
   // Normal and item rooms come from archetypes above; boss arenas are built here, start rooms stay empty.
   const isDoor = (c: Cell) => doors.some((d) => d.cell.x === c.x && d.cell.y === c.y);

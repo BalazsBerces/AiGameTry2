@@ -13,4 +13,5 @@ export const ENEMY_CLASS: Record<EnemyType, EnemyClass> = {
   wormBoss: 'walker',
   hiveBoss: 'stationary',
   shadowBoss: 'walker',
+  gargoyle: 'stationary',
 };

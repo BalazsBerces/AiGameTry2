@@ -3,9 +3,12 @@ import { stepDownhill } from '../../core/grid';
 import { COLORS, TUNING } from '../config';
 import { singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
 
-/** Walks the room's distance field toward the player, going around obstacles and holes. */
-export function createZombie(scene: Phaser.Scene, x: number, y: number): Enemy {
-  const { size, hp, speed } = TUNING.zombie;
+/**
+ * Walks the room's distance field toward the player, going around obstacles and holes.
+ * `hp` overrides the default for a floor's tougher zombies.
+ */
+export function createZombie(scene: Phaser.Scene, x: number, y: number, hp = TUNING.zombie.hp): Enemy {
+  const { size, speed } = TUNING.zombie;
   const sprite = scene.add.rectangle(x, y, size, size, COLORS.zombie) as unknown as EnemySprite;
   scene.physics.add.existing(sprite);
   return singlePartEnemy(scene, sprite, hp, (ctx: EnemyContext) => {

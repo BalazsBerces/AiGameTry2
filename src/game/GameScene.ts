@@ -37,6 +37,7 @@ import { createTreant } from './entities/treant';
 import { doorCorridor, mapCellAt, roomBlock, tileAt, tileCenter } from './geometry';
 import { createGoblin } from './entities/goblin';
 import { createSeedSpitter } from './entities/seedSpitter';
+import { createKnight } from './entities/knight';
 
 type Keys = Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
 type PhysicsRect = Phaser.GameObjects.Rectangle & { body: Phaser.Physics.Arcade.Body };
@@ -56,6 +57,7 @@ const ENEMY_FACTORIES: Record<EnemyType, (scene: Phaser.Scene, spawn: EnemySpawn
   crystalTurret: (scene, s, at) => createCrystalTurret(scene, at(s.cell).x, at(s.cell).y),
   gargoyle: (scene, s, at) => createGargoyle(scene, at(s.cell).x, at(s.cell).y),
   treantBoss: (scene, s, at) => createTreant(scene, at(s.cell).x, at(s.cell).y, s.cell),
+  knight: (scene, s, at) => createKnight(scene, at(s.cell).x, at(s.cell).y, !!s.champion),
 };
 
 type Shape = Phaser.GameObjects.Shape;
@@ -283,10 +285,28 @@ export class GameScene extends Phaser.Scene {
     };
   }
 
-  /** A melee arc in the aimed direction; damages every enemy part inside it. */
+  /**
+   * A melee arc in the aimed direction; damages every enemy part inside it. A blow counts as
+   * travelling from the player to the part, so a shield facing the player turns it aside.
+   */
   private swingSword(aim: Direction, damage: number) {
     const inArc = this.sweepArc(this.player, aim, COLORS.passive.sword);
-    for (const part of this.enemies.flatMap((e) => e.parts).filter(inArc)) this.damagePart(part, damage);
+    for (const part of this.enemies.flatMap((e) => e.parts).filter(inArc)) {
+      const heading = { x: part.x - this.player.x, y: part.y - this.player.y };
+      if (this.shieldBlocks(part, heading)) this.clink(part.x - heading.x * 0.3, part.y - heading.y * 0.3);
+      else this.damagePart(part, damage);
+    }
+  }
+
+  /** Whether the part's enemy has a shield that turns aside a hit travelling along `heading`. */
+  private shieldBlocks(part: EnemySprite, heading: { x: number; y: number }) {
+    return !!this.enemies.find((e) => e.parts.includes(part))?.blocks?.(part, heading);
+  }
+
+  /** A blocked hit: a brief spark where it struck the shield. */
+  private clink(x: number, y: number) {
+    const spark = this.add.star(x, y, 4, 3, 11, COLORS.shieldClink).setDepth(DEPTH.player + 1);
+    this.tweens.add({ targets: spark, alpha: 0, scale: 1.6, angle: 45, duration: TUNING.knight.clinkMs, onComplete: () => spark.destroy() });
   }
 
   /**
@@ -367,8 +387,13 @@ export class GameScene extends Phaser.Scene {
     if (!shot.active) return; // already spent on another part this frame
     // Read before destroying: destroy() discards the object's data.
     const damage = shot.getData('damage') as number;
+    // A shot meeting a shield is spent without doing any damage.
+    const { velocity } = shot.body as Phaser.Physics.Arcade.Body;
+    const blocked = this.shieldBlocks(part, { x: velocity.x, y: velocity.y });
+    const at = { x: (shot as Phaser.GameObjects.Arc).x, y: (shot as Phaser.GameObjects.Arc).y };
     shot.destroy();
-    this.damagePart(part, damage);
+    if (blocked) this.clink(at.x, at.y);
+    else this.damagePart(part, damage);
   }
 
   /** A player shot hit a wall piece; rocks crack and eventually break open. */

@@ -42,6 +42,11 @@ export interface Enemy {
   onPlayerAttack?(ctx: EnemyContext, aim: Direction, weapon: Weapon): void;
   /** Damages one part. Returns the enemies that replace this one: itself, nothing (dead), or split pieces. */
   hit(part: EnemySprite, damage: number): Enemy[];
+  /**
+   * Whether a shot or sword blow travelling along `heading` is turned aside by the part (the
+   * knight's shield) instead of hurting it. Bombs, crushers and thorns never ask.
+   */
+  blocks?(part: EnemySprite, heading: { x: number; y: number }): boolean;
 }
 
 /** Stat multipliers for a champion, or none for a regular enemy. */

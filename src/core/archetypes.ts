@@ -405,9 +405,13 @@ const vault: Archetype = {
 const dungeonWalkers = (cells: Cell[]): EnemySpawn[] => cells.map((cell) => ({ type: themeForFloor(2).walker, cell }));
 const dungeonTurrets = (cells: Cell[]): EnemySpawn[] => cells.map((cell) => ({ type: themeForFloor(2).turret, cell }));
 
+/** The dungeon's shielded skeleton knights, on each cell. */
+const knightsOf = (cells: Cell[]): EnemySpawn[] => cells.map((cell) => ({ type: 'knight', cell }));
+
 /**
  * Floor 3: a stone keep in the middle with gargoyles inside, firing out through arrow slits
- * (holes: shots pass, feet don't). Zombies patrol the grounds around it.
+ * (holes: shots pass, feet don't). Shielded knights patrol the grounds around it, so circling
+ * one to get at its back puts you in the gargoyles' sights.
  */
 const fortress: Archetype = {
   id: 'fortress',
@@ -427,7 +431,7 @@ const fortress: Archetype = {
     const turrets = dungeonTurrets(canvas.images(post));
     const first = { x: rng.int(2, 4), y: 0 };
     const patrol = [first, opposite(first, width, height)].slice(0, rng.int(1, 2));
-    return { tiles: canvas.tiles, enemies: [...turrets, ...dungeonWalkers(patrol)], pickups: [], symmetry: { axes } };
+    return { tiles: canvas.tiles, enemies: [...turrets, ...knightsOf(patrol)], pickups: [], symmetry: { axes } };
   },
 };
 
@@ -806,6 +810,35 @@ const crystalGallery: Archetype = {
   },
 };
 
+/**
+ * Floor 3: skeleton knights stand guard over a chest on a pillared dais in the middle of the
+ * room. Their shields turn to meet the player, so the chest is won by circling round the guards
+ * (the pillars are cover and something to lead them round); sometimes gargoyles watch from the
+ * corners. Nothing touches a door approach, so it fits every door set.
+ */
+const knightGuard: Archetype = {
+  id: 'knightGuard',
+  floor: 2,
+  kind: 'normal',
+  fits: fitsAll,
+  build({ width, height, rng }) {
+    const axes: MirrorAxis[] = ['vertical', 'horizontal'];
+    const canvas = new Canvas(width, height, axes);
+    // A top-left quarter of pillars, and the post of one knight (mirrored to the others).
+    const layout = rng.pick([
+      { pillars: [{ x: 5, y: 2 }], post: { x: 4, y: 3 } },
+      { pillars: [{ x: 5, y: 2 }, { x: 3, y: 1 }], post: { x: 4, y: 3 } },
+      { pillars: [{ x: 5, y: 2 }], post: { x: 4, y: 2 } },
+      { pillars: [{ x: 4, y: 2 }, { x: 5, y: 2 }], post: { x: 3, y: 3 } },
+    ]);
+    canvas.paint(layout.pillars, 'obstacle');
+    const enemies = knightsOf(canvas.images(layout.post));
+    if (rng.next() < 0.4) enemies.push(...turretsOf(2, [{ x: 0, y: 0 }, { x: width - 1, y: height - 1 }]));
+    const chest = { x: (width - 1) / 2, y: (height - 1) / 2 };
+    return { tiles: canvas.tiles, enemies, pickups: [{ type: 'chest', cell: chest }], symmetry: { axes } };
+  },
+};
+
 function shuffled<T>(items: readonly T[], rng: Rng): T[] {
   const out = [...items];
   for (let i = out.length - 1; i > 0; i--) {
@@ -840,6 +873,7 @@ export const ARCHETYPES: readonly Archetype[] = [
   crusherCorridor,
   ...[0, 1, 2].flatMap((floor) => [gauntlet(floor), descent(floor)]),
   crystalGallery,
+  knightGuard,
 ];
 
 export const archetypeById = (id: string) => ARCHETYPES.find((a) => a.id === id);

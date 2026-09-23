@@ -251,6 +251,10 @@ const worm = (chain: Cell[]): EnemySpawn => ({ type: 'worm', cell: chain[0], tai
 const straight = (from: Cell, dx: number, length = WORM_LENGTH): Cell[] =>
   Array.from({ length }, (_, i) => ({ x: from.x + dx * i, y: from.y }));
 
+/** The caves' own walker (ghouls) and turret (crystal turrets), from floor 2's theme. */
+const caveWalkers = (cells: Cell[]): EnemySpawn[] => cells.map((cell) => ({ type: themeForFloor(1).walker, cell }));
+const caveTurret = (cell: Cell): EnemySpawn => ({ type: themeForFloor(1).turret, cell });
+
 /** Point-mirror through the room centre: where the second of a pair of worms lies. */
 const opposite = (c: Cell, width: number, height: number): Cell => ({ x: width - 1 - c.x, y: height - 1 - c.y });
 
@@ -279,7 +283,7 @@ const track: Archetype = {
 };
 
 /**
- * Floor 2: two jars facing each other across the middle of the room. One holds zombies, the
+ * Floor 2: two jars facing each other across the middle of the room. One holds ghouls, the
  * other a worm; both spill into the same narrow gap between them.
  */
 const twinJars: Archetype = {
@@ -301,14 +305,14 @@ const twinJars: Archetype = {
     const coiled = rng.next() < 0.5
       ? [{ x: a, y: 2 }, { x: a, y: 3 }, { x: a, y: 4 }, { x: b, y: 4 }]
       : [{ x: b, y: 2 }, { x: b, y: 3 }, { x: b, y: 4 }, { x: a, y: 4 }];
-    return { tiles: canvas.tiles, enemies: [...zombies(horde), worm(coiled)], pickups: [], symmetry: { axes } };
+    return { tiles: canvas.tiles, enemies: [...caveWalkers(horde), worm(coiled)], pickups: [], symmetry: { axes } };
   },
 };
 
 /**
- * Floor 2: a firing line of turrets along one wall, behind a moat of holes, facing open floor
- * with a few rocks to duck behind (which the turrets slowly force you out of). The line sits
- * on a wall with no door.
+ * Floor 2: a firing line of crystal turrets along one wall, behind a moat of holes, facing open
+ * floor with a few rocks to duck behind (which the turrets slowly force you out of). Their shots
+ * ricochet off the stone walls, so the far wall is no refuge. The line sits on a wall with no door.
  */
 const gallery: Archetype = {
   id: 'gallery',
@@ -323,7 +327,7 @@ const gallery: Archetype = {
     canvas.paint(Array.from({ length: 7 }, (_, i) => ({ x: i, y: row(1) })), 'hole');
     const cover = rng.pick([[{ x: 3, y: 4 }, { x: 4, y: 4 }], [{ x: 2, y: 4 }, { x: 5, y: 4 }], [{ x: 4, y: 3 }, { x: 4, y: 4 }]]);
     canvas.paint(cover.map((c) => ({ x: c.x, y: row(c.y) })), 'rock');
-    const turrets = [2, 6, 10].map((x): EnemySpawn => ({ type: 'turret', cell: { x, y: row(0) } }));
+    const turrets = [2, 6, 10].map((x) => caveTurret({ x, y: row(0) }));
     return { tiles: canvas.tiles, enemies: turrets, pickups: [], symmetry: { axes } };
   },
 };
@@ -346,7 +350,7 @@ const serpentGarden: Archetype = {
 };
 
 /**
- * Floor 2 breather: an open courtyard framed by stone in its corners, three zombies milling
+ * Floor 2 breather: an open courtyard framed by stone in its corners, three ghouls milling
  * about the middle. Nothing touches a door approach, so it fits every door set.
  */
 const courtyard: Archetype = {
@@ -366,13 +370,13 @@ const courtyard: Archetype = {
     canvas.paint(corner, 'obstacle');
     if (rng.next() < 0.5) canvas.paint([{ x: 3, y: 0 }], 'obstacle');
     const x = rng.int(3, 4);
-    return { tiles: canvas.tiles, enemies: zombies([{ x, y: 3 }, { x: 6, y: 3 }, { x: width - 1 - x, y: 3 }]), pickups: [], symmetry: { axes } };
+    return { tiles: canvas.tiles, enemies: caveWalkers([{ x, y: 3 }, { x: 6, y: 3 }, { x: width - 1 - x, y: 3 }]), pickups: [], symmetry: { axes } };
   },
 };
 
 /**
  * Floor 2 puzzle: a locked chest in a stone alcove set into a doorless wall, its mouth plugged
- * with a rock and a turret standing guard on either side.
+ * with a rock and a crystal turret standing guard on either side.
  */
 const vault: Archetype = {
   id: 'vault',
@@ -387,7 +391,7 @@ const vault: Archetype = {
     canvas.paint([{ x: 4, y: 0 }, { x: 4, y: 1 }, { x: 5, y: 1 }].map(at), 'obstacle');
     canvas.paint([at({ x: 6, y: 1 })], 'rock');
     const guard = rng.pick([{ x: 3, y: 1 }, { x: 3, y: 2 }, { x: 2, y: 1 }]);
-    const turrets = [guard, { x: width - 1 - guard.x, y: guard.y }].map((c): EnemySpawn => ({ type: 'turret', cell: at(c) }));
+    const turrets = [guard, { x: width - 1 - guard.x, y: guard.y }].map((c) => caveTurret(at(c)));
     return { tiles: canvas.tiles, enemies: turrets, pickups: [{ type: 'lockedChest', cell: at({ x: 6, y: 0 }) }], symmetry: { axes } };
   },
 };

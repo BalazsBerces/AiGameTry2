@@ -239,14 +239,24 @@ describe('generateRoom enemy mix per floor', () => {
     expect(sample(1).flat().some((e) => e.type === 'worm')).toBe(true);
   });
 
+  it('floor 2 (the caves) spawns ghouls, crystal turrets and worms, and no zombies or plain turrets', () => {
+    const types = new Set<string>();
+    for (const doors of EVERY_DOOR_SET) {
+      for (let seed = 0; seed < 60; seed++) {
+        for (const e of generateRoom({ id: '0,0', kind: 'normal', doors: [...doors] }, 1, createRng(seed)).enemies) types.add(e.type);
+      }
+    }
+    expect([...types].sort()).toEqual(['crystalTurret', 'ghoul', 'worm']);
+  });
+
   it('floor 3 skews toward worms and turrets', () => {
-    expect(share(sample(2), ['worm', 'turret'])).toBeGreaterThan(share(sample(1), ['worm', 'turret']) + 0.1);
+    expect(share(sample(2), ['worm', 'turret'])).toBeGreaterThan(share(sample(1), ['worm', 'crystalTurret']) + 0.1);
     expect(share(sample(2), ['worm', 'turret'])).toBeGreaterThan(0.6);
   });
 
   it('asks for more damage to clear a room on each later floor', () => {
-    // Hit points: zombie 3, turret 4, worm 4 segments of 2, goblin 3, seed-spitter 4.
-    const HP: Record<string, number> = { zombie: 3, turret: 4, worm: 8, goblin: 3, seedSpitter: 4 };
+    // Hit points: zombie 3, turret 4, worm 4 segments of 2, goblin 3, seed-spitter 4, ghoul 4, crystal turret 4.
+    const HP: Record<string, number> = { zombie: 3, turret: 4, worm: 8, goblin: 3, seedSpitter: 4, ghoul: 4, crystalTurret: 4 };
     const mean = (floorIndex: number) =>
       sample(floorIndex).reduce((sum, r) => sum + r.reduce((s, e) => s + HP[e.type], 0), 0) / 600;
     expect(mean(1)).toBeGreaterThan(mean(0) + 1);
@@ -460,7 +470,7 @@ describe('Sentry Island (floor 1)', () => {
 });
 
 describe('every archetype', () => {
-  const ROSTER = [['goblin', 'seedSpitter'], ['zombie', 'turret', 'worm'], ['zombie', 'turret', 'worm']];
+  const ROSTER = [['goblin', 'seedSpitter'], ['ghoul', 'crystalTurret', 'worm'], ['zombie', 'turret', 'worm']];
 
   it('builds its own idea for every door set it fits: deterministic, varied, within its floor roster', () => {
     for (const a of ARCHETYPES) {

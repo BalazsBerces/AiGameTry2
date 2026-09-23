@@ -29,6 +29,9 @@ import { createShadow } from './entities/shadow';
 import { createTurret } from './entities/turret';
 import { BOSS_WORM, championWorm, REGULAR_WORM, spawnWorm } from './entities/worm';
 import { createZombie } from './entities/zombie';
+import { createGhoul } from './entities/ghoul';
+import { createCrystalTurret } from './entities/crystalTurret';
+import { ricochet } from '../core/ricochet';
 import { doorCorridor, mapCellAt, roomBlock, tileAt, tileCenter } from './geometry';
 import { createGoblin } from './entities/goblin';
 import { createSeedSpitter } from './entities/seedSpitter';
@@ -53,6 +56,8 @@ const ENEMY_FACTORIES: Record<EnemyType, (scene: Phaser.Scene, spawn: EnemySpawn
   },
   goblin: (scene, s, at) => createGoblin(scene, at(s.cell).x, at(s.cell).y),
   seedSpitter: (scene, s, at) => createSeedSpitter(scene, at(s.cell).x, at(s.cell).y),
+  ghoul: (scene, s, at) => createGhoul(scene, at(s.cell).x, at(s.cell).y),
+  crystalTurret: (scene, s, at) => createCrystalTurret(scene, at(s.cell).x, at(s.cell).y),
 };
 
 type Shape = Phaser.GameObjects.Shape;
@@ -163,7 +168,13 @@ export class GameScene extends Phaser.Scene {
     kb.addKey('E').on('down', () => this.dropBomb());
 
     this.enemyShots = this.physics.add.group();
-    this.physics.add.collider(this.enemyShots, this.walls, (shot) => shot.destroy());
+    // Shots that ricochet are turned around before physics would stop them; the rest are spent.
+    this.physics.add.collider(
+      this.enemyShots,
+      this.walls,
+      (shot) => shot.destroy(),
+      (shot, wall) => !this.ricochetEnemyShot(shot as Phaser.GameObjects.Arc, wall as Phaser.GameObjects.Shape),
+    );
     this.physics.add.overlap(this.player, this.enemyShots, (_p, shot) => {
       shot.destroy();
       this.hurtPlayer();
@@ -308,8 +319,9 @@ export class GameScene extends Phaser.Scene {
       },
       canSeePlayer: (from) =>
         lineOfSight(room.layout.tiles, this.toTileUnits(room, from), this.toTileUnits(room, this.player), blocksSight),
-      fireEnemyShot: (x, y, vx, vy, homing = false) => {
-        const shot = this.add.circle(x, y, TUNING.enemyShotRadius, COLORS.enemyShot).setData('homing', homing);
+      fireEnemyShot: (x, y, vx, vy, homing = false, bounces = 0) => {
+        const color = bounces > 0 ? COLORS.crystalShot : COLORS.enemyShot;
+        const shot = this.add.circle(x, y, TUNING.enemyShotRadius, color).setData({ homing, bounces });
         this.enemyShots.add(shot);
         (shot.body as Phaser.Physics.Arcade.Body).setCircle(TUNING.enemyShotRadius).setVelocity(vx, vy);
       },
@@ -349,6 +361,31 @@ export class GameScene extends Phaser.Scene {
     const result = hitTile(this.world, roomId, cell);
     if (result === 'broken') this.removeTerrain(roomId, cell);
     else if (result === 'damaged') wall.setAlpha(wall.alpha - 0.25);
+  }
+
+  /**
+   * An enemy shot touches a wall piece: bounces it (core/ricochet) and returns true, or returns
+   * false to let it be spent. Room walls and door locks count as stone. A shot already heading
+   * away from the piece (it just bounced off a neighbouring piece) is left alone.
+   */
+  private ricochetEnemyShot(shot: Phaser.GameObjects.Arc, wall: Phaser.GameObjects.Shape): boolean {
+    if (!shot.active) return true;
+    const room = this.currentRoom;
+    const pos = this.toTileUnits(room, shot);
+    const roomId = wall.getData('roomId') as string | undefined;
+    const tileCell = wall.getData('tile') as Cell | undefined;
+    const centre = this.toTileUnits(room, wall);
+    const cell = tileCell && roomId === room.floorRoom.id ? tileCell : { x: Math.floor(centre.x), y: Math.floor(centre.y) };
+    const tile: Tile = (tileCell && roomId ? this.world.rooms.get(roomId)?.layout.tiles[tileCell.y]?.[tileCell.x] : undefined) ?? 'obstacle';
+    const body = shot.body as Phaser.Physics.Arcade.Body;
+    const { x: vx, y: vy } = body.velocity;
+    const heading = (cell.x + 0.5 - pos.x) * vx + (cell.y + 0.5 - pos.y) * vy;
+    if (heading <= 0) return true;
+    const out = ricochet({ ...pos, vx, vy, bouncesLeft: (shot.getData('bounces') as number | undefined) ?? 0 }, tile, cell);
+    if (!out) return false;
+    body.setVelocity(out.vx, out.vy);
+    shot.setData('bounces', out.bouncesLeft);
+    return true;
   }
 
   private removeTerrain(roomId: string, cell: Cell) {

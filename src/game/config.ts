@@ -31,6 +31,9 @@ export const TUNING = {
   goblin: { hp: 3, speed: 130, retreatSpeed: 110, size: 24 },
   /** Fires a 3-shot fan (core/forestCast). */
   seedSpitter: { hp: 4, radius: 17, fireDelayMs: 2000, shotSpeed: 200 },
+  /** Slow stalker; `lungeSpeed` while lunging (range and timing live in core/ghoul). */
+  ghoul: { hp: 4, speed: 55, lungeSpeed: 330, size: 28 },
+  crystalTurret: { hp: 4, size: 34, fireDelayMs: 1700, shotSpeed: 220 },
 };
 
 /** Floor, wall, door and terrain colours come from each floor's theme (core/themes). */
@@ -70,4 +73,9 @@ export const COLORS = {
   goblinEdge: 0x4a3a1c,
   seedSpitter: 0xc0584a,
   seedSpitterEdge: 0xf0d27a,
+  ghoul: 0x9aa89c,
+  ghoulEye: 0xe8f06a,
+  crystalTurret: 0x5fc8d8,
+  crystalTurretEdge: 0xd8f6ff,
+  crystalShot: 0x9ff0ff,
 };

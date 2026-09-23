@@ -321,7 +321,7 @@ export function generateRoom(spec: RoomSpec, floorIndex: number, rng: Rng): Room
     if (spec.kind === 'normal') pickups.push(...rollClearDrop(built.tiles, doors, built.enemies, pickups, rng));
     return { id: spec.id, width, height, tiles: built.tiles, doors, enemies: built.enemies, pickups, summonPoints: [], archetype: built.archetype };
   }
-  // Boss arenas (and, until they get archetypes, item rooms) are built here; start rooms stay empty.
+  // Normal and item rooms come from archetypes above; boss arenas are built here, start rooms stay empty.
   const isDoor = (c: Cell) => doors.some((d) => d.cell.x === c.x && d.cell.y === c.y);
   let tiles = emptyTiles(width, height);
   const terrain = spec.kind === 'boss' ? BOSS_ARENAS[bossForFloor(floorIndex)] : undefined;
@@ -368,15 +368,7 @@ export function generateRoom(spec: RoomSpec, floorIndex: number, rng: Rng): Room
       ),
     );
   }
-  const pickups: PickupSpawn[] = [];
-  if (spec.kind === 'item') {
-    const centre = { x: (width - 1) / 2, y: (height - 1) / 2 };
-    const spot = reachableCells(tiles, doors).sort(
-      (a, b) => Math.hypot(a.x - centre.x, a.y - centre.y) - Math.hypot(b.x - centre.x, b.y - centre.y),
-    )[0];
-    pickups.push({ type: 'passive', cell: spot, passive: rng.pick(PASSIVE_POOL) });
-  }
-  return { id: spec.id, width, height, tiles, doors, enemies, pickups, summonPoints };
+  return { id: spec.id, width, height, tiles, doors, enemies, pickups: [], summonPoints };
 }
 
 /** Pickup odds; all numbers are placeholders for playtest tuning. */

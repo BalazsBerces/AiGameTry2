@@ -469,6 +469,30 @@ describe('every archetype', () => {
   });
 });
 
+describe('item room showcases', () => {
+  it('frame a lone passive in the middle of the room, in a style of the floor’s own', () => {
+    const styles: string[][] = [[], [], []];
+    for (const floorIndex of [0, 1, 2]) {
+      for (const doors of EVERY_DOOR_SET) {
+        for (let seed = 0; seed < 10; seed++) {
+          const r = generateRoom({ id: '0,0', kind: 'item', doors: [...doors] }, floorIndex, createRng(seed));
+          const where = `floor ${floorIndex + 1} seed ${seed} doors ${doors}`;
+          expect(r.archetype, where).toBeDefined();
+          styles[floorIndex].push(r.archetype!);
+          expect(r.enemies, where).toEqual([]);
+          expect(r.pickups.map((p) => p.type), where).toEqual(['passive']);
+          expect(r.pickups[0].cell, where).toEqual({ x: 6, y: 3 });
+          expect(reachable(r, r.doors[0].cell).has('6,3'), where).toBe(true);
+          expect(count(r, 'floor'), where).toBeLessThan(13 * 7);
+        }
+      }
+    }
+    const [f1, f2, f3] = styles.map((s) => new Set(s));
+    for (const id of f1) expect(f2.has(id) || f3.has(id)).toBe(false);
+    for (const id of f2) expect(f3.has(id)).toBe(false);
+  });
+});
+
 describe('generateRoom', () => {
   it('builds a 13x7 normal room with a door on each connected side', () => {
     const room = generateRoom({ id: '0,0', kind: 'normal', doors: ['left', 'up'] }, 0, createRng(1));

@@ -1,6 +1,6 @@
 import type { Cell, Direction, RoomKind } from './floorGenerator';
 import type { Rng } from './rng';
-import { WORM_LENGTH, type Door, type EnemySpawn, type PickupSpawn, type Tile } from './roomGenerator';
+import { PASSIVE_POOL, WORM_LENGTH, type Door, type EnemySpawn, type PickupSpawn, type Tile } from './roomGenerator';
 import type { MirrorAxis, Symmetry } from './roomValidator';
 
 /** What an archetype gets to draw its idea into. */
@@ -544,6 +544,60 @@ const minefield: Archetype = {
   },
 };
 
+/** The item on show, in the middle of the room where every showcase frames it. */
+const showpiece = (width: number, height: number, rng: Rng): PickupSpawn => ({
+  type: 'passive',
+  cell: { x: (width - 1) / 2, y: (height - 1) / 2 },
+  passive: rng.pick(PASSIVE_POOL),
+});
+
+/** Floor 1 item room: the item on an altar, ringed by pillars. */
+const altar: Archetype = {
+  id: 'altar',
+  floor: 0,
+  kind: 'item',
+  fits: fitsAll,
+  build({ width, height, rng }) {
+    const axes: MirrorAxis[] = ['vertical', 'horizontal'];
+    const canvas = new Canvas(width, height, axes);
+    canvas.paint(rng.pick([[{ x: 4, y: 2 }], [{ x: 5, y: 2 }], [{ x: 4, y: 1 }, { x: 5, y: 2 }], [{ x: 3, y: 1 }, { x: 4, y: 2 }]]), 'obstacle');
+    if (rng.next() < 0.5) canvas.paint([{ x: 3, y: 3 }], 'obstacle');
+    return { tiles: canvas.tiles, enemies: [], pickups: [showpiece(width, height, rng)], symmetry: { axes } };
+  },
+};
+
+/** Floor 2 item room: the item on an island shrine in a ring of holes, reached by two bridges. */
+const shrine: Archetype = {
+  id: 'shrine',
+  floor: 1,
+  kind: 'item',
+  fits: fitsAll,
+  build({ width, height, rng }) {
+    const axes: MirrorAxis[] = ['vertical', 'horizontal'];
+    const canvas = new Canvas(width, height, axes);
+    const half = rng.int(2, 3);
+    canvas.paint(Array.from({ length: half + 1 }, (_, i) => ({ x: 6 - i, y: 2 })).concat({ x: 6 - half, y: 3 }), 'hole');
+    canvas.paint([rng.next() < 0.5 ? { x: 6, y: 2 } : { x: 6 - half, y: 3 }], 'floor');
+    if (rng.next() < 0.5) canvas.paint([{ x: 1, y: 1 }], 'obstacle');
+    return { tiles: canvas.tiles, enemies: [], pickups: [showpiece(width, height, rng)], symmetry: { axes } };
+  },
+};
+
+/** Floor 3 item room: a reliquary nave, columns lining the walls down to the item. */
+const reliquary: Archetype = {
+  id: 'reliquary',
+  floor: 2,
+  kind: 'item',
+  fits: fitsAll,
+  build({ width, height, rng }) {
+    const axes: MirrorAxis[] = ['vertical', 'horizontal'];
+    const canvas = new Canvas(width, height, axes);
+    const cols = rng.pick([[2, 4], [3, 5], [1, 3, 5], [2]]);
+    canvas.paint(cols.map((x) => ({ x, y: 1 })), rng.next() < 0.5 ? 'rock' : 'obstacle');
+    return { tiles: canvas.tiles, enemies: [], pickups: [showpiece(width, height, rng)], symmetry: { axes } };
+  },
+};
+
 function shuffled<T>(items: readonly T[], rng: Rng): T[] {
   const out = [...items];
   for (let i = out.length - 1; i > 0; i--) {
@@ -571,6 +625,9 @@ export const ARCHETYPES: readonly Archetype[] = [
   nest,
   crossfire,
   minefield,
+  altar,
+  shrine,
+  reliquary,
 ];
 
 export const archetypeById = (id: string) => ARCHETYPES.find((a) => a.id === id);

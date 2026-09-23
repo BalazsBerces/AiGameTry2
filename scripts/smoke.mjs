@@ -640,9 +640,11 @@ if (scenario === 'chest-passive') {
 
 if (scenario === 'rooms') {
   // Enters every normal and item room on one floor (SMOKE_FLOOR, default 0) and screenshots it with its enemies.
+  // SMOKE_KINDS narrows it, e.g. `item`.
   const floor = Number(process.env.SMOKE_FLOOR ?? 0);
+  const kinds = JSON.stringify((process.env.SMOKE_KINDS ?? 'normal,item').split(','));
   const ids = await page.evaluate(`[...${scene()}.world.rooms.values()]
-    .filter((r) => r.floorIndex === ${floor} && (r.floorRoom.kind === 'normal' || r.floorRoom.kind === 'item'))
+    .filter((r) => r.floorIndex === ${floor} && ${kinds}.includes(r.floorRoom.kind))
     .map((r) => r.floorRoom.id)`);
   for (const id of ids) {
     const info = await page.evaluate(`(() => { const s = ${scene()};

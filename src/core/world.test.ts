@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { validateRoom } from './roomValidator';
 import { createWorld, detonateBomb, hitTile, placeBomb, shownPickups, touchPickup } from './world';
 
 const firstNormalRoom = (world: ReturnType<typeof createWorld>) =>
@@ -124,5 +125,23 @@ describe('champions', () => {
       expect(crowned(worlds[seed]).length).toBeGreaterThan(0);
       expect(crowned(createWorld(seed))).toEqual(crowned(worlds[seed]));
     }
+  });
+});
+
+describe('forest cast', () => {
+  it('fills floor 1 rooms with goblins and seed-spitters only, and valid rooms', () => {
+    const seen = new Set<string>();
+    for (let seed = 0; seed < 60; seed++) {
+      const world = createWorld(seed);
+      for (const room of world.rooms.values()) {
+        if (room.floorIndex !== 0 || room.floorRoom.kind === 'boss') continue;
+        const { layout } = room;
+        for (const e of layout.enemies) seen.add(e.type);
+        // Symmetry is checked per archetype in the room generator sweeps; here, everything else.
+        const violations = validateRoom(layout, { axes: [] }).filter((v) => v.rule !== 'asymmetric');
+        expect(violations, `seed ${seed} room ${layout.id}`).toEqual([]);
+      }
+    }
+    expect([...seen].sort()).toEqual(['goblin', 'seedSpitter']);
   });
 });

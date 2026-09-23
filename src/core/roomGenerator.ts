@@ -106,7 +106,8 @@ export type EnemyType =
   | 'seedSpitter'
   | 'ghoul'
   | 'crystalTurret'
-  | 'gargoyle';
+  | 'gargoyle'
+  | 'boar';
 
 export interface EnemySpawn {
   type: EnemyType;

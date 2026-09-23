@@ -42,6 +42,10 @@ export const TUNING = {
   hive: { radius: 40, hp: 60, spiralDelayMs: 150, spiralStep: 0.32, shotSpeed: 170, summonEveryMs: 5000, maxSummoned: 3 },
   /** A woken crusher shudders for `windupMs`, then slides `msPerTile` per tile; it can wake again `cooldownMs` after settling. */
   crusher: { windupMs: 220, msPerTile: 60, cooldownMs: 800, enemyDamage: 8, playerDamage: 2 },
+  /** Trots between charges at `speed`, dashes at `dashSpeed`; charge timing and stun live in core/boar. */
+  boar: { hp: 4, speed: 60, dashSpeed: 420, width: 34, height: 24 },
+  /** The mark over a stunned enemy's head, spinning `spinDegPerSec`. */
+  stunMark: { radius: 7, spinDegPerSec: 360 },
 };
 
 /** Floor, wall, door and terrain colours come from each floor's theme (core/themes). */
@@ -91,4 +95,8 @@ export const COLORS = {
   treantEyes: 0xf2d04a,
   rootTelegraph: 0xc89a5a,
   root: 0x7a4a22,
+  boar: 0x7a5236,
+  boarTusk: 0xeee2c4,
+  boarWindUp: 0xff7a3a,
+  stunMark: 0xffe066,
 };

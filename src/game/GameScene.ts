@@ -37,6 +37,9 @@ import { createTreant } from './entities/treant';
 import { doorCorridor, mapCellAt, roomBlock, tileAt, tileCenter } from './geometry';
 import { createGoblin } from './entities/goblin';
 import { createSeedSpitter } from './entities/seedSpitter';
+import { createBoar } from './entities/boar';
+import { isStunned } from '../core/stun';
+import { smashRock } from '../core/world';
 
 type Keys = Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
 type PhysicsRect = Phaser.GameObjects.Rectangle & { body: Phaser.Physics.Arcade.Body };
@@ -56,6 +59,7 @@ const ENEMY_FACTORIES: Record<EnemyType, (scene: Phaser.Scene, spawn: EnemySpawn
   crystalTurret: (scene, s, at) => createCrystalTurret(scene, at(s.cell).x, at(s.cell).y),
   gargoyle: (scene, s, at) => createGargoyle(scene, at(s.cell).x, at(s.cell).y),
   treantBoss: (scene, s, at) => createTreant(scene, at(s.cell).x, at(s.cell).y, s.cell),
+  boar: (scene, s, at) => createBoar(scene, at(s.cell).x, at(s.cell).y, !!s.champion),
 };
 
 type Shape = Phaser.GameObjects.Shape;
@@ -127,6 +131,8 @@ export class GameScene extends Phaser.Scene {
   private enemiesWakeAt = 0;
   /** Every room's crushers with their drawn blocks; `readyAt` is when one may wake again. */
   private crushers: TrackedCrusher[] = [];
+  /** The star drawn over each currently stunned enemy. */
+  private stunMarks = new Map<Enemy, Shape>();
 
   constructor() {
     super('game');
@@ -149,6 +155,7 @@ export class GameScene extends Phaser.Scene {
     this.thorns = this.physics.add.staticGroup();
     this.terrain = new Map();
     this.crushers = [];
+    this.stunMarks = new Map();
     for (const room of this.world.rooms.values()) this.drawRoom(room);
     for (const room of this.world.rooms.values()) this.trackCrushers(room);
 
@@ -307,13 +314,38 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateEnemies(time: number) {
+    this.updateStunMarks(time);
     if (this.enemies.length === 0) return;
     if (time < this.enemiesWakeAt) {
       for (const e of this.enemies) for (const p of e.parts) p.body.setVelocity(0, 0);
       return;
     }
     const ctx = this.enemyContext(time);
-    for (const e of this.enemies) e.update(ctx);
+    for (const e of this.enemies) {
+      // The shared stun (core/stun): a stunned enemy of any kind stands still and does nothing.
+      if (isStunned(e, time)) for (const p of e.parts) p.body.setVelocity(0, 0);
+      else e.update(ctx);
+    }
+  }
+
+  /** A spinning star over each stunned enemy's head; gone once the stun wears off or the enemy dies. */
+  private updateStunMarks(time: number) {
+    for (const [enemy, mark] of this.stunMarks) {
+      if (this.enemies.includes(enemy) && isStunned(enemy, time) && enemy.parts[0]?.active) continue;
+      mark.destroy();
+      this.stunMarks.delete(enemy);
+    }
+    const { radius, spinDegPerSec } = TUNING.stunMark;
+    for (const enemy of this.enemies) {
+      const head = enemy.parts[0];
+      if (!head?.active || !isStunned(enemy, time)) continue;
+      let mark = this.stunMarks.get(enemy);
+      if (!mark) {
+        mark = this.add.star(head.x, head.y, 4, radius / 2, radius, COLORS.stunMark).setDepth(DEPTH.player + 1);
+        this.stunMarks.set(enemy, mark);
+      }
+      mark.setPosition(head.x, head.y - head.displayHeight / 2 - radius).setAngle((time / 1000) * spinDegPerSec);
+    }
   }
 
   private enemyContext(time: number): EnemyContext {
@@ -347,6 +379,9 @@ export class GameScene extends Phaser.Scene {
       },
       tiles: room.layout.tiles,
       hurtPlayer: () => this.hurtPlayer(),
+      smashRock: (cell: Cell) => {
+        if (smashRock(this.world, room.floorRoom.id, cell)) this.removeTerrain(room.floorRoom.id, cell);
+      },
     };
   }
 

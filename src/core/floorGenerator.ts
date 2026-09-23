@@ -23,7 +23,7 @@ export interface FloorRoom {
   kind: RoomKind;
   /** Top-left map cell of the room. */
   cell: Cell;
-  /** Every map cell the room covers (one for most rooms, two for wide or tall ones, four for the 2x2 boss room). */
+  /** Every map cell the room covers (one for most rooms, two for wide or tall ones, four for big rooms and the boss room). */
   cells: Cell[];
   /** The block of map cells the room spans. */
   shape: RoomShape;
@@ -41,7 +41,7 @@ export const SHAPE_CELLS: Record<RoomShape, readonly Cell[]> = {
 };
 
 /** Normal-room shapes the floor generator grows rooms into; 1-3 of them per floor. */
-export const GROWN_SHAPES: readonly RoomShape[] = ['2x1', '1x2'];
+export const GROWN_SHAPES: readonly RoomShape[] = ['2x1', '1x2', '2x2'];
 export const SHAPED_ROOMS = { min: 1, max: 3 };
 
 export interface FloorLayout {
@@ -286,7 +286,7 @@ function assignSpecialRooms(req: FloorRequest, growth: Growth): FloorLayout | un
 }
 
 /**
- * Grows 1-3 normal rooms into wide or tall blocks. A room only takes free cells that touch
+ * Grows 1-3 normal rooms into wide, tall or big blocks. A room only takes free cells that touch
  * nothing but itself (and never the exit), so the layout stays a tree with no accidental
  * adjacency and every existing door keeps its cell. The next floor must still fit beyond the exit.
  */

@@ -118,7 +118,7 @@ describe('generateFloor layout', () => {
     }
   });
 
-  it('has 1-3 shaped normal rooms on every floor, each a wide 2x1 or tall 1x2 block', () => {
+  it('has 1-3 shaped normal rooms on every floor, each a wide 2x1, tall 1x2 or big 2x2 block', () => {
     const seen = new Set<string>();
     for (const seed of SWEEP) {
       for (const [i, floor] of chain(seed).entries()) {
@@ -129,17 +129,21 @@ describe('generateFloor layout', () => {
           expect(r.kind, `seed ${seed} ${r.id}`).toBe('normal');
           const xs = r.cells.map((c) => c.x);
           const ys = r.cells.map((c) => c.y);
-          const span = `${Math.max(...xs) - Math.min(...xs) + 1}x${Math.max(...ys) - Math.min(...ys) + 1}`;
-          expect(['2x1', '1x2'], `seed ${seed} ${r.id}`).toContain(span);
-          expect(r.cells, `seed ${seed} ${r.id}`).toHaveLength(2);
-          expect(r.shape, `seed ${seed} ${r.id}`).toBe(span);
+          const cols = Math.max(...xs) - Math.min(...xs) + 1;
+          const rows = Math.max(...ys) - Math.min(...ys) + 1;
+          const span = `${cols}x${rows}`;
+          expect(new Set(r.cells.map((c) => `${c.x},${c.y}`)).size, `seed ${seed} ${r.id}`).toBe(r.cells.length);
           expect(r.cell).toEqual({ x: Math.min(...xs), y: Math.min(...ys) });
+          expect(['2x1', '1x2', '2x2'], `seed ${seed} ${r.id}`).toContain(span);
+          // A full block: every cell of the span is the room's.
+          expect(r.cells, `seed ${seed} ${r.id}`).toHaveLength(cols * rows);
+          expect(r.shape, `seed ${seed} ${r.id}`).toBe(span);
           seen.add(span);
         }
         for (const r of floor.rooms.filter((room) => room.kind !== 'boss' && room.cells.length === 1)) expect(r.shape).toBe('1x1');
       }
     }
-    expect([...seen].sort()).toEqual(['1x2', '2x1']);
+    expect([...seen].sort()).toEqual(['1x2', '2x1', '2x2']);
   });
 
   it('lines doors up: each door opens into the cell holding the neighbour’s facing door', () => {

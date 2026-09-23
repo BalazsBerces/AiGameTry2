@@ -769,6 +769,49 @@ const descent = (floor: number): Archetype => ({
   },
 });
 
+/**
+ * Big room, every floor: an arena for a set-piece battle. A pit (or a stone dais) fills the
+ * middle, pillars ring it, a pack of the floor's walkers circles the ring and its turrets hold
+ * the corners. Painted as one quarter mirrored into all four; the door columns (5, 20) and rows
+ * (2, 11) stay clear, so it fits every door set.
+ */
+const arena = (floor: number): Archetype => ({
+  id: `arena${floor + 1}`,
+  floor,
+  kind: 'normal',
+  shapes: ['2x2'],
+  fits: fitsAll,
+  build({ width, height, rng }) {
+    const axes: MirrorAxis[] = ['vertical', 'horizontal'];
+    const canvas = new Canvas(width, height, axes);
+    // The centre piece, as its top-left quarter around the middle (12..13, 6..7).
+    const centre = rng.pick([
+      [{ x: 11, y: 6 }, { x: 12, y: 6 }, { x: 12, y: 5 }],
+      [{ x: 10, y: 6 }, { x: 11, y: 6 }, { x: 12, y: 6 }, { x: 11, y: 5 }, { x: 12, y: 5 }],
+      [{ x: 12, y: 6 }],
+    ]);
+    canvas.paint(centre, rng.next() < 0.7 ? 'hole' : 'obstacle');
+    const pillars = rng.pick([[{ x: 7, y: 3 }], [{ x: 6, y: 2 }, { x: 6, y: 4 }], [{ x: 8, y: 2 }], [{ x: 7, y: 3 }, { x: 10, y: 2 }]]);
+    canvas.paint(pillars, rng.next() < 0.5 ? 'rock' : 'obstacle');
+    const blocked = new Set([...centre, ...pillars].map((c) => `${c.x},${c.y}`));
+    const spots = shuffled([{ x: 9, y: 4 }, { x: 4, y: 5 }, { x: 8, y: 5 }, { x: 9, y: 1 }], rng).filter((c) => !blocked.has(`${c.x},${c.y}`));
+    const pack = canvas.images(spots[0]);
+    // A second wave on a diagonal pair, sometimes.
+    if (rng.next() < 0.5) {
+      const second = canvas.images(spots[1]);
+      pack.push(second[0], second[second.length - 1]);
+    }
+    const corners = canvas.images(rng.pick([{ x: 1, y: 0 }, { x: 2, y: 1 }, { x: 0, y: 5 }]));
+    const turrets = rng.next() < 0.5 ? corners : [corners[0], corners[corners.length - 1]];
+    return {
+      tiles: canvas.tiles,
+      enemies: [...turretsOf(floor, turrets), ...walkersOf(floor, pack)],
+      pickups: [],
+      symmetry: { axes },
+    };
+  },
+});
+
 function shuffled<T>(items: readonly T[], rng: Rng): T[] {
   const out = [...items];
   for (let i = out.length - 1; i > 0; i--) {
@@ -802,6 +845,7 @@ export const ARCHETYPES: readonly Archetype[] = [
   thornMaze,
   crusherCorridor,
   ...[0, 1, 2].flatMap((floor) => [gauntlet(floor), descent(floor)]),
+  ...[0, 1, 2].map(arena),
 ];
 
 export const archetypeById = (id: string) => ARCHETYPES.find((a) => a.id === id);

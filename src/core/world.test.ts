@@ -103,3 +103,16 @@ describe('shownPickups', () => {
     expect(shownPickups(world, id).map((p) => p.type).sort()).toEqual(['heart', 'key', 'openChest']);
   });
 });
+
+describe('the caves cast', () => {
+  it('fills floor 2 rooms with ghouls, crystal turrets and worms only', () => {
+    const types = new Set<string>();
+    for (let seed = 0; seed < 40; seed++) {
+      for (const room of createWorld(seed).rooms.values()) {
+        if (room.floorIndex !== 1 || room.floorRoom.kind === 'boss') continue;
+        for (const e of room.layout.enemies) types.add(e.type);
+      }
+    }
+    expect([...types].sort()).toEqual(['crystalTurret', 'ghoul', 'worm']);
+  });
+});

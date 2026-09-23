@@ -72,8 +72,8 @@ const THEMES: readonly FloorTheme[] = [
       hole: { name: 'chasm', shape: 'block', color: 0x020205, stroke: 0x1e1e2c, inset: 0 },
     },
     boss: 'hiveBoss',
-    walker: 'zombie',
-    turret: 'turret',
+    walker: 'ghoul',
+    turret: 'crystalTurret',
   },
   {
     name: 'Dungeon',

@@ -18,8 +18,8 @@ export interface EnemyContext {
   isWalkable(tile: Cell): boolean;
   /** Obstacles block sight; holes do not. */
   canSeePlayer(from: { x: number; y: number }): boolean;
-  /** Homing enemy shots steer toward the player. */
-  fireEnemyShot(x: number, y: number, vx: number, vy: number, homing?: boolean): void;
+  /** Homing enemy shots steer toward the player; `bounces` is how often it ricochets off stone. */
+  fireEnemyShot(x: number, y: number, vx: number, vy: number, homing?: boolean, bounces?: number): void;
   /** A sword arc from `from` in direction `aim`; hurts the player if they're inside it. */
   swingAtPlayer(from: { x: number; y: number }, aim: Direction): void;
   /** World position of the room's centre. */

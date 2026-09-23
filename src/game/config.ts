@@ -25,6 +25,9 @@ export const TUNING = {
   /** `follow`: how hard it closes on its mirrored target (1/s); speed capped relative to the player's. */
   shadow: { hp: 45, follow: 10, maxSpeedFactor: 1.2 },
   hive: { radius: 40, hp: 60, spiralDelayMs: 150, spiralStep: 0.32, shotSpeed: 170, summonEveryMs: 5000, maxSummoned: 3 },
+  /** Slow stalker; `lungeSpeed` while lunging (range and timing live in core/ghoul). */
+  ghoul: { hp: 4, speed: 55, lungeSpeed: 330, size: 28 },
+  crystalTurret: { hp: 4, size: 34, fireDelayMs: 1700, shotSpeed: 220 },
 };
 
 /** Floor, wall, door and terrain colours come from each floor's theme (core/themes). */
@@ -59,4 +62,9 @@ export const COLORS = {
   minimapCurrent: 0xf0ecf5,
   minimapItem: 0xf2c94c,
   minimapBoss: 0xd8323c,
+  ghoul: 0x9aa89c,
+  ghoulEye: 0xe8f06a,
+  crystalTurret: 0x5fc8d8,
+  crystalTurretEdge: 0xd8f6ff,
+  crystalShot: 0x9ff0ff,
 };

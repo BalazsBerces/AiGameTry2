@@ -37,3 +37,23 @@ describe('tile table', () => {
     expect(those(bombDestructible)).toEqual(['obstacle', 'rock']);
   });
 });
+
+describe('crusher tile', () => {
+  it('is a solid block: not walked, flown or seen through, and it stops shots', () => {
+    expect(isWalkable('crusher')).toBe(false);
+    expect(flyersPass('crusher')).toBe(false);
+    expect(blocksSight('crusher')).toBe(true);
+    expect(blocksShots('crusher')).toBe(true);
+  });
+
+  it('only ghosts drift through it', () => {
+    expect(phasingPasses('crusher')).toBe(true);
+  });
+
+  it('cannot be shot or bombed away, and hurts by sliding rather than on touch', () => {
+    expect(hitsToBreak('crusher')).toBeUndefined();
+    expect(bombDestructible('crusher')).toBe(false);
+    expect(hurtsOnTouch('crusher')).toBe(false);
+    expect(reflectsShots('crusher')).toBe(false);
+  });
+});

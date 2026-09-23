@@ -6,6 +6,7 @@ import type { Passive } from './weaponModel';
 import type { Rng } from './rng';
 import { themeForFloor } from './themes';
 import { isWalkable } from './tiles';
+import type { Crusher } from './crusher';
 
 export const ROOM_WIDTH = 13;
 export const ROOM_HEIGHT = 7;
@@ -15,7 +16,7 @@ export const BOSS_HEIGHT = 14;
 export const CELL_TILES = { w: ROOM_WIDTH + 2, h: ROOM_HEIGHT + 2 };
 
 /** `obstacle` is stone; `rock` is the same but breaks after a few player shots. Behaviour lives in `TILES`. */
-export type Tile = 'floor' | 'obstacle' | 'rock' | 'hole';
+export type Tile = 'floor' | 'obstacle' | 'rock' | 'hole' | 'crusher';
 
 export interface DoorSpec {
   side: Direction;
@@ -62,6 +63,8 @@ export interface RoomLayout {
   summonPoints: Cell[];
   /** The idea the room was built from, if any. */
   archetype?: string;
+  /** Crusher blocks and their axes; each stands on a `crusher` tile, which moves with it. */
+  crushers?: Crusher[];
 }
 
 export type PickupType = 'heart' | 'key' | 'bomb' | 'chest' | 'lockedChest' | 'passive';
@@ -310,7 +313,8 @@ export function generateRoom(spec: RoomSpec, floorIndex: number, rng: Rng): Room
     const built = buildFromArchetype(spec, doors, floorIndex, rng);
     const pickups = built.pickups.map((p) => placeLoot(p, rng));
     if (spec.kind === 'normal') pickups.push(...rollClearDrop(built.tiles, doors, built.enemies, pickups, rng));
-    return { id: spec.id, width, height, tiles: built.tiles, doors, enemies: built.enemies, pickups, summonPoints: [], archetype: built.archetype };
+    const crushers = 'crushers' in built ? built.crushers : undefined;
+    return { id: spec.id, width, height, tiles: built.tiles, doors, enemies: built.enemies, pickups, summonPoints: [], archetype: built.archetype, ...(crushers ? { crushers } : {}) };
   }
   // Normal and item rooms come from archetypes above; boss arenas are built here, start rooms stay empty.
   const isDoor = (c: Cell) => doors.some((d) => d.cell.x === c.x && d.cell.y === c.y);

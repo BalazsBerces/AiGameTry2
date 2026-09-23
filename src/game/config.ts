@@ -25,6 +25,8 @@ export const TUNING = {
   /** `follow`: how hard it closes on its mirrored target (1/s); speed capped relative to the player's. */
   shadow: { hp: 45, follow: 10, maxSpeedFactor: 1.2 },
   hive: { radius: 40, hp: 60, spiralDelayMs: 150, spiralStep: 0.32, shotSpeed: 170, summonEveryMs: 5000, maxSummoned: 3 },
+  /** A woken crusher shudders for `windupMs`, then slides `msPerTile` per tile; it can wake again `cooldownMs` after settling. */
+  crusher: { windupMs: 220, msPerTile: 60, cooldownMs: 800, enemyDamage: 8, playerDamage: 2 },
 };
 
 /** Floor, wall, door and terrain colours come from each floor's theme (core/themes). */

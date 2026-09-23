@@ -2,6 +2,7 @@ import type { Cell, Direction, RoomKind } from './floorGenerator';
 import type { Rng } from './rng';
 import { PASSIVE_POOL, WORM_LENGTH, type Door, type EnemySpawn, type PickupSpawn, type Tile } from './roomGenerator';
 import type { MirrorAxis, Symmetry } from './roomValidator';
+import type { Crusher } from './crusher';
 
 /** What an archetype gets to draw its idea into. */
 export interface ArchetypeContext {
@@ -17,6 +18,8 @@ export interface ArchetypeBuild {
   /** Loot the idea places itself (on top of the room-clear drop). */
   pickups: PickupSpawn[];
   symmetry: Symmetry;
+  /** Crushers the idea sets, each on a `crusher` tile. */
+  crushers?: Crusher[];
 }
 
 /** One room idea: a terrain shape plus the enemies and loot that make it read. */
@@ -598,6 +601,40 @@ const reliquary: Archetype = {
   },
 };
 
+/**
+ * Floor 3: crushers hang in alcoves along the top and bottom walls, each facing a twin across
+ * the room, ready to slam down (or up) across the middle when the player steps into their
+ * column. Zombies wait in the crushers' paths, to be lured under them. Crusher columns stay
+ * clear of the middle column and the side door rows, so no lane ends on a door approach.
+ */
+const crusherCorridor: Archetype = {
+  id: 'crusherCorridor',
+  floor: 2,
+  kind: 'normal',
+  fits: fitsAll,
+  build({ width, height, rng }) {
+    const axes: MirrorAxis[] = ['vertical', 'horizontal'];
+    const canvas = new Canvas(width, height, axes);
+    const cols = rng.pick([[3], [4], [2, 4], [3, 5]]);
+    if (rng.next() < 0.5) {
+      const flanks = cols.flatMap((x) => [x - 1, x + 1]).filter((x) => x >= 1 && x <= 5 && !cols.includes(x));
+      canvas.paint(flanks.map((x) => ({ x, y: 1 })), 'obstacle');
+    }
+    const crusherCells = cols.flatMap((x) => canvas.images({ x, y: 1 }));
+    canvas.paint(crusherCells, 'crusher');
+    const lured = rng.pick(cols);
+    const enemies = zombies([{ x: lured, y: 3 }, { x: width - 1 - lured, y: 3 }]);
+    if (rng.next() < 0.4) enemies.push(...[{ x: 0, y: 0 }, { x: width - 1, y: height - 1 }].map((cell): EnemySpawn => ({ type: 'turret', cell })));
+    return {
+      tiles: canvas.tiles,
+      enemies,
+      pickups: [],
+      symmetry: { axes },
+      crushers: crusherCells.map((cell): Crusher => ({ cell, axis: 'vertical' })),
+    };
+  },
+};
+
 function shuffled<T>(items: readonly T[], rng: Rng): T[] {
   const out = [...items];
   for (let i = out.length - 1; i > 0; i--) {
@@ -628,6 +665,7 @@ export const ARCHETYPES: readonly Archetype[] = [
   altar,
   shrine,
   reliquary,
+  crusherCorridor,
 ];
 
 export const archetypeById = (id: string) => ARCHETYPES.find((a) => a.id === id);

@@ -3,6 +3,7 @@ import { ENEMY_CLASS } from './enemies';
 import { floodFill, lineOfSight } from './grid';
 import type { Door, RoomLayout, Tile } from './roomGenerator';
 import { blocksSight, isWalkable } from './tiles';
+import { AXIS_DIRECTIONS, settleCrusher, slideCrusher, type Crusher } from './crusher';
 
 export type MirrorAxis = 'vertical' | 'horizontal';
 
@@ -20,14 +21,15 @@ export type ViolationRule =
   | 'enemy-near-door'
   | 'overlap'
   | 'spawn-off-floor'
-  | 'asymmetric';
+  | 'asymmetric'
+  | 'crusher-lane';
 
 export interface Violation {
   rule: ViolationRule;
   cell?: Cell;
 }
 
-export type RoomToValidate = Pick<RoomLayout, 'tiles' | 'doors' | 'enemies' | 'pickups'>;
+export type RoomToValidate = Pick<RoomLayout, 'tiles' | 'doors' | 'enemies' | 'pickups'> & { crushers?: readonly Crusher[] };
 
 const key = (c: Cell) => `${c.x},${c.y}`;
 const isWalkableAt = (tiles: Tile[][], c: Cell) => {
@@ -86,7 +88,26 @@ export function validateRoom(room: RoomToValidate, symmetry: Symmetry): Violatio
   for (const c of spawnCells) if (!isWalkableAt(tiles, c)) violations.push({ rule: 'spawn-off-floor', cell: c });
 
   if (!isSymmetric(tiles, symmetry)) violations.push({ rule: 'asymmetric' });
+  for (const c of room.crushers ?? []) if (!crusherLaneHolds(room, c)) violations.push({ rule: 'crusher-lane', cell: c.cell });
   return violations;
+}
+
+/**
+ * Crusher lanes: wherever the crusher settles along its axis (the others left where they
+ * start), every door stays reachable with its approach open and every walker can be reached.
+ */
+function crusherLaneHolds(room: RoomToValidate, crusher: Crusher): boolean {
+  return AXIS_DIRECTIONS[crusher.axis].every((dir) => {
+    const { stop } = slideCrusher(room.tiles, crusher.cell, dir);
+    const tiles = room.tiles.map((row) => [...row]);
+    settleCrusher(tiles, { ...crusher }, stop);
+    const { doors } = room;
+    const reachable = doors.length ? floodFill(tiles, doors[0].cell, isWalkable) : new Set<string>();
+    if (doors.some((d) => !reachable.has(key(d.cell)) || doorApproach(d).some((c) => !isWalkableAt(tiles, c)))) return false;
+    return room.enemies
+      .filter((e) => ENEMY_CLASS[e.type] === 'walker')
+      .every((e) => [e.cell, ...(e.tail ?? [])].every((c) => reachable.has(key(c))));
+  });
 }
 
 /** Terrain mirrors across every declared axis; feature tiles (and their mirror images) are exempt. */

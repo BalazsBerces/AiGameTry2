@@ -61,6 +61,17 @@ export const TILES: Record<Tile, TileProps> = {
     reflectsShots: false,
     bombDestructible: false,
   },
+  /** A heavy block that slides along its axis at the player and settles as stone (see `crusher`). */
+  crusher: {
+    walkable: false,
+    blocksShots: true,
+    blocksSight: true,
+    flyersPass: false,
+    phasingPasses: true,
+    hurtsOnTouch: false,
+    reflectsShots: false,
+    bombDestructible: false,
+  },
 };
 
 export const isWalkable = (tile: Tile) => TILES[tile].walkable;

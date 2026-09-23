@@ -1,5 +1,6 @@
 import type Phaser from 'phaser';
 import type { Cell, Direction } from '../../core/floorGenerator';
+import type { Tile } from '../../core/roomGenerator';
 import type { Weapon } from '../../core/weaponModel';
 import { COLORS, TUNING } from '../config';
 
@@ -25,10 +26,10 @@ export interface EnemyContext {
   swingAtPlayer(from: { x: number; y: number }, aim: Direction): void;
   /** World position of the room's centre. */
   roomCenter: { x: number; y: number };
-  /** Cells the room generator validated for mid-fight summons. */
-  summonPoints: Cell[];
-  /** Brings in a new zombie at a summon point; returns it so the summoner can track it. */
-  summonZombie(cell: Cell): Enemy;
+  /** The current room's tiles, for enemies that plan attacks over the terrain. */
+  tiles: Tile[][];
+  /** Hurts the player directly (for ground attacks such as the Treant's roots); invincibility frames apply. */
+  hurtPlayer(): void;
 }
 
 export interface Enemy {

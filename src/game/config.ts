@@ -42,6 +42,8 @@ export const TUNING = {
   hive: { radius: 40, hp: 60, spiralDelayMs: 150, spiralStep: 0.32, shotSpeed: 170, summonEveryMs: 5000, maxSummoned: 3 },
   /** A woken crusher shudders for `windupMs`, then slides `msPerTile` per tile; it can wake again `cooldownMs` after settling. */
   crusher: { windupMs: 220, msPerTile: 60, cooldownMs: 800, enemyDamage: 8, playerDamage: 2 },
+  /** Slow and sturdy; its shield's arc and turn rate live in core/shield. `clinkMs`: the blocked-hit spark. */
+  knight: { hp: 6, speed: 70, size: 28, clinkMs: 160 },
 };
 
 /** Floor, wall, door and terrain colours come from each floor's theme (core/themes). */
@@ -91,4 +93,8 @@ export const COLORS = {
   treantEyes: 0xf2d04a,
   rootTelegraph: 0xc89a5a,
   root: 0x7a4a22,
+  knight: 0xd8d2c0,
+  knightEdge: 0x5a5460,
+  knightShield: 0x8a93a6,
+  shieldClink: 0xf4f6ff,
 };

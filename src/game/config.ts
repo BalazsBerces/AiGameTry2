@@ -50,6 +50,8 @@ export const TUNING = {
   boar: { hp: 4, speed: 60, dashSpeed: 420, width: 34, height: 24 },
   /** The mark over a stunned enemy's head, spinning `spinDegPerSec`. */
   stunMark: { radius: 7, spinDegPerSec: 360 },
+  /** Drifts straight at the player through any terrain; its visible/faded cycle lives in core/ghost. */
+  ghost: { hp: 4, radius: 15, speed: 60 },
 };
 
 /** Floor, wall, door and terrain colours come from each floor's theme (core/themes). */
@@ -109,4 +111,6 @@ export const COLORS = {
   boarTusk: 0xeee2c4,
   boarWindUp: 0xff7a3a,
   stunMark: 0xffe066,
+  ghost: 0xd8e8f0,
+  ghostEdge: 0x7fa8c8,
 };

@@ -24,4 +24,6 @@ export const ENEMY_CLASS: Record<EnemyType, EnemyClass> = {
   /** Flies over ponds and thorns, so it only has to be shootable. */
   wasp: 'flyer',
   boar: 'walker',
+  /** Drifts through walls, rocks and pits: it always comes out to be shot. */
+  ghost: 'phasing',
 };

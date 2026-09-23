@@ -355,7 +355,8 @@ function buildFromArchetype(spec: RoomSpec, doors: Door[], floorIndex: number, r
   const { width, height } = roomSize(spec.kind);
   const sides = doors.map((d) => d.side);
   const fitting = archetypesFor(floorIndex, spec.kind).filter((a) => a.fits(sides));
-  const assigned = spec.archetype ? archetypeById(spec.archetype) : undefined;
+  const named = spec.archetype ? archetypeById(spec.archetype) : undefined;
+  const assigned = named?.fits(sides) ? named : undefined;
   const fallback = fallbackArchetype(floorIndex, spec.kind);
   const chosen = assigned ?? (fitting.length ? rng.pick(fitting) : fallback);
   for (const archetype of [chosen, fallback]) {

@@ -140,7 +140,104 @@ const stash: Archetype = {
   },
 };
 
-export const ARCHETYPES: readonly Archetype[] = [pillaredHall, fourCorners, stash];
+interface JarShape {
+  /** Wall rectangle, inclusive. */
+  x0: number;
+  x1: number;
+  y0: number;
+  y1: number;
+  /** A jar across the middle mirrors both ways; one off to a side only top-to-bottom. */
+  axes: MirrorAxis[];
+  /** Where the opening may go on each wall. */
+  openings: Record<Direction, Cell>;
+}
+
+const bigJar = (): JarShape => ({
+  x0: 3, x1: 9, y0: 1, y1: 5,
+  axes: ['vertical', 'horizontal'],
+  openings: { up: { x: 6, y: 1 }, down: { x: 6, y: 5 }, left: { x: 3, y: 3 }, right: { x: 9, y: 3 } },
+});
+
+const sideJar = (side: 'left' | 'right', col: number): JarShape => {
+  const x0 = side === 'left' ? 2 : 7;
+  const x = x0 + col;
+  return {
+    x0, x1: x0 + 3, y0: 1, y1: 5,
+    axes: ['horizontal'],
+    openings: { up: { x, y: 1 }, down: { x, y: 5 }, left: { x: x0, y: 3 }, right: { x: x0 + 3, y: 3 } },
+  };
+};
+
+/**
+ * Floor 1: a stone jar holding a horde of zombies that can only pour out of one small
+ * opening. The opening (the room's one asymmetry) never faces a door, so the horde doesn't
+ * spill straight onto the player walking in.
+ */
+const jar: Archetype = {
+  id: 'jar',
+  floor: 0,
+  kind: 'normal',
+  // Needs at least one wall without a door for the opening to face.
+  fits: (doors) => doors.length < 4,
+  build({ width, height, doors, rng }) {
+    const sides = doors.map((d) => d.side);
+    // The big jar's top and bottom walls would sit on the top and bottom door approaches.
+    const shapes = [sideJar('left', rng.int(1, 2)), sideJar('right', rng.int(1, 2))];
+    if (!sides.includes('up') && !sides.includes('down')) shapes.push(bigJar(), bigJar());
+    const shape = rng.pick(shapes);
+    const facing = rng.pick((['up', 'down', 'left', 'right'] as const).filter((s) => !sides.includes(s)));
+    const opening = shape.openings[facing];
+
+    const canvas = new Canvas(width, height, []);
+    const wall: Cell[] = [];
+    for (let x = shape.x0; x <= shape.x1; x++) wall.push({ x, y: shape.y0 }, { x, y: shape.y1 });
+    for (let y = shape.y0 + 1; y < shape.y1; y++) wall.push({ x: shape.x0, y }, { x: shape.x1, y });
+    canvas.paint(wall, 'obstacle');
+    canvas.paint([opening], 'floor');
+
+    const inside: Cell[] = [];
+    for (let x = shape.x0 + 1; x < shape.x1; x++) for (let y = shape.y0 + 1; y < shape.y1; y++) inside.push({ x, y });
+    const horde = shuffled(inside, rng).slice(0, rng.int(4, 5));
+    return { tiles: canvas.tiles, enemies: zombies(horde), pickups: [], symmetry: { axes: shape.axes, feature: [opening] } };
+  },
+};
+
+/**
+ * Floor 1: turrets on an island ringed by holes. Nobody can walk out to them, but shots fly
+ * over holes both ways, so it's a shootout across the moat; stone pillars offer cover.
+ */
+const sentryIsland: Archetype = {
+  id: 'sentryIsland',
+  floor: 0,
+  kind: 'normal',
+  fits: fitsAll,
+  build({ width, height, rng }) {
+    const axes: MirrorAxis[] = ['vertical', 'horizontal'];
+    const canvas = new Canvas(width, height, axes);
+    const layout = rng.pick([
+      // One island in the middle, a ring of holes around it (painted as a quarter, mirrored).
+      { moat: [{ x: 4, y: 2 }, { x: 5, y: 2 }, { x: 6, y: 2 }, { x: 4, y: 3 }], turret: { x: 5, y: 3 } },
+      { moat: [{ x: 3, y: 2 }, { x: 4, y: 2 }, { x: 5, y: 2 }, { x: 6, y: 2 }, { x: 3, y: 3 }], turret: rng.pick([{ x: 4, y: 3 }, { x: 5, y: 3 }]) },
+      // Twin islands, one turret on each.
+      { moat: [{ x: 2, y: 2 }, { x: 3, y: 2 }, { x: 4, y: 2 }, { x: 2, y: 3 }, { x: 4, y: 3 }], turret: { x: 3, y: 3 } },
+    ]);
+    canvas.paint(layout.moat, 'hole');
+    if (rng.next() < 0.5) canvas.paint([{ x: 1, y: 1 }], 'obstacle');
+    const turrets = canvas.images(layout.turret).map((cell): EnemySpawn => ({ type: 'turret', cell }));
+    return { tiles: canvas.tiles, enemies: turrets, pickups: [], symmetry: { axes } };
+  },
+};
+
+function shuffled<T>(items: readonly T[], rng: Rng): T[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = rng.int(0, i);
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+export const ARCHETYPES: readonly Archetype[] = [pillaredHall, fourCorners, stash, jar, sentryIsland];
 
 export const archetypeById = (id: string) => ARCHETYPES.find((a) => a.id === id);
 

@@ -7,8 +7,11 @@ const room = (seed: number, doors: readonly (typeof ALL_DOORS)[number][] = ALL_D
   generateRoom({ id: '0,0', kind: 'normal', doors: [...doors] }, 0, createRng(seed));
 const count = (r: ReturnType<typeof room>, tile: string) => r.tiles.flat().filter((t) => t === tile).length;
 
-/** Walkable cells reachable from `from`, 4-connected; optionally as if every rock were already broken. */
-function reachable(r: ReturnType<typeof room>, from: { x: number; y: number }, rocksBroken = false) {
+/**
+ * Walkable cells reachable from `from`, 4-connected. `rocksBroken` walks through rocks as if
+ * shot away; `crossHoles` also crosses holes, the way shots do.
+ */
+function reachable(r: ReturnType<typeof room>, from: { x: number; y: number }, rocksBroken = false, crossHoles = false) {
   const seen = new Set<string>();
   const stack = [from];
   while (stack.length) {
@@ -16,7 +19,7 @@ function reachable(r: ReturnType<typeof room>, from: { x: number; y: number }, r
     const key = `${c.x},${c.y}`;
     if (seen.has(key) || c.x < 0 || c.y < 0 || c.x >= r.width || c.y >= r.height) continue;
     const tile = r.tiles[c.y][c.x];
-    if (tile !== 'floor' && !(rocksBroken && tile === 'rock')) continue;
+    if (tile !== 'floor' && !(rocksBroken && tile === 'rock') && !(crossHoles && tile === 'hole')) continue;
     seen.add(key);
     stack.push({ x: c.x + 1, y: c.y }, { x: c.x - 1, y: c.y }, { x: c.x, y: c.y + 1 }, { x: c.x, y: c.y - 1 });
   }
@@ -24,15 +27,15 @@ function reachable(r: ReturnType<typeof room>, from: { x: number; y: number }, r
 }
 
 describe('generateRoom terrain', () => {
-  it('keeps every door reachable, and every floor cell once rocks are broken', () => {
+  it('keeps every door reachable, and every floor cell once rocks are broken or holes crossed', () => {
     const doorSets = [ALL_DOORS, ['left'], ['up', 'right'], ['down', 'left', 'right']] as const;
     for (let seed = 0; seed < 500; seed++) {
       for (const doors of doorSets) {
         const r = room(seed, doors);
         const seen = reachable(r, r.doors[0].cell);
         for (const d of r.doors) expect(seen.has(`${d.cell.x},${d.cell.y}`), `seed ${seed} door ${d.side}`).toBe(true);
-        const opened = reachable(r, r.doors[0].cell, true);
-        expect(opened.size, `seed ${seed} doors ${doors}`).toBe(count(r, 'floor') + count(r, 'rock'));
+        const opened = reachable(r, r.doors[0].cell, true, true);
+        expect(opened.size, `seed ${seed} doors ${doors}`).toBe(count(r, 'floor') + count(r, 'rock') + count(r, 'hole'));
       }
     }
   });
@@ -112,24 +115,25 @@ describe('generateRoom enemies', () => {
     expect(start.enemies).toEqual([]);
   });
 
-  it('spawns only on distinct, reachable floor cells that are not next to a door', () => {
+  it('spawns only on distinct floor cells, not next to a door, that walkers can walk to and turrets be shot across holes', () => {
     const doorSets = [ALL_DOORS, ['left'], ['up', 'right']] as const;
     for (const floorIndex of [0, 1, 2]) {
       for (let seed = 0; seed < 300; seed++) {
         for (const doors of doorSets) {
           const r = generateRoom({ id: '0,0', kind: 'normal', doors: [...doors] }, floorIndex, createRng(seed));
-          const seen = reachable(r, r.doors[0].cell);
-          const cells = r.enemies.flatMap((e) => [e.cell, ...(e.tail ?? [])]);
-          for (const c of cells) {
+          const walk = reachable(r, r.doors[0].cell);
+          const shoot = reachable(r, r.doors[0].cell, false, true);
+          const cells = r.enemies.flatMap((e) => [e.cell, ...(e.tail ?? [])].map((c) => ({ c, turret: e.type === 'turret' })));
+          for (const { c, turret } of cells) {
             const where = `floor ${floorIndex} seed ${seed} doors ${doors} at ${c.x},${c.y}`;
             expect(r.tiles[c.y]?.[c.x], where).toBe('floor');
-            expect(seen.has(`${c.x},${c.y}`), where).toBe(true);
+            expect((turret ? shoot : walk).has(`${c.x},${c.y}`), where).toBe(true);
             for (const d of r.doors) {
               const near = Math.abs(d.cell.x - c.x) <= 1 && Math.abs(d.cell.y - c.y) <= 1;
               expect(near, `${where} near door ${d.side}`).toBe(false);
             }
           }
-          expect(new Set(cells.map((c) => `${c.x},${c.y}`)).size).toBe(cells.length);
+          expect(new Set(cells.map(({ c }) => `${c.x},${c.y}`)).size).toBe(cells.length);
         }
       }
     }
@@ -354,6 +358,66 @@ describe('The Stash (floor 1 puzzle)', () => {
         expect(reachable(walkable(r, true), r.doors[0].cell).has(at), `seed ${seed}`).toBe(true);
         expect(r.enemies.every((e) => e.type === 'zombie')).toBe(true);
         expect(r.enemies).toHaveLength(2);
+      }
+    }
+  });
+});
+
+const SIDES = ['up', 'down', 'left', 'right'] as const;
+const EVERY_DOOR_SET = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].map((m) => SIDES.filter((_, i) => m & (1 << i)));
+const STEP_OF = { up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 } } as const;
+
+describe('The Jar (floor 1)', () => {
+  const jar = (seed: number, doors: readonly (typeof SIDES)[number][]) =>
+    generateRoom({ id: '0,0', kind: 'normal', doors: [...doors], archetype: 'jar' }, 0, createRng(seed));
+
+  it('packs 4-5 zombies behind a single opening that never faces a door', () => {
+    let built = 0;
+    for (const doors of EVERY_DOOR_SET) {
+      for (let seed = 0; seed < 40; seed++) {
+        const r = jar(seed, doors);
+        if (r.archetype !== 'jar') continue; // the jar can't fit this door set
+        built++;
+        const where = `seed ${seed} doors ${doors}`;
+        expect(r.enemies.every((e) => e.type === 'zombie'), where).toBe(true);
+        expect(r.enemies.length, where).toBeGreaterThanOrEqual(4);
+        expect(r.enemies.length, where).toBeLessThanOrEqual(5);
+        // Some single floor cell, once blocked, cuts every zombie off from the doors: the opening.
+        const outsideWith = (x: number, y: number) =>
+          reachable({ ...r, tiles: r.tiles.map((row, yy) => row.map((tt, xx) => (xx === x && yy === y ? 'obstacle' : tt))) }, r.doors[0].cell);
+        const isDoor = (x: number, y: number) => r.doors.some((d) => d.cell.x === x && d.cell.y === y);
+        // (The tile just outside it can be a chokepoint too; the opening is the one nearest the horde.)
+        const toHorde = (x: number, y: number) => Math.min(...r.enemies.map((e) => Math.abs(e.cell.x - x) + Math.abs(e.cell.y - y)));
+        const opening = r.tiles
+          .flatMap((row, y) => row.map((t, x) => ({ t, x, y })))
+          .filter(({ t, x, y }) => {
+            const seen = t === 'floor' && !isDoor(x, y) ? outsideWith(x, y) : undefined;
+            return !!seen && r.enemies.every((e) => !seen.has(`${e.cell.x},${e.cell.y}`));
+          })
+          .sort((a, b) => toHorde(a.x, a.y) - toHorde(b.x, b.y))[0];
+        expect(opening, where).toBeDefined();
+        // It faces the side whose neighbour is outside the jar.
+        const outside = outsideWith(opening!.x, opening!.y);
+        const facing = SIDES.find((s) => outside.has(`${opening!.x + STEP_OF[s].x},${opening!.y + STEP_OF[s].y}`));
+        expect(facing, where).toBeDefined();
+        expect(doors, where).not.toContain(facing);
+      }
+    }
+    expect(built).toBeGreaterThan(200);
+  });
+});
+
+describe('Sentry Island (floor 1)', () => {
+  it('puts two turrets on an island nobody can walk to', () => {
+    for (const doors of EVERY_DOOR_SET) {
+      for (let seed = 0; seed < 30; seed++) {
+        const r = generateRoom({ id: '0,0', kind: 'normal', doors: [...doors], archetype: 'sentryIsland' }, 0, createRng(seed));
+        const where = `seed ${seed} doors ${doors}`;
+        expect(r.archetype, where).toBe('sentryIsland');
+        expect(r.enemies.map((e) => e.type), where).toEqual(['turret', 'turret']);
+        const seen = reachable(r, r.doors[0].cell);
+        for (const e of r.enemies) expect(seen.has(`${e.cell.x},${e.cell.y}`), where).toBe(false);
+        expect(count(r, 'hole'), where).toBeGreaterThan(0);
       }
     }
   });

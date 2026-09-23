@@ -4,6 +4,8 @@ import { floodFill } from './grid';
 import { validateRoom } from './roomValidator';
 import type { Passive } from './weaponModel';
 import type { Rng } from './rng';
+import { themeForFloor } from './themes';
+import { isWalkable } from './tiles';
 
 export const ROOM_WIDTH = 13;
 export const ROOM_HEIGHT = 7;
@@ -12,11 +14,8 @@ export const BOSS_HEIGHT = 14;
 /** Tiles per map cell: a 13x7 room interior plus its one-tile wall ring. */
 export const CELL_TILES = { w: ROOM_WIDTH + 2, h: ROOM_HEIGHT + 2 };
 
-/** `obstacle` is stone; `rock` is the same but breaks after a few player shots. */
+/** `obstacle` is stone; `rock` is the same but breaks after a few player shots. Behaviour lives in `TILES`. */
 export type Tile = 'floor' | 'obstacle' | 'rock' | 'hole';
-
-/** Player shots it takes to break a rock. */
-export const ROCK_HITS = 3;
 
 export interface DoorSpec {
   side: Direction;
@@ -189,8 +188,7 @@ type TerrainStrategy = (tiles: Tile[][], rng: Rng, keepClear: (c: Cell) => boole
 
 export type BossType = 'wormBoss' | 'hiveBoss' | 'shadowBoss';
 
-const BOSS_BY_FLOOR: readonly BossType[] = ['wormBoss', 'hiveBoss', 'shadowBoss'];
-export const bossForFloor = (floorIndex: number): BossType => BOSS_BY_FLOOR[Math.min(floorIndex, BOSS_BY_FLOOR.length - 1)];
+export const bossForFloor = (floorIndex: number): BossType => themeForFloor(floorIndex).boss;
 
 const BOSS_ARENAS: Record<BossType, TerrainStrategy> = {
   wormBoss: placeLabyrinth,
@@ -265,13 +263,6 @@ function placeCover(tiles: Tile[][], rng: Rng, keepClear: (c: Cell) => boolean) 
     }
   }
 }
-
-export const isWalkable = (tile: Tile) => tile === 'floor';
-/** Tiles that stop shots and line of sight; holes do not. */
-export const blocksSight = (tile: Tile) => tile === 'obstacle' || tile === 'rock';
-export const isBreakable = (tile: Tile) => tile === 'rock';
-/** Bombs blow away stone as well as rock; holes stay holes. */
-export const isBlastable = (tile: Tile) => tile === 'rock' || tile === 'obstacle';
 
 const roomOrigin = (tiles: Tile[][], doors: Door[]): Cell =>
   doors[0]?.cell ?? { x: Math.floor(tiles[0].length / 2), y: Math.floor(tiles.length / 2) };

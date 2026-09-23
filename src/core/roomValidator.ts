@@ -1,6 +1,7 @@
 import type { Cell } from './floorGenerator';
 import { floodFill, lineOfSight } from './grid';
-import { blocksSight, isWalkable, type Door, type RoomLayout, type Tile } from './roomGenerator';
+import type { Door, RoomLayout, Tile } from './roomGenerator';
+import { blocksSight, isWalkable } from './tiles';
 
 export type MirrorAxis = 'vertical' | 'horizontal';
 
@@ -28,6 +29,10 @@ export interface Violation {
 export type RoomToValidate = Pick<RoomLayout, 'tiles' | 'doors' | 'enemies' | 'pickups'>;
 
 const key = (c: Cell) => `${c.x},${c.y}`;
+const isWalkableAt = (tiles: Tile[][], c: Cell) => {
+  const tile = tiles[c.y]?.[c.x];
+  return tile !== undefined && isWalkable(tile);
+};
 
 /** The tile a door opens onto and the one just inside it: both must stay open floor. */
 export const doorApproach = ({ side, cell }: Door): Cell[] => {
@@ -45,7 +50,7 @@ export function validateRoom(room: RoomToValidate, symmetry: Symmetry): Violatio
   const reachable = doors.length ? floodFill(tiles, doors[0].cell, isWalkable) : new Set<string>();
   for (const d of doors) if (!reachable.has(key(d.cell))) violations.push({ rule: 'door-unreachable', cell: d.cell });
   for (const d of doors) {
-    if (doorApproach(d).some((c) => tiles[c.y]?.[c.x] !== 'floor')) violations.push({ rule: 'door-blocked', cell: d.cell });
+    if (doorApproach(d).some((c) => !isWalkableAt(tiles, c))) violations.push({ rule: 'door-blocked', cell: d.cell });
   }
 
   const standable = [...reachable].map((k) => {
@@ -75,7 +80,7 @@ export function validateRoom(room: RoomToValidate, symmetry: Symmetry): Violatio
     if (seen.has(key(c))) violations.push({ rule: 'overlap', cell: c });
     seen.add(key(c));
   }
-  for (const c of spawnCells) if (tiles[c.y]?.[c.x] !== 'floor') violations.push({ rule: 'spawn-off-floor', cell: c });
+  for (const c of spawnCells) if (!isWalkableAt(tiles, c)) violations.push({ rule: 'spawn-off-floor', cell: c });
 
   if (!isSymmetric(tiles, symmetry)) violations.push({ rule: 'asymmetric' });
   return violations;

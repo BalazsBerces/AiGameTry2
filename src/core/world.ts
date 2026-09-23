@@ -10,15 +10,8 @@ import {
   type FloorRoom,
   type RoomDoor,
 } from './floorGenerator';
-import {
-  generateRoom,
-  isBlastable,
-  isBreakable,
-  ROCK_HITS,
-  type ChestItem,
-  type PickupType,
-  type RoomLayout,
-} from './roomGenerator';
+import { generateRoom, type ChestItem, type PickupType, type RoomLayout } from './roomGenerator';
+import { bombDestructible, hitsToBreak, isWalkable } from './tiles';
 import type { Passive } from './weaponModel';
 
 export interface WorldRoom {
@@ -166,7 +159,8 @@ function openChest(world: World, roomId: string, chest: WorldPickup) {
     for (let dy = -r; dy <= r; dy++) {
       for (let dx = -r; dx <= r; dx++) {
         const c = { x: chest.cell.x + dx, y: chest.cell.y + dy };
-        if (layout.tiles[c.y]?.[c.x] === 'floor' && !occupied.has(`${c.x},${c.y}`)) {
+        const tile = layout.tiles[c.y]?.[c.x];
+        if (tile && isWalkable(tile) && !occupied.has(`${c.x},${c.y}`)) {
           around.push(c);
           occupied.add(`${c.x},${c.y}`);
         }
@@ -184,16 +178,17 @@ function openChest(world: World, roomId: string, chest: WorldPickup) {
 export type TileHitResult = 'none' | 'damaged' | 'broken';
 
 /**
- * A player shot hit a terrain tile. Rocks break into floor after `ROCK_HITS` hits; the room's
- * tiles are the world's, so a broken rock stays broken for the rest of the run.
+ * A player shot hit a terrain tile. Breakable tiles turn into floor after their `hitsToBreak`; the
+ * room's tiles are the world's, so a broken rock stays broken for the rest of the run.
  */
 export function hitTile(world: World, roomId: string, cell: Cell): TileHitResult {
   const tiles = world.rooms.get(roomId)?.layout.tiles;
   const tile = tiles?.[cell.y]?.[cell.x];
-  if (!tiles || !tile || !isBreakable(tile)) return 'none';
+  const toBreak = tile && hitsToBreak(tile);
+  if (!tiles || !toBreak) return 'none';
   const key = `${roomId}|${cell.x},${cell.y}`;
   const hits = (world.tileHits.get(key) ?? 0) + 1;
-  if (hits < ROCK_HITS) {
+  if (hits < toBreak) {
     world.tileHits.set(key, hits);
     return 'damaged';
   }
@@ -221,7 +216,7 @@ export function detonateBomb(world: World, roomId: string, cell: Cell): Cell[] {
   for (let y = cell.y - reach; y <= cell.y + reach; y++) {
     for (let x = cell.x - reach; x <= cell.x + reach; x++) {
       const tile = tiles[y]?.[x];
-      if (!tile || !isBlastable(tile) || Math.hypot(x - cell.x, y - cell.y) > BOMB_RADIUS) continue;
+      if (!tile || !bombDestructible(tile) || Math.hypot(x - cell.x, y - cell.y) > BOMB_RADIUS) continue;
       tiles[y][x] = 'floor';
       world.tileHits.delete(`${roomId}|${x},${y}`);
       destroyed.push({ x, y });

@@ -1,7 +1,9 @@
 import Phaser from 'phaser';
 import { DIRECTIONS, STEP, type Cell, type Direction, type RoomKind } from '../core/floorGenerator';
 import { distanceField, lineOfSight } from '../core/grid';
-import { blocksSight, isWalkable, type EnemySpawn, type EnemyType } from '../core/roomGenerator';
+import type { EnemySpawn, EnemyType, Tile } from '../core/roomGenerator';
+import { themeForFloor, type Palette, type TileLook } from '../core/themes';
+import { blocksShots, blocksSight, isWalkable } from '../core/tiles';
 import { launchVelocity, resolveWeapon } from '../core/weaponModel';
 import {
   BOMB_RADIUS,
@@ -60,12 +62,20 @@ const PICKUP_SHAPES: Record<WorldPickup['type'], (scene: Phaser.Scene, x: number
   openChest: (s, x, y) => s.add.rectangle(x, y, 34, 26, COLORS.openChest),
 };
 
-const FLOOR_COLOR: Record<RoomKind, number> = {
-  start: COLORS.floor,
-  normal: COLORS.floor,
-  item: COLORS.itemFloor,
-  boss: COLORS.bossFloor,
+const FLOOR_COLOR: Record<RoomKind, (p: Palette) => number> = {
+  start: (p) => p.floor,
+  normal: (p) => p.floor,
+  item: (p) => p.itemFloor,
+  boss: (p) => p.bossFloor,
 };
+
+/** A non-floor tile drawn in its floor's look. */
+function drawTile(scene: Phaser.Scene, x: number, y: number, look: TileLook): Shape {
+  const size = TUNING.tile - look.inset;
+  const shape = look.shape === 'round' ? scene.add.circle(x, y, size / 2, look.color) : scene.add.rectangle(x, y, size, size, look.color);
+  if (look.stroke !== undefined) shape.setStrokeStyle(3, look.stroke);
+  return shape;
+}
 
 let firstBoot = true;
 
@@ -158,7 +168,7 @@ export class GameScene extends Phaser.Scene {
     this.itemLockoutUntil = 0;
     this.showPickups();
 
-    this.cameras.main.setBackgroundColor(COLORS.background);
+    this.cameras.main.setBackgroundColor(themeForFloor(start.floorIndex).palette.background);
     this.followInside(start);
     this.scene.launch('hud');
   }
@@ -284,7 +294,10 @@ export class GameScene extends Phaser.Scene {
       walkDistance: distanceField(room.layout.tiles, playerTile, isWalkable),
       tileOf,
       tileCenter: (tile: Cell) => tileCenter(room, tile.x, tile.y),
-      isWalkable: (tile: Cell) => room.layout.tiles[tile.y]?.[tile.x] === 'floor',
+      isWalkable: (cell: Cell) => {
+        const tile = room.layout.tiles[cell.y]?.[cell.x];
+        return tile !== undefined && isWalkable(tile);
+      },
       canSeePlayer: (from) =>
         lineOfSight(room.layout.tiles, this.toTileUnits(room, from), this.toTileUnits(room, this.player), blocksSight),
       fireEnemyShot: (x, y, vx, vy, homing = false) => {
@@ -424,6 +437,7 @@ export class GameScene extends Phaser.Scene {
     if (entry) this.player.body.reset(entry.c.x, entry.c.y);
 
     this.slideCameraTo(room);
+    this.cameras.main.setBackgroundColor(themeForFloor(room.floorIndex).palette.background);
 
     if (!this.world.cleared.has(room.floorRoom.id)) {
       this.spawnEnemies(room);
@@ -507,37 +521,36 @@ export class GameScene extends Phaser.Scene {
     const b = roomBlock(room);
     const { width, height } = room.layout;
     const corridors = new Set(room.layout.doors.flatMap((d) => doorCorridor(room, d)).map((c) => `${c.x},${c.y}`));
+    const { palette, looks } = themeForFloor(room.floorIndex);
 
-    this.add.rectangle(b.x, b.y, b.w, b.h, COLORS.wall).setOrigin(0);
+    this.add.rectangle(b.x, b.y, b.w, b.h, palette.wall).setOrigin(0);
     const floor = tileCenter(room, 0, 0);
     this.add
-      .rectangle(floor.x - t / 2, floor.y - t / 2, width * t, height * t, FLOOR_COLOR[room.floorRoom.kind])
+      .rectangle(floor.x - t / 2, floor.y - t / 2, width * t, height * t, FLOOR_COLOR[room.floorRoom.kind](palette))
       .setOrigin(0);
 
     for (let ty = -b.pad.y; ty < b.tilesH - b.pad.y; ty++) {
       for (let tx = -b.pad.x; tx < b.tilesW - b.pad.x; tx++) {
         if (tx >= 0 && ty >= 0 && tx < width && ty < height) continue;
         const c = tileCenter(room, tx, ty);
-        if (corridors.has(`${tx},${ty}`)) this.add.rectangle(c.x, c.y, t, t, COLORS.door);
-        else this.walls.add(this.add.rectangle(c.x, c.y, t, t, COLORS.wall));
+        if (corridors.has(`${tx},${ty}`)) this.add.rectangle(c.x, c.y, t, t, palette.door);
+        else this.walls.add(this.add.rectangle(c.x, c.y, t, t, palette.wall));
       }
     }
 
     room.layout.tiles.forEach((row, ty) =>
-      row.forEach((tile, tx) => {
-        if (tile === 'floor') return;
+      row.forEach((tile: Tile, tx) => {
+        if (isWalkable(tile)) return;
         const c = tileCenter(room, tx, ty);
-        if (tile === 'hole') {
-          this.holes.add(this.add.rectangle(c.x, c.y, t, t, COLORS.hole));
+        const shape = drawTile(this, c.x, c.y, looks[tile as Exclude<Tile, 'floor'>]);
+        // Shot-blocking tiles are walls to physics; the rest (holes) only stop walking.
+        if (!blocksShots(tile)) {
+          this.holes.add(shape);
           return;
         }
-        const block =
-          tile === 'rock'
-            ? this.add.rectangle(c.x, c.y, t - 10, t - 10, COLORS.rock).setStrokeStyle(3, COLORS.rockCrack)
-            : this.add.rectangle(c.x, c.y, t - 4, t - 4, COLORS.obstacle);
-        block.setData({ roomId: room.floorRoom.id, tile: { x: tx, y: ty } });
-        this.walls.add(block);
-        this.terrain.set(`${room.floorRoom.id}|${tx},${ty}`, block);
+        shape.setData({ roomId: room.floorRoom.id, tile: { x: tx, y: ty } });
+        this.walls.add(shape);
+        this.terrain.set(`${room.floorRoom.id}|${tx},${ty}`, shape);
       }),
     );
   }

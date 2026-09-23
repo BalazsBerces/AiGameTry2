@@ -27,17 +27,8 @@ export const TUNING = {
   hive: { radius: 40, hp: 60, spiralDelayMs: 150, spiralStep: 0.32, shotSpeed: 170, summonEveryMs: 5000, maxSummoned: 3 },
 };
 
+/** Floor, wall, door and terrain colours come from each floor's theme (core/themes). */
 export const COLORS = {
-  background: 0x0d0b10,
-  floor: 0x3b3340,
-  itemFloor: 0x4a4326,
-  bossFloor: 0x4a2630,
-  wall: 0x1c1720,
-  door: 0x7a5230,
-  obstacle: 0x7d7468,
-  rock: 0xc2b28f,
-  rockCrack: 0x5c5040,
-  hole: 0x050407,
   player: 0xe8d7b0,
   shot: 0x9ad0ff,
   zombie: 0x6fa35a,

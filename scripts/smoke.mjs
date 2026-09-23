@@ -666,6 +666,37 @@ if (scenario === 'rooms') {
   }
 }
 
+if (scenario === 'floors') {
+  // Screenshots themed rooms on every floor: the rooms with the most terrain (holes first), then the boss room.
+  for (const floor of [0, 1, 2]) {
+    const ids = await page.evaluate(`(() => {
+      const rooms = [...${scene()}.world.rooms.values()].filter((r) => r.floorIndex === ${floor});
+      const count = (r, t) => r.layout.tiles.flat().filter((x) => x === t).length;
+      const normal = rooms.filter((r) => r.floorRoom.kind === 'normal')
+        .sort((a, b) => count(b, 'hole') * 10 + count(b, 'obstacle') + count(b, 'rock') - (count(a, 'hole') * 10 + count(a, 'obstacle') + count(a, 'rock')));
+      return [...normal.slice(0, 2), ...rooms.filter((r) => r.floorRoom.kind === 'boss')].map((r) => r.floorRoom.id);
+    })()`);
+    for (const id of ids) {
+      const info = await page.evaluate(`(() => { const s = ${scene()};
+        for (const e of s.enemies) for (const p of e.parts) p.destroy();
+        s.enemies = [];
+        for (const l of s.doorLocks) l.destroy();
+        s.doorLocks = [];
+        s.invincibleUntil = Infinity;
+        const room = s.world.rooms.get('${id}');
+        const door = room.layout.doors[0];
+        s.player.body.reset(room.floorRoom.cell.x * 720 + (door.cell.x + 1.5) * 48, room.floorRoom.cell.y * 432 + (door.cell.y + 1.5) * 48);
+        s.enterRoom(room, s.time.now);
+        s.enemiesWakeAt = Infinity;
+        return { kind: room.floorRoom.kind, archetype: room.layout.archetype };
+      })()`);
+      await page.waitForTimeout(600);
+      await shot(`floor${floor}-${info.kind}-${id.replace(',', '_')}`);
+      console.log(floor, id, JSON.stringify(info));
+    }
+  }
+}
+
 if (scenario === 'rocks') {
   // Finds a Stash room, shows its chest before clearing, and shoots the rock below it open.
   const id = await page.evaluate(`[...${scene()}.world.rooms.values()].find((r) => r.layout.archetype === 'stash')?.floorRoom.id`);

@@ -4,6 +4,7 @@ import { distanceField, lineOfSight } from '../core/grid';
 import type { ChampionDrop, EnemySpawn, EnemyType, Tile } from '../core/roomGenerator';
 import { themeForFloor, type Palette, type TileLook } from '../core/themes';
 import { blocksShots, blocksSight, hurtsOnTouch, isWalkable } from '../core/tiles';
+import { crusherWakes, settleCrusher, slideCrusher, type Crusher } from '../core/crusher';
 import { launchVelocity, resolveWeapon } from '../core/weaponModel';
 import {
   BOMB_RADIUS,
@@ -84,6 +85,15 @@ function drawTile(scene: Phaser.Scene, x: number, y: number, look: TileLook): Sh
   return shape;
 }
 
+interface TrackedCrusher {
+  roomId: string;
+  /** The room layout's own crusher: sliding moves it for the rest of the run. */
+  crusher: Crusher;
+  shape: Shape;
+  /** When it may wake again (Infinity while sliding). */
+  readyAt: number;
+}
+
 let firstBoot = true;
 
 export class GameScene extends Phaser.Scene {
@@ -115,6 +125,8 @@ export class GameScene extends Phaser.Scene {
   private nextShotAt = 0;
   private invincibleUntil = 0;
   private enemiesWakeAt = 0;
+  /** Every room's crushers with their drawn blocks; `readyAt` is when one may wake again. */
+  private crushers: TrackedCrusher[] = [];
 
   constructor() {
     super('game');
@@ -136,7 +148,9 @@ export class GameScene extends Phaser.Scene {
     this.holes = this.physics.add.staticGroup();
     this.thorns = this.physics.add.staticGroup();
     this.terrain = new Map();
+    this.crushers = [];
     for (const room of this.world.rooms.values()) this.drawRoom(room);
+    for (const room of this.world.rooms.values()) this.trackCrushers(room);
 
     const start = this.world.rooms.get(this.world.currentRoomId)!;
     const spawn = tileCenter(start, Math.floor(start.layout.width / 2), Math.floor(start.layout.height / 2));
@@ -207,6 +221,7 @@ export class GameScene extends Phaser.Scene {
     this.steerHomingShots(delta);
     this.dropShotsOutsideRoom();
     this.updateEnemies(time);
+    this.updateCrushers(time);
     this.followPlayerAcrossRooms(time);
   }
 
@@ -616,5 +631,75 @@ export class GameScene extends Phaser.Scene {
         this.terrain.set(`${room.floorRoom.id}|${tx},${ty}`, shape);
       }),
     );
+  }
+
+  /** Takes a room's drawn crusher blocks out of the breakable terrain and tracks them for sliding. */
+  private trackCrushers(room: WorldRoom) {
+    const roomId = room.floorRoom.id;
+    for (const crusher of room.layout.crushers ?? []) {
+      const key = `${roomId}|${crusher.cell.x},${crusher.cell.y}`;
+      const shape = this.terrain.get(key) as Shape | undefined;
+      if (!shape) continue;
+      this.terrain.delete(key);
+      // Shots still stop on it, but it has no tile of its own to crack.
+      shape.setData('roomId', undefined);
+      this.crushers.push({ roomId, crusher, shape, readyAt: 0 });
+    }
+  }
+
+  /** Wakes the current room's crushers that see the player along their axis. */
+  private updateCrushers(time: number) {
+    if (this.runOver) return;
+    const room = this.currentRoom;
+    const player = tileAt(room, this.player.x, this.player.y);
+    for (const c of this.crushers) {
+      if (c.roomId !== room.floorRoom.id || time < c.readyAt) continue;
+      const dir = crusherWakes(room.layout.tiles, c.crusher, player);
+      if (!dir) continue;
+      const { swept, stop } = slideCrusher(room.layout.tiles, c.crusher.cell, dir);
+      if (!swept.length) continue;
+      // The world's tiles change at once, so walkers path around where it will settle.
+      settleCrusher(room.layout.tiles, c.crusher, stop);
+      c.readyAt = Infinity;
+      this.animateCrusher(c, tileCenter(room, stop.x, stop.y), swept.length);
+    }
+  }
+
+  /** Shudders, then slams the block to `to`, crushing the player and every enemy part it passes over. */
+  private animateCrusher(c: TrackedCrusher,to: { x: number; y: number }, tiles: number) {
+    const { windupMs, msPerTile, cooldownMs, enemyDamage, playerDamage } = TUNING.crusher;
+    const body = c.shape.body as Phaser.Physics.Arcade.StaticBody;
+    const crushed = new Set<object>();
+    const under = (o: { x: number; y: number; width: number; height: number }) =>
+      Math.abs(o.x - c.shape.x) < (TUNING.tile + o.width) / 2 - 4 && Math.abs(o.y - c.shape.y) < (TUNING.tile + o.height) / 2 - 4;
+    this.tweens.add({ targets: c.shape, scale: 1.1, duration: windupMs / 2, yoyo: true });
+    this.tweens.add({
+      targets: c.shape,
+      x: to.x,
+      y: to.y,
+      delay: windupMs,
+      duration: tiles * msPerTile,
+      ease: 'Quad.easeIn',
+      onStart: () => {
+        body.enable = false;
+      },
+      onUpdate: () => {
+        if (this.runOver || this.world.currentRoomId !== c.roomId) return;
+        if (!crushed.has(this.player) && under(this.player)) {
+          crushed.add(this.player);
+          this.hurtPlayer(playerDamage);
+        }
+        for (const part of this.enemies.flatMap((e) => e.parts)) {
+          if (crushed.has(part) || !part.active || !under(part)) continue;
+          crushed.add(part);
+          this.damagePart(part, enemyDamage);
+        }
+      },
+      onComplete: () => {
+        body.updateFromGameObject();
+        body.enable = true;
+        c.readyAt = this.time.now + cooldownMs;
+      },
+    });
   }
 }

@@ -39,6 +39,9 @@ export const TUNING = {
   thorn: { playerDamage: 1, walkerDamage: 1, walkerInvincibleMs: 600 },
   /** `restMs`: pause between root eruptions. Root timing itself lives in core/treantAttack. */
   treant: { radius: 46, hp: 70, restMs: 700 },
+  hive: { radius: 40, hp: 60, spiralDelayMs: 150, spiralStep: 0.32, shotSpeed: 170, summonEveryMs: 5000, maxSummoned: 3 },
+  /** A woken crusher shudders for `windupMs`, then slides `msPerTile` per tile; it can wake again `cooldownMs` after settling. */
+  crusher: { windupMs: 220, msPerTile: 60, cooldownMs: 800, enemyDamage: 8, playerDamage: 2 },
 };
 
 /** Floor, wall, door and terrain colours come from each floor's theme (core/themes). */

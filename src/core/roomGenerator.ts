@@ -6,6 +6,7 @@ import type { Passive } from './weaponModel';
 import type { Rng } from './rng';
 import { themeForFloor } from './themes';
 import { isWalkable } from './tiles';
+import type { Crusher } from './crusher';
 
 export const ROOM_WIDTH = 13;
 export const ROOM_HEIGHT = 7;
@@ -16,9 +17,10 @@ export const CELL_TILES = { w: ROOM_WIDTH + 2, h: ROOM_HEIGHT + 2 };
 
 /**
  * `obstacle` is stone; `rock` is the same but breaks after a few player shots; `thorn` is a
- * bush that hurts whoever walks into it. Behaviour lives in `TILES`.
+ * bush that hurts whoever walks into it; `crusher` is a block that slides when it sees the
+ * player. Behaviour lives in `TILES`.
  */
-export type Tile = 'floor' | 'obstacle' | 'rock' | 'hole' | 'thorn';
+export type Tile = 'floor' | 'obstacle' | 'rock' | 'hole' | 'thorn' | 'crusher';
 
 export interface DoorSpec {
   side: Direction;
@@ -63,6 +65,8 @@ export interface RoomLayout {
   pickups: PickupSpawn[];
   /** The idea the room was built from, if any. */
   archetype?: string;
+  /** Crusher blocks and their axes; each stands on a `crusher` tile, which moves with it. */
+  crushers?: Crusher[];
 }
 
 export type PickupType = 'heart' | 'key' | 'bomb' | 'chest' | 'lockedChest' | 'passive';
@@ -336,7 +340,8 @@ export function generateRoom(spec: RoomSpec, floorIndex: number, rng: Rng): Room
     const floorEnemies = built.enemies.map((e) => (walkerHp && e.type === walker ? { ...e, hp: walkerHp } : e));
     // Its own stream, so champion rolls never shift the room's layout.
     const enemies = spec.kind === 'normal' ? crownChampion(floorEnemies, rng.fork('champion')) : floorEnemies;
-    return { id: spec.id, width, height, tiles: built.tiles, doors, enemies, pickups, archetype: built.archetype };
+    const crushers = 'crushers' in built ? built.crushers : undefined;
+    return { id: spec.id, width, height, tiles: built.tiles, doors, enemies, pickups, archetype: built.archetype, ...(crushers ? { crushers } : {}) };
   }
   // Normal and item rooms come from archetypes above; boss arenas are built here, start rooms stay empty.
   const isDoor = (c: Cell) => doors.some((d) => d.cell.x === c.x && d.cell.y === c.y);

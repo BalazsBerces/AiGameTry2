@@ -4,6 +4,8 @@ import { ARCHETYPES } from './archetypes';
 import { ENEMY_CLASS } from './enemies';
 import { generateRoom, WORM_LENGTH } from './roomGenerator';
 import { createWorld } from './world';
+import { AXIS_DIRECTIONS, slideCrusher } from './crusher';
+import { validateRoom } from './roomValidator';
 
 const ALL_DOORS = ['up', 'down', 'left', 'right'] as const;
 const room = (seed: number, doors: readonly (typeof ALL_DOORS)[number][] = ALL_DOORS) =>
@@ -554,7 +556,7 @@ describe('every archetype', () => {
   it.each([
     [1, ['jar', 'fourCorners', 'pillaredHall', 'sentryIsland', 'stash', 'thornMaze']],
     [2, ['courtyard', 'gallery', 'serpentGarden', 'track', 'twinJars', 'vault']],
-    [3, ['crossfire', 'fortress', 'killbox', 'minefield', 'nest', 'ruins']],
+    [3, ['crossfire', 'fortress', 'killbox', 'minefield', 'nest', 'ruins', 'crusherCorridor']],
   ])('gives floor %i its own set of ideas, one of them a breather that fits every door set', (floor, ids) => {
     const own = ARCHETYPES.filter((a) => a.floor === floor - 1 && a.kind === 'normal');
     expect(own.map((a) => a.id).sort()).toEqual([...ids].sort());
@@ -563,6 +565,56 @@ describe('every archetype', () => {
       for (let seed = 0; seed < 10; seed++) {
         const r = generateRoom({ id: '0,0', kind: 'normal', doors: [...doors] }, floor - 1, createRng(seed));
         expect(ids).toContain(r.archetype);
+      }
+    }
+  });
+});
+
+describe('Crusher Corridor (floor 3)', () => {
+  const corridor = (seed: number, doors: readonly (typeof SIDES)[number][]) =>
+    generateRoom({ id: '0,0', kind: 'normal', doors: [...doors], archetype: 'crusherCorridor' }, 2, createRng(seed));
+
+  it('sets crushers along lanes they can slide down, valid wherever each one stops, for every door set', () => {
+    for (const doors of EVERY_DOOR_SET) {
+      for (let seed = 0; seed < 30; seed++) {
+        const r = corridor(seed, doors);
+        const where = `seed ${seed} doors ${doors}`;
+        expect(r.archetype, where).toBe('crusherCorridor');
+        expect(r.crushers?.length, where).toBeGreaterThan(0);
+        expect(count(r, 'crusher'), where).toBe(r.crushers!.length);
+        for (const c of r.crushers!) {
+          expect(r.tiles[c.cell.y][c.cell.x], where).toBe('crusher');
+          const reach = AXIS_DIRECTIONS[c.axis].map((dir) => slideCrusher(r.tiles, c.cell, dir).swept.length);
+          expect(Math.max(...reach), where).toBeGreaterThan(1);
+        }
+        expect(validateRoom(r, { axes: ['vertical', 'horizontal'] }), where).toEqual([]);
+        expect(r.enemies.length, where).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('is the same room for the same seed', () => {
+    expect(corridor(7, ALL_DOORS)).toEqual(corridor(7, ALL_DOORS));
+  });
+
+  it('puts a walker in the path of a crusher, to be lured under it', () => {
+    let lured = 0;
+    for (let seed = 0; seed < 30; seed++) {
+      const r = corridor(seed, ALL_DOORS);
+      const lanes = r.crushers!.flatMap((c) => AXIS_DIRECTIONS[c.axis].flatMap((dir) => slideCrusher(r.tiles, c.cell, dir).swept));
+      if (r.enemies.some((e) => e.type !== 'turret' && lanes.some((s) => s.x === e.cell.x && s.y === e.cell.y))) lured++;
+    }
+    expect(lured).toBeGreaterThan(15);
+  });
+
+  it('never appears off the dungeon floor', () => {
+    for (const floorIndex of [0, 1]) {
+      for (const doors of EVERY_DOOR_SET) {
+        for (let seed = 0; seed < 10; seed++) {
+          const r = generateRoom({ id: '0,0', kind: 'normal', doors: [...doors] }, floorIndex, createRng(seed));
+          expect(count(r, 'crusher'), `floor ${floorIndex + 1} seed ${seed}`).toBe(0);
+          expect(r.crushers ?? [], `floor ${floorIndex + 1} seed ${seed}`).toEqual([]);
+        }
       }
     }
   });

@@ -1,0 +1,217 @@
+import { createRng, type Rng } from './rng';
+import {
+  cellKey,
+  generateFloor,
+  roomDoors,
+  type Cell,
+  type Direction,
+  type FloorLayout,
+  type FloorRoom,
+  type RoomDoor,
+} from './floorGenerator';
+import { generateRoom, type ChestItem, type PickupType, type RoomLayout } from './roomGenerator';
+import type { Passive } from './weaponModel';
+
+export interface WorldRoom {
+  floorIndex: number;
+  floorRoom: FloorRoom;
+  layout: RoomLayout;
+  /** Ids of rooms reachable through this room's doors. */
+  neighbors: string[];
+}
+
+export interface PlayerState {
+  /** Health in half-heart units. */
+  health: number;
+  /** Maximum health in half-heart units (two per heart container). */
+  maxHealth: number;
+  keys: number;
+  passives: Passive[];
+}
+
+export interface WorldPickup {
+  id: number;
+  type: PickupType | 'openChest';
+  cell: Cell;
+  passive?: Passive;
+  contents?: ChestItem[];
+}
+
+export const HEART_HEAL = 2;
+
+export interface World {
+  seed: number;
+  floors: FloorLayout[];
+  rooms: Map<string, WorldRoom>;
+  currentRoomId: string;
+  /** Rooms whose enemies are all dead; they never respawn. */
+  cleared: Set<string>;
+  /** Rooms the player has stood in (drawn filled on the minimap). */
+  visited: Set<string>;
+  player: PlayerState;
+  /** Pickups still lying in each room (shown once the room is cleared). */
+  pickups: Map<string, WorldPickup[]>;
+  nextPickupId: number;
+}
+
+export const STARTING_HEARTS = 3;
+
+export const FLOOR_COUNT = 3;
+
+const OPPOSITE: Record<Direction, Direction> = { up: 'down', down: 'up', left: 'right', right: 'left' };
+
+/** Doors between floors: each boss room's exit and the next floor's start room. */
+function crossFloorDoors(floors: FloorLayout[], floorIndex: number, room: FloorRoom): RoomDoor[] {
+  const next = floors[floorIndex + 1];
+  const prev = floors[floorIndex - 1];
+  if (room.kind === 'boss' && next) {
+    const { side, at } = floors[floorIndex].exit;
+    return [{ side, at, to: next.startRoomId }];
+  }
+  if (room.kind === 'start' && prev) {
+    const prevBoss = prev.rooms.find((r) => r.kind === 'boss')!;
+    return [{ side: OPPOSITE[prev.exit.side], at: { x: 0, y: 0 }, to: prevBoss.id }];
+  }
+  return [];
+}
+
+function buildFloor(world: World, rng: Rng, floor: FloorLayout) {
+  for (const floorRoom of floor.rooms) {
+    const doors = [...roomDoors(floor, floorRoom.id), ...crossFloorDoors(world.floors, floor.floorIndex, floorRoom)];
+    const layout = generateRoom(
+      { id: floorRoom.id, kind: floorRoom.kind, doors },
+      floor.floorIndex,
+      rng.fork(`room ${floorRoom.id}`),
+    );
+    world.rooms.set(floorRoom.id, { floorIndex: floor.floorIndex, floorRoom, layout, neighbors: doors.map((d) => d.to) });
+    world.pickups.set(
+      floorRoom.id,
+      layout.pickups.map((p) => ({ id: world.nextPickupId++, ...p })),
+    );
+  }
+}
+
+export type PickupResult = 'none' | 'healed' | 'key' | 'opened' | 'passive';
+
+/** The player touched a pickup. Applies its effect and updates the room's pickups. */
+export function touchPickup(world: World, roomId: string, pickupId: number): PickupResult {
+  const list = world.pickups.get(roomId) ?? [];
+  const pickup = list.find((p) => p.id === pickupId);
+  if (!pickup) return 'none';
+  const { player } = world;
+  const remove = () => world.pickups.set(roomId, (world.pickups.get(roomId) ?? []).filter((p) => p !== pickup));
+  switch (pickup.type) {
+    case 'heart':
+      if (player.health >= player.maxHealth) return 'none';
+      player.health = Math.min(player.maxHealth, player.health + HEART_HEAL);
+      remove();
+      return 'healed';
+    case 'key':
+      player.keys++;
+      remove();
+      return 'key';
+    case 'lockedChest':
+      if (player.keys === 0) return 'none';
+      player.keys--;
+      openChest(world, roomId, pickup);
+      return 'opened';
+    case 'chest':
+      openChest(world, roomId, pickup);
+      return 'opened';
+    case 'passive':
+      if (pickup.passive && !player.passives.includes(pickup.passive)) player.passives.push(pickup.passive);
+      remove();
+      return 'passive';
+    case 'openChest':
+      return 'none';
+  }
+}
+
+/** Empties a chest onto the walkable cells around it. */
+function openChest(world: World, roomId: string, chest: WorldPickup) {
+  const { layout } = world.rooms.get(roomId)!;
+  const list = world.pickups.get(roomId)!;
+  const occupied = new Set(list.map((p) => `${p.cell.x},${p.cell.y}`));
+  const around: Cell[] = [];
+  for (let r = 1; r <= 2 && around.length < (chest.contents?.length ?? 0); r++) {
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        const c = { x: chest.cell.x + dx, y: chest.cell.y + dy };
+        if (layout.tiles[c.y]?.[c.x] === 'floor' && !occupied.has(`${c.x},${c.y}`)) {
+          around.push(c);
+          occupied.add(`${c.x},${c.y}`);
+        }
+      }
+    }
+  }
+  chest.type = 'openChest';
+  (chest.contents ?? []).forEach((item, i) => {
+    const passive = item.type === 'passive' ? item.passive : undefined;
+    list.push({ id: world.nextPickupId++, type: item.type, passive, cell: around[i] ?? chest.cell });
+  });
+  chest.contents = undefined;
+}
+
+export function enterRoom(world: World, roomId: string) {
+  world.currentRoomId = roomId;
+  world.visited.add(roomId);
+}
+
+/** Rooms shown on the minimap: visited ones, plus unvisited neighbours of visited ones (as outlines). */
+export function minimapRooms(world: World): { room: WorldRoom; visited: boolean; current: boolean }[] {
+  const shown = new Set(world.visited);
+  for (const id of world.visited) for (const n of world.rooms.get(id)!.neighbors) shown.add(n);
+  return [...shown].map((id) => ({
+    room: world.rooms.get(id)!,
+    visited: world.visited.has(id),
+    current: id === world.currentRoomId,
+  }));
+}
+
+export const currentFloorIndex = (world: World) => world.rooms.get(world.currentRoomId)!.floorIndex;
+
+/**
+ * Generates the whole run up front: three floors, each growing from the cell behind the
+ * previous boss room's exit. Every floor and room has its own RNG stream.
+ */
+export function createWorld(seed: number): World {
+  const rng = createRng(seed);
+  const floors: FloorLayout[] = [];
+  const occupied = new Set<string>();
+  let start: Cell = { x: 0, y: 0 };
+  for (let floorIndex = 0; floorIndex < FLOOR_COUNT; floorIndex++) {
+    const floor = generateFloor({ occupied, start, floorIndex, rng: rng.fork(`floor ${floorIndex}`) });
+    floors.push(floor);
+    for (const c of floor.rooms.flatMap((r) => r.cells)) occupied.add(cellKey(c));
+    start = floor.exit.cell;
+  }
+  const world: World = {
+    seed,
+    floors,
+    rooms: new Map(),
+    currentRoomId: floors[0].startRoomId,
+    cleared: new Set(),
+    visited: new Set([floors[0].startRoomId]),
+    player: { health: STARTING_HEARTS * 2, maxHealth: STARTING_HEARTS * 2, keys: 0, passives: [] },
+    pickups: new Map(),
+    nextPickupId: 1,
+  };
+  for (const floor of floors) buildFloor(world, rng.fork(`floor ${floor.floorIndex}`), floor);
+  for (const [id, room] of world.rooms) if (room.layout.enemies.length === 0) world.cleared.add(id);
+  return world;
+}
+
+export const isFinalFloor = (floorIndex: number) => floorIndex === FLOOR_COUNT - 1;
+
+/** Applies one hit (half a heart). Returns true if the player died. */
+export function damagePlayer(world: World): boolean {
+  world.player.health = Math.max(0, world.player.health - 1);
+  return world.player.health === 0;
+}
+
+export function roomAtCell(world: World, x: number, y: number): WorldRoom | undefined {
+  for (const room of world.rooms.values()) {
+    if (room.floorRoom.cells.some((c) => c.x === x && c.y === y)) return room;
+  }
+  return undefined;
+}

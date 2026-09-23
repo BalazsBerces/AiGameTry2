@@ -82,7 +82,7 @@ export interface PickupSpawn {
 
 export const PASSIVE_POOL: readonly Passive[] = ['homing', 'fireRate', 'sword'];
 
-export type EnemyType = 'zombie' | 'turret' | 'worm' | 'wormBoss' | 'hiveBoss' | 'shadowBoss';
+export type EnemyType = 'zombie' | 'turret' | 'worm' | 'wormBoss' | 'hiveBoss' | 'shadowBoss' | 'goblin' | 'seedSpitter';
 
 export interface EnemySpawn {
   type: EnemyType;

@@ -25,6 +25,10 @@ export const TUNING = {
   /** `follow`: how hard it closes on its mirrored target (1/s); speed capped relative to the player's. */
   shadow: { hp: 45, follow: 10, maxSpeedFactor: 1.2 },
   hive: { radius: 40, hp: 60, spiralDelayMs: 150, spiralStep: 0.32, shotSpeed: 170, summonEveryMs: 5000, maxSummoned: 3 },
+  /** Faster than a zombie; runs off to regroup when hurt (core/forestCast). */
+  goblin: { hp: 3, speed: 130, retreatSpeed: 110, size: 24 },
+  /** Fires a 3-shot fan (core/forestCast). */
+  seedSpitter: { hp: 4, radius: 17, fireDelayMs: 2000, shotSpeed: 200 },
 };
 
 /** Floor, wall, door and terrain colours come from each floor's theme (core/themes). */
@@ -59,4 +63,8 @@ export const COLORS = {
   minimapCurrent: 0xf0ecf5,
   minimapItem: 0xf2c94c,
   minimapBoss: 0xd8323c,
+  goblin: 0xa8c236,
+  goblinEdge: 0x4a3a1c,
+  seedSpitter: 0xc0584a,
+  seedSpitterEdge: 0xf0d27a,
 };

@@ -29,6 +29,8 @@ import { createTurret } from './entities/turret';
 import { BOSS_WORM, spawnWorm } from './entities/worm';
 import { createZombie } from './entities/zombie';
 import { doorCorridor, mapCellAt, roomBlock, tileAt, tileCenter } from './geometry';
+import { createGoblin } from './entities/goblin';
+import { createSeedSpitter } from './entities/seedSpitter';
 
 type Keys = Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
 type PhysicsRect = Phaser.GameObjects.Rectangle & { body: Phaser.Physics.Arcade.Body };
@@ -48,6 +50,8 @@ const ENEMY_FACTORIES: Record<EnemyType, (scene: Phaser.Scene, spawn: EnemySpawn
     const b = at({ x: s.cell.x + 1, y: s.cell.y + 1 });
     return createHive(scene, (a.x + b.x) / 2, (a.y + b.y) / 2);
   },
+  goblin: (scene, s, at) => createGoblin(scene, at(s.cell).x, at(s.cell).y),
+  seedSpitter: (scene, s, at) => createSeedSpitter(scene, at(s.cell).x, at(s.cell).y),
 };
 
 type Shape = Phaser.GameObjects.Shape;

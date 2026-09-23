@@ -2,6 +2,7 @@ import type { Cell, Direction, RoomKind } from './floorGenerator';
 import type { Rng } from './rng';
 import { PASSIVE_POOL, WORM_LENGTH, type Door, type EnemySpawn, type PickupSpawn, type Tile } from './roomGenerator';
 import type { MirrorAxis, Symmetry } from './roomValidator';
+import { themeForFloor } from './themes';
 
 /** What an archetype gets to draw its idea into. */
 export interface ArchetypeContext {
@@ -63,10 +64,18 @@ class Canvas {
 
 const zombies = (cells: Cell[]): EnemySpawn[] => cells.map((cell) => ({ type: 'zombie', cell }));
 
+/** The floor theme's walker (goblin in the forest, ...) on each cell. */
+const walkersOf = (floorIndex: number, cells: Cell[]): EnemySpawn[] =>
+  cells.map((cell) => ({ type: themeForFloor(floorIndex).walker, cell }));
+
+/** The floor theme's turret (seed-spitter in the forest, ...) on each cell. */
+const turretsOf = (floorIndex: number, cells: Cell[]): EnemySpawn[] =>
+  cells.map((cell) => ({ type: themeForFloor(floorIndex).turret, cell }));
+
 /**
- * Floor 1 breather: rows of pillars mirrored into all four quadrants, and a pair of zombies
- * facing each other across the open centre row. Pillars never touch a door approach, so it
- * fits every door set.
+ * Floor 1 breather, a glade: rows of trees mirrored into all four quadrants, and a pair of
+ * goblins facing each other across the open centre row. Trees never touch a door approach, so
+ * it fits every door set.
  */
 const pillaredHall: Archetype = {
   id: 'pillaredHall',
@@ -86,11 +95,11 @@ const pillaredHall: Archetype = {
     ]);
     canvas.paint(layout.cols.map((x) => ({ x, y: layout.row })), 'obstacle');
     const x = rng.int(3, 4);
-    return { tiles: canvas.tiles, enemies: zombies(canvas.images({ x, y: 3 }).slice(0, 2)), pickups: [], symmetry: { axes } };
+    return { tiles: canvas.tiles, enemies: walkersOf(0, canvas.images({ x, y: 3 }).slice(0, 2)), pickups: [], symmetry: { axes } };
   },
 };
 
-/** Floor 1: an L of cover hugging every corner, with a zombie tucked into each one. */
+/** Floor 1: an L of thicket or pond hugging every corner, with a goblin lurking in each one. */
 const fourCorners: Archetype = {
   id: 'fourCorners',
   floor: 0,
@@ -102,13 +111,14 @@ const fourCorners: Archetype = {
     const arm = rng.int(2, 4);
     const cover: Tile = rng.next() < 0.3 ? 'hole' : 'obstacle';
     canvas.paint([...Array.from({ length: arm }, (_, i) => ({ x: 1 + i, y: 1 })), { x: 1, y: 2 }], cover);
-    return { tiles: canvas.tiles, enemies: zombies(canvas.images({ x: 2, y: 2 })), pickups: [], symmetry: { axes } };
+    return { tiles: canvas.tiles, enemies: walkersOf(0, canvas.images({ x: 2, y: 2 })), pickups: [], symmetry: { axes } };
   },
 };
 
 /**
- * Floor 1 puzzle: a chest in the middle, boxed in by stone with a rock set into the middle of
- * each wall, so shooting (or bombing) through is the only way in. Two zombies keep watch.
+ * Floor 1 puzzle, a goblin hoard: a chest in the middle, boxed in by trees with a bush set into
+ * the middle of each wall, so shooting (or bombing) through is the only way in. Two goblins
+ * keep watch.
  */
 const stash: Archetype = {
   id: 'stash',
@@ -133,7 +143,7 @@ const stash: Archetype = {
     const images = canvas.images(rng.pick([{ x: 2, y: 3 }, { x: 3, y: 1 }, { x: 2, y: 1 }]));
     return {
       tiles: canvas.tiles,
-      enemies: zombies([images[0], images[images.length - 1]]),
+      enemies: walkersOf(0, [images[0], images[images.length - 1]]),
       pickups: [{ type: 'chest', cell: centre }],
       symmetry: { axes },
     };
@@ -182,8 +192,8 @@ function jarInside(shape: JarShape): Cell[] {
 }
 
 /**
- * Floor 1: a stone jar holding a horde of zombies that can only pour out of one small
- * opening. The opening (the room's one asymmetry) never faces a door, so the horde doesn't
+ * Floor 1, the goblin den: a ring of trees holding a pack of goblins that can only pour out of
+ * one small gap. The gap (the room's one asymmetry) never faces a door, so the pack doesn't
  * spill straight onto the player walking in.
  */
 const jar: Archetype = {
@@ -205,13 +215,13 @@ const jar: Archetype = {
     canvas.paint(jarWall(shape), 'obstacle');
     canvas.paint([opening], 'floor');
     const horde = shuffled(jarInside(shape), rng).slice(0, rng.int(4, 5));
-    return { tiles: canvas.tiles, enemies: zombies(horde), pickups: [], symmetry: { axes: shape.axes, feature: [opening] } };
+    return { tiles: canvas.tiles, enemies: walkersOf(0, horde), pickups: [], symmetry: { axes: shape.axes, feature: [opening] } };
   },
 };
 
 /**
- * Floor 1: turrets on an island ringed by holes. Nobody can walk out to them, but shots fly
- * over holes both ways, so it's a shootout across the moat; stone pillars offer cover.
+ * Floor 1: seed-spitters on an island in a pond. Nobody can walk out to them, but shots fly
+ * over water both ways, so it's a shootout across the pond; trees offer cover.
  */
 const sentryIsland: Archetype = {
   id: 'sentryIsland',
@@ -230,8 +240,7 @@ const sentryIsland: Archetype = {
     ]);
     canvas.paint(layout.moat, 'hole');
     if (rng.next() < 0.5) canvas.paint([{ x: 1, y: 1 }], 'obstacle');
-    const turrets = canvas.images(layout.turret).map((cell): EnemySpawn => ({ type: 'turret', cell }));
-    return { tiles: canvas.tiles, enemies: turrets, pickups: [], symmetry: { axes } };
+    return { tiles: canvas.tiles, enemies: turretsOf(0, canvas.images(layout.turret)), pickups: [], symmetry: { axes } };
   },
 };
 

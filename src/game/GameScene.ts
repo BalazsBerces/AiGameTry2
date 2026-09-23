@@ -1,13 +1,14 @@
 import Phaser from 'phaser';
 import { DIRECTIONS, STEP, type Cell, type Direction, type RoomKind } from '../core/floorGenerator';
 import { distanceField, lineOfSight } from '../core/grid';
-import { blocksSight, isWalkable, type EnemySpawn, type EnemyType } from '../core/roomGenerator';
+import { blocksSight, isWalkable, type ChampionDrop, type EnemySpawn, type EnemyType } from '../core/roomGenerator';
 import { launchVelocity, resolveWeapon } from '../core/weaponModel';
 import {
   BOMB_RADIUS,
   createWorld,
   damagePlayer,
   detonateBomb,
+  dropChampionLoot,
   enterRoom,
   hitTile,
   isFinalFloor,
@@ -24,7 +25,7 @@ import type { Enemy, EnemyContext, EnemySprite } from './entities/enemy';
 import { createHive } from './entities/hive';
 import { createShadow } from './entities/shadow';
 import { createTurret } from './entities/turret';
-import { BOSS_WORM, spawnWorm } from './entities/worm';
+import { BOSS_WORM, championWorm, REGULAR_WORM, spawnWorm } from './entities/worm';
 import { createZombie } from './entities/zombie';
 import { doorCorridor, mapCellAt, roomBlock, tileAt, tileCenter } from './geometry';
 
@@ -35,9 +36,9 @@ const DEPTH = { player: 10 };
 
 type At = (c: Cell) => { x: number; y: number };
 const ENEMY_FACTORIES: Record<EnemyType, (scene: Phaser.Scene, spawn: EnemySpawn, at: At) => Enemy> = {
-  zombie: (scene, s, at) => createZombie(scene, at(s.cell).x, at(s.cell).y),
-  turret: (scene, s, at) => createTurret(scene, at(s.cell).x, at(s.cell).y),
-  worm: (scene, s, at) => spawnWorm(scene, [s.cell, ...(s.tail ?? [])], at),
+  zombie: (scene, s, at) => createZombie(scene, at(s.cell).x, at(s.cell).y, !!s.champion),
+  turret: (scene, s, at) => createTurret(scene, at(s.cell).x, at(s.cell).y, !!s.champion),
+  worm: (scene, s, at) => spawnWorm(scene, [s.cell, ...(s.tail ?? [])], at, s.champion ? championWorm(REGULAR_WORM) : REGULAR_WORM),
   wormBoss: (scene, s, at) => spawnWorm(scene, [s.cell, ...(s.tail ?? [])], at, BOSS_WORM),
   shadowBoss: (scene, s, at) => createShadow(scene, at(s.cell).x, at(s.cell).y),
   // The core covers 2x2 tiles; `cell` is its top-left.
@@ -87,6 +88,8 @@ export class GameScene extends Phaser.Scene {
   private walkers!: Phaser.Physics.Arcade.Group;
   private enemyShots!: Phaser.Physics.Arcade.Group;
   private enemies: Enemy[] = [];
+  /** Living champions (a split worm's pieces all count) and the pickup each drops once fully dead. */
+  private champions = new Map<Enemy, ChampionDrop>();
   private doorLocks: Phaser.GameObjects.GameObject[] = [];
   private pickupGroup!: Phaser.Physics.Arcade.Group;
   private itemLockoutUntil = 0;
@@ -105,6 +108,7 @@ export class GameScene extends Phaser.Scene {
     const seed = data.seed ?? (Number.isFinite(urlSeed) ? urlSeed : Math.floor(Math.random() * 2 ** 31));
     this.world = createWorld(seed);
     this.enemies = [];
+    this.champions = new Map();
     this.doorLocks = [];
     this.nextShotAt = 0;
     this.invincibleUntil = 0;
@@ -369,8 +373,18 @@ export class GameScene extends Phaser.Scene {
   private damagePart(part: EnemySprite, damage: number) {
     const enemy = this.enemies.find((e) => e.parts.includes(part));
     if (!enemy) return;
+    const where = { x: part.x, y: part.y };
     const replacements = enemy.hit(part, damage);
     this.enemies = this.enemies.flatMap((e) => (e === enemy ? replacements : [e]));
+    const drop = this.champions.get(enemy);
+    if (drop) {
+      this.champions.delete(enemy);
+      for (const r of replacements) this.champions.set(r, drop);
+      if (![...this.champions.values()].includes(drop)) {
+        dropChampionLoot(this.world, this.world.currentRoomId, drop, tileAt(this.currentRoom, where.x, where.y));
+        this.showPickups();
+      }
+    }
     if (this.enemies.length === 0) this.clearRoom();
   }
 
@@ -460,7 +474,11 @@ export class GameScene extends Phaser.Scene {
 
   private spawnEnemies(room: WorldRoom) {
     const at = (c: Cell) => tileCenter(room, c.x, c.y);
-    for (const spawn of room.layout.enemies) this.addEnemy(ENEMY_FACTORIES[spawn.type](this, spawn, at));
+    for (const spawn of room.layout.enemies) {
+      const enemy = ENEMY_FACTORIES[spawn.type](this, spawn, at);
+      if (spawn.champion) this.champions.set(enemy, spawn.champion.drop);
+      this.addEnemy(enemy);
+    }
   }
 
   private lockDoors(room: WorldRoom) {

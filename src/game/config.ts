@@ -24,6 +24,8 @@ export const TUNING = {
   wormBoss: { segmentSize: 42, segmentHp: 5, stepMs: 240 },
   /** `follow`: how hard it closes on its mirrored target (1/s); speed capped relative to the player's. */
   shadow: { hp: 45, follow: 10, maxSpeedFactor: 1.2 },
+  /** Multipliers for a room's champion: size, hit points, and movement (or firing) speed. */
+  champion: { scale: 1.35, hp: 2, speed: 1.15 },
   hive: { radius: 40, hp: 60, spiralDelayMs: 150, spiralStep: 0.32, shotSpeed: 170, summonEveryMs: 5000, maxSummoned: 3 },
 };
 
@@ -50,6 +52,7 @@ export const COLORS = {
   hiveRing: 0xd9a8ff,
   wormBossHead: 0xe0453a,
   wormBossBody: 0x9c2f2a,
+  champion: 0xf2b632,
   enemyShot: 0xff6b5a,
   lockedDoor: 0x3a2515,
   heart: 0xd8323c,

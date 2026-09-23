@@ -91,7 +91,12 @@ export interface EnemySpawn {
   cell: Cell;
   /** A worm's body behind the head, in order. */
   tail?: Cell[];
+  /** Tougher and always drops `drop` (from the normal room-clear pool) when killed. */
+  champion?: { drop: ChampionDrop };
 }
+
+/** A champion's extra pickup; it lands wherever the champion dies. */
+export type ChampionDrop = Omit<PickupSpawn, 'cell'>;
 
 /** Doors sit at the centre of the wall of the map cell they belong to. */
 function doorCell({ side, at }: DoorSpec, width: number, height: number): Cell {
@@ -319,7 +324,9 @@ export function generateRoom(spec: RoomSpec, floorIndex: number, rng: Rng): Room
     const built = buildFromArchetype(spec, doors, floorIndex, rng);
     const pickups = built.pickups.map((p) => placeLoot(p, rng));
     if (spec.kind === 'normal') pickups.push(...rollClearDrop(built.tiles, doors, built.enemies, pickups, rng));
-    return { id: spec.id, width, height, tiles: built.tiles, doors, enemies: built.enemies, pickups, summonPoints: [], archetype: built.archetype };
+    // Its own stream, so champion rolls never shift the room's layout.
+    const enemies = spec.kind === 'normal' ? crownChampion(built.enemies, rng.fork('champion')) : built.enemies;
+    return { id: spec.id, width, height, tiles: built.tiles, doors, enemies, pickups, summonPoints: [], archetype: built.archetype };
   }
   // Normal and item rooms come from archetypes above; boss arenas are built here, start rooms stay empty.
   const isDoor = (c: Cell) => doors.some((d) => d.cell.x === c.x && d.cell.y === c.y);
@@ -379,6 +386,16 @@ export const PICKUPS = {
   lockedChestContents: { min: 2, max: 3 },
   lockedChestPassiveChance: 0.35,
 };
+
+/** Chance a normal room with enemies makes one of them a champion; a placeholder for playtest tuning. */
+export const CHAMPION_CHANCE = 0.15;
+
+function crownChampion(enemies: EnemySpawn[], rng: Rng): EnemySpawn[] {
+  if (!enemies.length || rng.next() >= CHAMPION_CHANCE) return enemies;
+  const index = rng.int(0, enemies.length - 1);
+  const { cell: _, ...drop } = rollPickup(enemies[index].cell, rng);
+  return enemies.map((e, i) => (i === index ? { ...e, champion: { drop } } : e));
+}
 
 function weighted<K extends string>(weights: Record<K, number>, rng: Rng): K {
   const entries = Object.entries(weights) as [K, number][];

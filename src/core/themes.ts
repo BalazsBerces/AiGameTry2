@@ -34,6 +34,8 @@ export interface FloorTheme {
   turret: EnemyType;
   /** Hit points of the floor's walker when it is a tougher take on its type (the dungeon zombie). */
   walkerHp?: number;
+  /** New enemy types that debut on this floor, in rooms built around them. */
+  newEnemies?: readonly EnemyType[];
 }
 
 const THEMES: readonly FloorTheme[] = [
@@ -103,6 +105,7 @@ const THEMES: readonly FloorTheme[] = [
     walker: 'zombie',
     turret: 'gargoyle',
     walkerHp: 5,
+    newEnemies: ['ghost'],
   },
 ];
 

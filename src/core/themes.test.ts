@@ -34,6 +34,11 @@ describe('floor themes', () => {
     expect([0, 1, 2].map((f) => bossForFloor(f))).toEqual(['treantBoss', 'wormBoss', 'shadowBoss']);
   });
 
+  it('debuts the ghost in the dungeon and nowhere else', () => {
+    expect(themeForFloor(2).newEnemies).toContain('ghost');
+    for (const f of [0, 1]) expect(themeForFloor(f).newEnemies ?? []).not.toContain('ghost');
+  });
+
   it('shows a thorn as a thorn bush in the forest', () => {
     expect(themeForFloor(0).looks.thorn.name).toBe('thorn bush');
   });

@@ -37,6 +37,7 @@ import { createTreant } from './entities/treant';
 import { doorCorridor, mapCellAt, roomBlock, tileAt, tileCenter } from './geometry';
 import { createGoblin } from './entities/goblin';
 import { createSeedSpitter } from './entities/seedSpitter';
+import { createGhost } from './entities/ghost';
 
 type Keys = Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
 type PhysicsRect = Phaser.GameObjects.Rectangle & { body: Phaser.Physics.Arcade.Body };
@@ -56,6 +57,7 @@ const ENEMY_FACTORIES: Record<EnemyType, (scene: Phaser.Scene, spawn: EnemySpawn
   crystalTurret: (scene, s, at) => createCrystalTurret(scene, at(s.cell).x, at(s.cell).y),
   gargoyle: (scene, s, at) => createGargoyle(scene, at(s.cell).x, at(s.cell).y),
   treantBoss: (scene, s, at) => createTreant(scene, at(s.cell).x, at(s.cell).y, s.cell),
+  ghost: (scene, s, at) => createGhost(scene, at(s.cell).x, at(s.cell).y, s.cell, !!s.champion),
 };
 
 type Shape = Phaser.GameObjects.Shape;

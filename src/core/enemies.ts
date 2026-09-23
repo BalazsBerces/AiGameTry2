@@ -19,4 +19,6 @@ export const ENEMY_CLASS: Record<EnemyType, EnemyClass> = {
   gargoyle: 'stationary',
   /** Rooted in place: it only has to be shootable. */
   treantBoss: 'stationary',
+  /** Drifts through walls, rocks and pits: it always comes out to be shot. */
+  ghost: 'phasing',
 };

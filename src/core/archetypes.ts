@@ -538,7 +538,9 @@ const ruins: Archetype = {
     if (rng.next() < 0.5) canvas.paint([{ x: 1, y: 1 }], 'rock');
     const first = { x: rng.int(2, 4), y: 0 };
     const second = rng.next() < 0.5 ? opposite(first, width, height) : { x: width - 1 - first.x, y: first.y };
-    return { tiles: canvas.tiles, enemies: dungeonWalkers([first, second]), pickups: [], symmetry: { axes } };
+    // Sometimes a ghost haunts the middle of the ruins as well.
+    const haunt = rng.next() < 0.35 ? ghosts([{ x: (width - 1) / 2, y: (height - 1) / 2 }]) : [];
+    return { tiles: canvas.tiles, enemies: [...dungeonWalkers([first, second]), ...haunt], pickups: [], symmetry: { axes } };
   },
 };
 
@@ -688,6 +690,46 @@ const crusherCorridor: Archetype = {
   },
 };
 
+/** Ghosts on each cell: they drift through walls, rocks and pits, so they may start anywhere on floor. */
+const ghosts = (cells: Cell[]): EnemySpawn[] => cells.map((cell) => ({ type: 'ghost', cell }));
+
+/**
+ * Floor 3, the haunted hall: tombs mirrored into every quarter of a crypt, each sealing a ghost
+ * in stone that nobody could walk to, though the ghosts drift straight out through the walls.
+ * Sometimes a ring of pits in the middle holds one more, and zombies shamble down the open
+ * middle row. Tombs stay clear of the door approaches, so it fits every door set.
+ */
+const hauntedHall: Archetype = {
+  id: 'hauntedHall',
+  floor: 2,
+  kind: 'normal',
+  fits: fitsAll,
+  build({ width, height, rng }) {
+    const axes: MirrorAxis[] = ['vertical', 'horizontal'];
+    const canvas = new Canvas(width, height, axes);
+    const crosses = rng.next() < 0.5;
+    // A cross of stone round one cell, or a sarcophagus: a sealed row of three cells.
+    const tomb = crosses
+      ? { stone: [{ x: 3, y: 0 }, { x: 2, y: 1 }, { x: 4, y: 1 }, { x: 3, y: 2 }], inside: [{ x: 3, y: 1 }] }
+      : {
+          stone: [{ x: 2, y: 0 }, { x: 3, y: 0 }, { x: 4, y: 0 }, { x: 1, y: 1 }, { x: 5, y: 1 }, { x: 2, y: 2 }, { x: 3, y: 2 }, { x: 4, y: 2 }],
+          inside: [{ x: 2, y: 1 }, { x: 3, y: 1 }, { x: 4, y: 1 }],
+        };
+    canvas.paint(tomb.stone, 'obstacle');
+    const tombs = canvas.images(rng.pick(tomb.inside));
+    // Every tomb haunted, or just a diagonal pair.
+    const haunted = rng.next() < 0.5 ? tombs : [tombs[0], tombs[tombs.length - 1]];
+    const enemies = ghosts(haunted);
+    // The pit ring would cut the top and bottom doors off behind a sarcophagus's corner stones.
+    if (crosses && rng.next() < 0.5) {
+      canvas.paint([{ x: 6, y: 2 }, { x: 5, y: 3 }], 'hole');
+      enemies.push(...ghosts([{ x: (width - 1) / 2, y: (height - 1) / 2 }]));
+    }
+    if (rng.next() < 0.4) enemies.push(...walkersOf(2, canvas.images({ x: 3, y: 3 })));
+    return { tiles: canvas.tiles, enemies, pickups: [], symmetry: { axes } };
+  },
+};
+
 /**
  * Wide room, every floor: run the gauntlet down a long hall. The floor's turrets line ledges
  * along the top and bottom walls behind a moat of holes, a pack of its walkers holds the middle,
@@ -802,6 +844,7 @@ export const ARCHETYPES: readonly Archetype[] = [
   thornMaze,
   crusherCorridor,
   ...[0, 1, 2].flatMap((floor) => [gauntlet(floor), descent(floor)]),
+  hauntedHall,
 ];
 
 export const archetypeById = (id: string) => ARCHETYPES.find((a) => a.id === id);

@@ -177,11 +177,12 @@ describe('generateRoom enemies', () => {
           const r = generateRoom({ id: '0,0', kind: 'normal', doors: [...doors] }, floorIndex, createRng(seed));
           const walk = reachable(r, r.doors[0].cell);
           const shoot = reachable(r, r.doors[0].cell, false, true);
-          const cells = r.enemies.flatMap((e) => [e.cell, ...(e.tail ?? [])].map((c) => ({ c, turret: ENEMY_CLASS[e.type] === 'stationary' })));
-          for (const { c, turret } of cells) {
+          const cells = r.enemies.flatMap((e) => [e.cell, ...(e.tail ?? [])].map((c) => ({ c, kind: ENEMY_CLASS[e.type] })));
+          for (const { c, kind } of cells) {
             const where = `floor ${floorIndex} seed ${seed} doors ${doors} at ${c.x},${c.y}`;
             expect(r.tiles[c.y]?.[c.x], where).toBe('floor');
-            expect((turret ? shoot : walk).has(`${c.x},${c.y}`), where).toBe(true);
+            // Ghosts drift through anything, so they may start where nobody can walk or shoot.
+            if (kind !== 'phasing') expect((kind === 'stationary' ? shoot : walk).has(`${c.x},${c.y}`), where).toBe(true);
             for (const d of r.doors) {
               const near = Math.abs(d.cell.x - c.x) <= 1 && Math.abs(d.cell.y - c.y) <= 1;
               expect(near, `${where} near door ${d.side}`).toBe(false);
@@ -280,8 +281,8 @@ describe('generateRoom enemy mix per floor', () => {
 
   it('asks for more damage to clear a room on each later floor', () => {
     // Default hit points: zombie 3, turret 4, worm 4 segments of 2, goblin 3, seed-spitter 4, ghoul 4,
-    // crystal turret 4, gargoyle 5; a spawn's own `hp` (the dungeon's tougher zombies) overrides them.
-    const HP: Record<string, number> = { zombie: 3, turret: 4, worm: 8, goblin: 3, seedSpitter: 4, ghoul: 4, crystalTurret: 4, gargoyle: 5 };
+    // crystal turret 4, gargoyle 5, ghost 4; a spawn's own `hp` (the dungeon's tougher zombies) overrides them.
+    const HP: Record<string, number> = { zombie: 3, turret: 4, worm: 8, goblin: 3, seedSpitter: 4, ghoul: 4, crystalTurret: 4, gargoyle: 5, ghost: 4 };
     const mean = (floorIndex: number) =>
       sample(floorIndex).reduce((sum, r) => sum + r.reduce((s, e) => s + (e.hp ?? HP[e.type]), 0), 0) / 600;
     expect(mean(1)).toBeGreaterThan(mean(0) + 1);
@@ -551,7 +552,7 @@ describe('Thorn Maze (floor 1)', () => {
 });
 
 describe('every archetype', () => {
-  const ROSTER = [['goblin', 'seedSpitter'], ['ghoul', 'crystalTurret', 'worm'], ['zombie', 'gargoyle']];
+  const ROSTER = [['goblin', 'seedSpitter'], ['ghoul', 'crystalTurret', 'worm'], ['zombie', 'gargoyle', 'ghost']];
 
   it('builds its own idea for every shape and door set it fits: deterministic, varied, within its floor roster', () => {
     for (const a of ARCHETYPES) {
@@ -601,7 +602,7 @@ describe('every archetype', () => {
   it.each([
     [1, ['jar', 'fourCorners', 'pillaredHall', 'sentryIsland', 'stash', 'thornMaze']],
     [2, ['courtyard', 'gallery', 'serpentGarden', 'track', 'twinJars', 'vault']],
-    [3, ['crossfire', 'fortress', 'killbox', 'minefield', 'nest', 'ruins', 'crusherCorridor']],
+    [3, ['crossfire', 'fortress', 'killbox', 'minefield', 'nest', 'ruins', 'crusherCorridor', 'hauntedHall']],
   ])('gives floor %i its own set of ideas, one of them a breather that fits every door set', (floor, ids) => {
     const own = ARCHETYPES.filter((a) => a.floor === floor - 1 && a.kind === 'normal' && supportsShape(a, '1x1'));
     expect(own.map((a) => a.id).sort()).toEqual([...ids].sort());
@@ -662,6 +663,53 @@ describe('Crusher Corridor (floor 3)', () => {
         }
       }
     }
+  });
+});
+
+describe('Haunted Hall (floor 3)', () => {
+  const hall = (seed: number, doors: readonly (typeof SIDES)[number][]) =>
+    generateRoom({ id: '0,0', kind: 'normal', doors: [...doors], archetype: 'hauntedHall' }, 2, createRng(seed));
+  const ghostsIn = (r: ReturnType<typeof hall>) => r.enemies.filter((e) => e.type === 'ghost');
+
+  it('builds its own valid idea around ghosts for every door set', () => {
+    for (const doors of EVERY_DOOR_SET) {
+      for (let seed = 0; seed < 30; seed++) {
+        const r = hall(seed, doors);
+        const where = `seed ${seed} doors ${doors}`;
+        expect(r.archetype, where).toBe('hauntedHall');
+        expect(ghostsIn(r).length, where).toBeGreaterThanOrEqual(2);
+        expect(validateRoom(r, { axes: ['vertical', 'horizontal'] }), where).toEqual([]);
+      }
+    }
+  });
+
+  it('shuts ghosts in behind stone, where nobody on foot could ever reach them', () => {
+    let sealed = 0;
+    for (let seed = 0; seed < 30; seed++) {
+      const r = hall(seed, ALL_DOORS);
+      const onFoot = reachable(r, r.doors[0].cell, true, true);
+      if (ghostsIn(r).some((g) => !onFoot.has(`${g.cell.x},${g.cell.y}`))) sealed++;
+    }
+    expect(sealed).toBeGreaterThan(20);
+  });
+
+  it('is the same room for the same seed', () => {
+    expect(hall(7, ALL_DOORS)).toEqual(hall(7, ALL_DOORS));
+  });
+
+  it('haunts floor 3 only: ghosts never appear on floors 1 and 2', () => {
+    const types: Set<string>[] = [new Set(), new Set(), new Set()];
+    for (const floorIndex of [0, 1, 2]) {
+      for (const doors of EVERY_DOOR_SET) {
+        for (let seed = 0; seed < 20; seed++) {
+          const r = generateRoom({ id: '0,0', kind: 'normal', doors: [...doors] }, floorIndex, createRng(seed));
+          for (const e of r.enemies) types[floorIndex].add(e.type);
+        }
+      }
+    }
+    expect(types[0].has('ghost')).toBe(false);
+    expect(types[1].has('ghost')).toBe(false);
+    expect(types[2].has('ghost')).toBe(true);
   });
 });
 

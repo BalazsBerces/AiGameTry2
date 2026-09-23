@@ -1,5 +1,7 @@
-import type { Cell } from './floorGenerator';
-import type { Tile } from './roomGenerator';
+import { cellKey, type Cell } from './floorGenerator';
+import type { Rng } from './rng';
+import type { Door, Tile } from './roomGenerator';
+import { doorApproach } from './roomValidator';
 import { isWalkable } from './tiles';
 
 /** Root eruption timing and shape; all numbers are placeholders for playtest tuning. */
@@ -76,4 +78,68 @@ export function rootEruptionAt(attack: RootEruption, elapsedMs: number): { teleg
     });
   }
   return { telegraph, hurting };
+}
+
+/** Seed pod volleys; all numbers are placeholders for playtest tuning. */
+export const SEEDS = {
+  /** Pods per volley (fewer if there aren't enough spots). */
+  count: 3,
+  /** Pods come down this many tiles (8-way) around the player, hemming them in. */
+  spread: 3,
+  /** Chance a pod sprouts thorn rather than rock. */
+  thornChance: 0.4,
+  /** Time a pod spends in the air; its landing spot is shadowed on the ground meanwhile. */
+  flightMs: 900,
+  /** Pause after landing before the treant moves on. */
+  settleMs: 250,
+};
+
+export type Sprout = 'rock' | 'thorn';
+
+export interface SeedPod {
+  cell: Cell;
+  sprout: Sprout;
+}
+
+export interface SeedVolley {
+  pods: SeedPod[];
+  flightMs: number;
+  /** Time from the throw until the treant is ready for its next attack. */
+  durationMs: number;
+}
+
+/**
+ * Plans a volley of seed pods lobbed around the player. A pod only comes down on floor with
+ * walkable ground on all 8 sides (counting the volley's earlier pods), never on the player's
+ * tile, beside the treant, or on a door's approach. The ring of open ground around each sprout
+ * means it can never cut any walkable tile, door or the treant off from the rest of the room.
+ */
+export function planSeedVolley(tiles: Tile[][], doors: Door[], treant: Cell, player: Cell, rng: Rng): SeedVolley {
+  const planned = tiles.map((row) => [...row]);
+  const approaches = new Set(doors.flatMap(doorApproach).map(cellKey));
+  const walkableAt = (c: Cell) => {
+    const tile = planned[c.y]?.[c.x];
+    return tile !== undefined && isWalkable(tile);
+  };
+  const openAround = (c: Cell) => [-1, 0, 1].every((dx) => [-1, 0, 1].every((dy) => walkableAt({ x: c.x + dx, y: c.y + dy })));
+  const landable = (c: Cell) =>
+    planned[c.y]?.[c.x] === 'floor' &&
+    !(c.x === player.x && c.y === player.y) &&
+    Math.max(Math.abs(c.x - treant.x), Math.abs(c.y - treant.y)) > 1 &&
+    !approaches.has(cellKey(c)) &&
+    openAround(c);
+
+  const candidates: Cell[] = [];
+  for (let dy = -SEEDS.spread; dy <= SEEDS.spread; dy++) {
+    for (let dx = -SEEDS.spread; dx <= SEEDS.spread; dx++) candidates.push({ x: player.x + dx, y: player.y + dy });
+  }
+  const pods: SeedPod[] = [];
+  while (pods.length < SEEDS.count && candidates.length) {
+    const cell = candidates.splice(rng.int(0, candidates.length - 1), 1)[0];
+    if (!landable(cell)) continue;
+    const sprout: Sprout = rng.next() < SEEDS.thornChance ? 'thorn' : 'rock';
+    planned[cell.y][cell.x] = sprout;
+    pods.push({ cell, sprout });
+  }
+  return { pods, flightMs: SEEDS.flightMs, durationMs: SEEDS.flightMs + SEEDS.settleMs };
 }

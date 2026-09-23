@@ -1,6 +1,6 @@
 import type Phaser from 'phaser';
 import type { Cell, Direction } from '../../core/floorGenerator';
-import type { Tile } from '../../core/roomGenerator';
+import type { Door, Tile } from '../../core/roomGenerator';
 import type { Weapon } from '../../core/weaponModel';
 import { COLORS, TUNING } from '../config';
 
@@ -30,6 +30,13 @@ export interface EnemyContext {
   tiles: Tile[][];
   /** Hurts the player directly (for ground attacks such as the Treant's roots); invincibility frames apply. */
   hurtPlayer(): void;
+  /** The current room's doors (attacks that reshape terrain keep their approaches clear). */
+  doors: Door[];
+  /**
+   * A seed pod comes down on `cell`: it sprouts `tile` there for good (the world's tiles change),
+   * or, if the player is standing on it, bursts on them instead. True if it sprouted.
+   */
+  landSeedPod(cell: Cell, tile: 'rock' | 'thorn'): boolean;
 }
 
 export interface Enemy {

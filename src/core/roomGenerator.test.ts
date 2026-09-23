@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createRng } from './rng';
 import { ARCHETYPES } from './archetypes';
 import { generateRoom, WORM_LENGTH } from './roomGenerator';
+import { createWorld } from './world';
 
 const ALL_DOORS = ['up', 'down', 'left', 'right'] as const;
 const room = (seed: number, doors: readonly (typeof ALL_DOORS)[number][] = ALL_DOORS) =>
@@ -53,11 +54,69 @@ describe('generateRoom terrain', () => {
   });
 });
 
-describe('generateRoom worm boss arena (floor 1)', () => {
+describe('bosses per floor across whole runs', () => {
+  const worlds = Array.from({ length: 40 }, (_, seed) => createWorld(seed));
+
+  it('puts the Treant on floor 1, the Worm boss on floor 2 and the Shadow on floor 3', () => {
+    for (const world of worlds) {
+      const bosses = [...world.rooms.values()]
+        .filter((r) => r.floorRoom.kind === 'boss')
+        .sort((a, b) => a.floorIndex - b.floorIndex)
+        .map((r) => r.layout.enemies.map((e) => e.type));
+      expect(bosses, `seed ${world.seed}`).toEqual([['treantBoss'], ['wormBoss'], ['shadowBoss']]);
+    }
+  });
+
+  it('never spawns the retired Hive anywhere', () => {
+    for (const world of worlds) {
+      const types: string[] = [...world.rooms.values()].flatMap((r) => r.layout.enemies.map((e) => e.type));
+      expect(types, `seed ${world.seed}`).not.toContain('hiveBoss');
+    }
+  });
+
+  it('keeps every boss arena connected: all doors and floor cells reachable', () => {
+    for (const world of worlds) {
+      for (const r of [...world.rooms.values()].filter((r) => r.floorRoom.kind === 'boss')) {
+        const a = r.layout;
+        const seen = reachable(a, a.doors[0].cell);
+        const where = `seed ${world.seed} floor ${r.floorIndex}`;
+        expect(seen.size, where).toBe(count(a, 'floor'));
+        for (const d of a.doors) expect(seen.has(`${d.cell.x},${d.cell.y}`), where).toBe(true);
+      }
+    }
+  });
+});
+
+describe('generateRoom treant arena at the cave mouth (floor 1)', () => {
+  const arena = (seed: number) =>
+    generateRoom({ id: '0,0', kind: 'boss', doors: [{ side: 'left', at: { x: 0, y: 1 } }] }, 0, createRng(seed));
+
+  it('is ringed by cave rock that differs per seed, with an open middle to dodge roots in', () => {
+    const arenas = Array.from({ length: 30 }, (_, seed) => arena(seed));
+    for (const a of arenas) {
+      expect(count(a, 'obstacle')).toBeGreaterThanOrEqual(12);
+      for (let y = 4; y < a.height - 4; y++) for (let x = 7; x < a.width - 7; x++) expect(a.tiles[y][x]).toBe('floor');
+    }
+    expect(new Set(arenas.map((a) => JSON.stringify(a.tiles))).size).toBe(30);
+  });
+
+  it('places exactly one treant on open floor across the room from the entrance', () => {
+    for (let seed = 0; seed < 200; seed++) {
+      const a = arena(seed);
+      expect(a.enemies.map((e) => e.type), `seed ${seed}`).toEqual(['treantBoss']);
+      const t = a.enemies[0].cell;
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) expect(a.tiles[t.y + dy]?.[t.x + dx], `seed ${seed}`).toBe('floor');
+      // The entrance is on the left wall, so the treant waits in the right half.
+      expect(t.x, `seed ${seed}`).toBeGreaterThanOrEqual(a.width / 2);
+    }
+  });
+});
+
+describe('generateRoom worm boss arena (floor 2)', () => {
   const arena = (seed: number) =>
     generateRoom(
       { id: '0,0', kind: 'boss', doors: [{ side: 'up', at: { x: 0, y: 0 } }, { side: 'right', at: { x: 1, y: 1 } }] },
-      0,
+      1,
       createRng(seed),
     );
 
@@ -145,45 +204,6 @@ describe('generateRoom enemies', () => {
       }
     }
     expect(worms).toBeGreaterThan(20);
-  });
-});
-
-describe('generateRoom hive turret arena (floor 2)', () => {
-  const arena = (seed: number) =>
-    generateRoom(
-      { id: '0,0', kind: 'boss', doors: [{ side: 'left', at: { x: 0, y: 1 } }, { side: 'down', at: { x: 1, y: 1 } }] },
-      1,
-      createRng(seed),
-    );
-
-  it('has cover obstacles and stays fully connected', () => {
-    for (let seed = 0; seed < 300; seed++) {
-      const a = arena(seed);
-      expect(count(a, 'obstacle'), `seed ${seed}`).toBeGreaterThanOrEqual(8);
-      const seen = reachable(a, a.doors[0].cell);
-      expect(seen.size, `seed ${seed}`).toBe(count(a, 'floor'));
-      for (const d of a.doors) expect(seen.has(`${d.cell.x},${d.cell.y}`), `seed ${seed}`).toBe(true);
-    }
-  });
-
-  it('puts the hive core on floor cells in the middle, with valid summon points for its zombies', () => {
-    for (let seed = 0; seed < 300; seed++) {
-      const a = arena(seed);
-      expect(a.enemies.map((e) => e.type), `seed ${seed}`).toEqual(['hiveBoss']);
-      const core = a.enemies[0].cell;
-      expect(Math.abs(core.x + 0.5 - 12.5)).toBeLessThanOrEqual(2);
-      expect(Math.abs(core.y + 0.5 - 6.5)).toBeLessThanOrEqual(2);
-      const coreCells = [0, 1].flatMap((dx) => [0, 1].map((dy) => ({ x: core.x + dx, y: core.y + dy })));
-      for (const c of coreCells) expect(a.tiles[c.y][c.x], `seed ${seed}`).toBe('floor');
-
-      const seen = reachable(a, a.doors[0].cell);
-      expect(a.summonPoints.length).toBeGreaterThanOrEqual(6);
-      for (const p of a.summonPoints) {
-        expect(seen.has(`${p.x},${p.y}`), `seed ${seed}`).toBe(true);
-        expect(coreCells.some((c) => c.x === p.x && c.y === p.y), `seed ${seed}`).toBe(false);
-        for (const d of a.doors) expect(Math.abs(d.cell.x - p.x) > 1 || Math.abs(d.cell.y - p.y) > 1, `seed ${seed}`).toBe(true);
-      }
-    }
   });
 });
 

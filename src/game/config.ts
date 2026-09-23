@@ -24,7 +24,8 @@ export const TUNING = {
   wormBoss: { segmentSize: 42, segmentHp: 5, stepMs: 240 },
   /** `follow`: how hard it closes on its mirrored target (1/s); speed capped relative to the player's. */
   shadow: { hp: 45, follow: 10, maxSpeedFactor: 1.2 },
-  hive: { radius: 40, hp: 60, spiralDelayMs: 150, spiralStep: 0.32, shotSpeed: 170, summonEveryMs: 5000, maxSummoned: 3 },
+  /** `restMs`: pause between root eruptions. Root timing itself lives in core/treantAttack. */
+  treant: { radius: 46, hp: 70, restMs: 700 },
 };
 
 /** Floor, wall, door and terrain colours come from each floor's theme (core/themes). */
@@ -37,8 +38,6 @@ export const COLORS = {
   wormBody: 0xb0703a,
   shadow: 0x15121a,
   shadowEdge: 0x8a7fa0,
-  hive: 0x7a3fa0,
-  hiveRing: 0xd9a8ff,
   wormBossHead: 0xe0453a,
   wormBossBody: 0x9c2f2a,
   enemyShot: 0xff6b5a,
@@ -59,4 +58,9 @@ export const COLORS = {
   minimapCurrent: 0xf0ecf5,
   minimapItem: 0xf2c94c,
   minimapBoss: 0xd8323c,
+  treantBark: 0x5a3a1e,
+  treantCanopy: 0x3f8a2e,
+  treantEyes: 0xf2d04a,
+  rootTelegraph: 0xc89a5a,
+  root: 0x7a4a22,
 };

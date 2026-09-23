@@ -11,6 +11,7 @@ export const ENEMY_CLASS: Record<EnemyType, EnemyClass> = {
   turret: 'stationary',
   worm: 'walker',
   wormBoss: 'walker',
-  hiveBoss: 'stationary',
   shadowBoss: 'walker',
+  /** Rooted in place: it only has to be shootable. */
+  treantBoss: 'stationary',
 };

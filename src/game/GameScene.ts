@@ -23,11 +23,11 @@ import {
 } from '../core/world';
 import { COLORS, TUNING } from './config';
 import type { Enemy, EnemyContext, EnemySprite } from './entities/enemy';
-import { createHive } from './entities/hive';
 import { createShadow } from './entities/shadow';
 import { createTurret } from './entities/turret';
 import { BOSS_WORM, spawnWorm } from './entities/worm';
 import { createZombie } from './entities/zombie';
+import { createTreant } from './entities/treant';
 import { doorCorridor, mapCellAt, roomBlock, tileAt, tileCenter } from './geometry';
 
 type Keys = Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
@@ -42,12 +42,7 @@ const ENEMY_FACTORIES: Record<EnemyType, (scene: Phaser.Scene, spawn: EnemySpawn
   worm: (scene, s, at) => spawnWorm(scene, [s.cell, ...(s.tail ?? [])], at),
   wormBoss: (scene, s, at) => spawnWorm(scene, [s.cell, ...(s.tail ?? [])], at, BOSS_WORM),
   shadowBoss: (scene, s, at) => createShadow(scene, at(s.cell).x, at(s.cell).y),
-  // The core covers 2x2 tiles; `cell` is its top-left.
-  hiveBoss: (scene, s, at) => {
-    const a = at(s.cell);
-    const b = at({ x: s.cell.x + 1, y: s.cell.y + 1 });
-    return createHive(scene, (a.x + b.x) / 2, (a.y + b.y) / 2);
-  },
+  treantBoss: (scene, s, at) => createTreant(scene, at(s.cell).x, at(s.cell).y, s.cell),
 };
 
 type Shape = Phaser.GameObjects.Shape;
@@ -308,13 +303,8 @@ export class GameScene extends Phaser.Scene {
       swingAtPlayer: (from, aim) => {
         if (this.sweepArc(from, aim, COLORS.shadowEdge)(this.player)) this.hurtPlayer();
       },
-      summonPoints: room.layout.summonPoints,
-      summonZombie: (cell: Cell) => {
-        const p = tileCenter(room, cell.x, cell.y);
-        const zombie = createZombie(this, p.x, p.y);
-        this.addEnemy(zombie);
-        return zombie;
-      },
+      tiles: room.layout.tiles,
+      hurtPlayer: () => this.hurtPlayer(),
     };
   }
 

@@ -30,7 +30,7 @@ describe('floor themes', () => {
   });
 
   it("gives each floor its theme's boss", () => {
-    expect([0, 1, 2].map((f) => themeForFloor(f).boss)).toEqual(['wormBoss', 'hiveBoss', 'shadowBoss']);
-    expect([0, 1, 2].map((f) => bossForFloor(f))).toEqual(['wormBoss', 'hiveBoss', 'shadowBoss']);
+    expect([0, 1, 2].map((f) => themeForFloor(f).boss)).toEqual(['treantBoss', 'wormBoss', 'shadowBoss']);
+    expect([0, 1, 2].map((f) => bossForFloor(f))).toEqual(['treantBoss', 'wormBoss', 'shadowBoss']);
   });
 });

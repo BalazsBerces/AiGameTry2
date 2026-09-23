@@ -23,9 +23,26 @@ export interface FloorRoom {
   kind: RoomKind;
   /** Top-left map cell of the room. */
   cell: Cell;
-  /** Every map cell the room covers (one for normal rooms, four for the 2x2 boss room). */
+  /** Every map cell the room covers (one for most rooms, two for wide or tall ones, four for the 2x2 boss room). */
   cells: Cell[];
+  /** The block of map cells the room spans. */
+  shape: RoomShape;
 }
+
+/** Room footprints in map cells, columns x rows. The boss room is always 2x2. */
+export type RoomShape = '1x1' | '2x1' | '1x2' | '2x2';
+
+/** The map cells of each shape, relative to its top-left cell. */
+export const SHAPE_CELLS: Record<RoomShape, readonly Cell[]> = {
+  '1x1': [{ x: 0, y: 0 }],
+  '2x1': [{ x: 0, y: 0 }, { x: 1, y: 0 }],
+  '1x2': [{ x: 0, y: 0 }, { x: 0, y: 1 }],
+  '2x2': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }],
+};
+
+/** Normal-room shapes the floor generator grows rooms into; 1-3 of them per floor. */
+export const GROWN_SHAPES: readonly RoomShape[] = ['2x1', '1x2'];
+export const SHAPED_ROOMS = { min: 1, max: 3 };
 
 export interface FloorLayout {
   floorIndex: number;
@@ -129,10 +146,13 @@ function grow(req: FloorRequest, target: number): Growth | undefined {
 }
 
 export function generateFloor(req: FloorRequest): FloorLayout {
+  // Shapes draw from their own stream, so the tree grown from `req.rng` stays as it was.
+  const shapeRng = req.rng.fork('shapes');
   for (let attempt = 0; attempt < MAX_FLOOR_ATTEMPTS; attempt++) {
     const growth = grow(req, req.rng.int(FLOOR_SIZE.min, FLOOR_SIZE.max));
     const floor = growth && assignSpecialRooms(req, growth);
-    if (floor) return floor;
+    const shaped = floor && shapeRooms(req, floor, shapeRng);
+    if (shaped) return shaped;
   }
   throw new Error(`generateFloor: no valid layout after ${MAX_FLOOR_ATTEMPTS} attempts`);
 }
@@ -248,9 +268,9 @@ function assignSpecialRooms(req: FloorRequest, growth: Growth): FloorLayout | un
 
   const rooms: FloorRoom[] = growth.cells.map((cell) => {
     const key = cellKey(cell);
-    if (key === bossDeadEndId) return { id: bossId, kind: 'boss', cell: bossAnchor, cells: boss.block };
+    if (key === bossDeadEndId) return { id: bossId, kind: 'boss', cell: bossAnchor, cells: boss.block, shape: '2x2' };
     const kind: RoomKind = key === startId ? 'start' : key === itemId ? 'item' : 'normal';
-    return { id: key, kind, cell, cells: [cell] };
+    return { id: key, kind, cell, cells: [cell], shape: '1x1' };
   });
   return {
     floorIndex: req.floorIndex,
@@ -262,5 +282,46 @@ function assignSpecialRooms(req: FloorRequest, growth: Growth): FloorLayout | un
       side: boss.exitSide,
       at: { x: boss.exitFrom.x - bossAnchor.x, y: boss.exitFrom.y - bossAnchor.y },
     },
+  };
+}
+
+/**
+ * Grows 1-3 normal rooms into wide or tall blocks. A room only takes free cells that touch
+ * nothing but itself (and never the exit), so the layout stays a tree with no accidental
+ * adjacency and every existing door keeps its cell. The next floor must still fit beyond the exit.
+ */
+function shapeRooms(req: FloorRequest, floor: FloorLayout, rng: Rng): FloorLayout | undefined {
+  const target = rng.int(SHAPED_ROOMS.min, SHAPED_ROOMS.max);
+  const filled = new Set(floor.rooms.flatMap((r) => r.cells).map(cellKey));
+  const exitKey = cellKey(floor.exit.cell);
+  const taken = (c: Cell) => filled.has(cellKey(c)) || req.occupied.has(cellKey(c));
+  const grown = new Map<string, FloorRoom>();
+  for (const room of shuffled(floor.rooms.filter((r) => r.kind === 'normal'), rng)) {
+    if (grown.size >= target) break;
+    const placements = GROWN_SHAPES.flatMap((shape) =>
+      SHAPE_CELLS[shape].map((offset) => {
+        const anchor = { x: room.cell.x - offset.x, y: room.cell.y - offset.y };
+        return { shape, anchor, cells: SHAPE_CELLS[shape].map((c) => ({ x: anchor.x + c.x, y: anchor.y + c.y })) };
+      }),
+    );
+    const fit = shuffled(placements, rng).find(({ cells }) => {
+      const inBlock = new Set(cells.map(cellKey));
+      const fresh = cells.filter((c) => cellKey(c) !== cellKey(room.cell));
+      const clear = (c: Cell) => !taken(c) && cellKey(c) !== exitKey;
+      return fresh.every((c) => clear(c) && DIRECTIONS.every((d) => inBlock.has(cellKey(add(c, d))) || clear(add(c, d))));
+    });
+    if (!fit) continue;
+    for (const c of fit.cells) filled.add(cellKey(c));
+    grown.set(room.id, { ...room, id: cellKey(fit.anchor), cell: fit.anchor, cells: fit.cells, shape: fit.shape });
+  }
+  if (grown.size < SHAPED_ROOMS.min) return undefined;
+  const boss = floor.rooms.find((r) => r.kind === 'boss')!;
+  const exitFrom = { x: boss.cell.x + floor.exit.at.x, y: boss.cell.y + floor.exit.at.y };
+  if (!roomBeyond(floor.exit.cell, exitFrom, taken)) return undefined;
+  const idOf = (id: string) => grown.get(id)?.id ?? id;
+  return {
+    ...floor,
+    rooms: floor.rooms.map((r) => grown.get(r.id) ?? r),
+    connections: floor.connections.map(([a, b]) => [idOf(a), idOf(b)]),
   };
 }

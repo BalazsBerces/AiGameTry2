@@ -118,6 +118,56 @@ describe('generateFloor layout', () => {
     }
   });
 
+  it('has 1-3 shaped normal rooms on every floor, each a wide 2x1 or tall 1x2 block', () => {
+    const seen = new Set<string>();
+    for (const seed of SWEEP) {
+      for (const [i, floor] of chain(seed).entries()) {
+        const shaped = floor.rooms.filter((r) => r.cells.length > 1 && r.kind !== 'boss');
+        expect(shaped.length, `seed ${seed} floor ${i}`).toBeGreaterThanOrEqual(1);
+        expect(shaped.length, `seed ${seed} floor ${i}`).toBeLessThanOrEqual(3);
+        for (const r of shaped) {
+          expect(r.kind, `seed ${seed} ${r.id}`).toBe('normal');
+          const xs = r.cells.map((c) => c.x);
+          const ys = r.cells.map((c) => c.y);
+          const span = `${Math.max(...xs) - Math.min(...xs) + 1}x${Math.max(...ys) - Math.min(...ys) + 1}`;
+          expect(['2x1', '1x2'], `seed ${seed} ${r.id}`).toContain(span);
+          expect(r.cells, `seed ${seed} ${r.id}`).toHaveLength(2);
+          expect(r.shape, `seed ${seed} ${r.id}`).toBe(span);
+          expect(r.cell).toEqual({ x: Math.min(...xs), y: Math.min(...ys) });
+          seen.add(span);
+        }
+        for (const r of floor.rooms.filter((room) => room.kind !== 'boss' && room.cells.length === 1)) expect(r.shape).toBe('1x1');
+      }
+    }
+    expect([...seen].sort()).toEqual(['1x2', '2x1']);
+  });
+
+  it('lines doors up: each door opens into the cell holding the neighbour’s facing door', () => {
+    for (const seed of SWEEP) {
+      for (const floor of chain(seed)) {
+        const byId = new Map(floor.rooms.map((r) => [r.id, r]));
+        for (const room of floor.rooms) {
+          const doors = roomDoors(floor, room.id);
+          // One door per neighbour: connected rooms share a single cell edge.
+          expect(new Set(doors.map((d) => d.to)).size, `seed ${seed} ${room.id}`).toBe(doors.length);
+          for (const door of doors) {
+            const other = byId.get(door.to)!;
+            const back = roomDoors(floor, other.id).find((d) => d.to === room.id)!;
+            expect(back.side, `seed ${seed} ${room.id}`).toBe(OPPOSITE[door.side]);
+            const step = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[door.side];
+            const through = { x: room.cell.x + door.at.x + step[0], y: room.cell.y + door.at.y + step[1] };
+            expect(through, `seed ${seed} ${room.id}->${other.id}`).toEqual({ x: other.cell.x + back.at.x, y: other.cell.y + back.at.y });
+            // Rooms touch nowhere else.
+            const shared = room.cells.flatMap((a) =>
+              other.cells.filter((b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y) === 1),
+            );
+            expect(shared, `seed ${seed} ${room.id}~${other.id}`).toHaveLength(1);
+          }
+        }
+      }
+    }
+  });
+
   it('starts floor 1 at the requested world centre', () => {
     for (const seed of SWEEP.slice(0, 20)) {
       const floor = firstFloor(seed);

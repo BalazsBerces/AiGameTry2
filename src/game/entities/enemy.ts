@@ -1,6 +1,7 @@
 import type Phaser from 'phaser';
 import type { Cell, Direction } from '../../core/floorGenerator';
 import type { Weapon } from '../../core/weaponModel';
+import { COLORS, TUNING } from '../config';
 
 export type Body = Phaser.Physics.Arcade.Body;
 export type EnemySprite = Phaser.GameObjects.Shape & { body: Body };
@@ -40,6 +41,21 @@ export interface Enemy {
   onPlayerAttack?(ctx: EnemyContext, aim: Direction, weapon: Weapon): void;
   /** Damages one part. Returns the enemies that replace this one: itself, nothing (dead), or split pieces. */
   hit(part: EnemySprite, damage: number): Enemy[];
+}
+
+/** Stat multipliers for a champion, or none for a regular enemy. */
+export const championBoost = (champion: boolean) => (champion ? TUNING.champion : { scale: 1, hp: 1, speed: 1 });
+
+/** A champion's colour: its own blended halfway to gold. */
+export function championColor(color: number, champion: boolean) {
+  if (!champion) return color;
+  const mix = (shift: number) => Math.round((((color >> shift) & 0xff) + ((COLORS.champion >> shift) & 0xff)) / 2) << shift;
+  return mix(16) | mix(8) | mix(0);
+}
+
+/** Outlines a champion's sprite in gold. */
+export function markChampion(sprite: Phaser.GameObjects.Shape, champion: boolean) {
+  if (champion) sprite.setStrokeStyle(3, COLORS.champion);
 }
 
 /** Flash a part briefly to show it took damage. */

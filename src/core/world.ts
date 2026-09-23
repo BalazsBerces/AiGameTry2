@@ -10,7 +10,7 @@ import {
   type FloorRoom,
   type RoomDoor,
 } from './floorGenerator';
-import { generateRoom, type ChestItem, type PickupType, type RoomLayout } from './roomGenerator';
+import { generateRoom, type ChampionDrop, type ChestItem, type PickupType, type RoomLayout } from './roomGenerator';
 import { bombDestructible, hitsToBreak, isWalkable } from './tiles';
 import type { Passive } from './weaponModel';
 
@@ -173,6 +173,13 @@ function openChest(world: World, roomId: string, chest: WorldPickup) {
     list.push({ id: world.nextPickupId++, type: item.type, passive, cell: around[i] ?? chest.cell, visible: chest.visible });
   });
   chest.contents = undefined;
+}
+
+/** A champion died on `cell`: its extra pickup lands there, in plain sight. */
+export function dropChampionLoot(world: World, roomId: string, drop: ChampionDrop, cell: Cell) {
+  const list = world.pickups.get(roomId) ?? [];
+  list.push({ id: world.nextPickupId++, ...drop, cell, visible: true });
+  world.pickups.set(roomId, list);
 }
 
 export type TileHitResult = 'none' | 'damaged' | 'broken';

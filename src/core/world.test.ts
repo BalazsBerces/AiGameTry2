@@ -103,3 +103,26 @@ describe('shownPickups', () => {
     expect(shownPickups(world, id).map((p) => p.type).sort()).toEqual(['heart', 'key', 'openChest']);
   });
 });
+
+describe('champions', () => {
+  const worlds = Array.from({ length: 150 }, (_, seed) => createWorld(seed));
+  const championsIn = (world: ReturnType<typeof createWorld>, kind: string) =>
+    [...world.rooms.values()].filter((r) => r.floorRoom.kind === kind).flatMap((r) => r.layout.enemies.filter((e) => e.champion));
+
+  it('appear in normal rooms across runs, but never in boss or item rooms', () => {
+    expect(worlds.some((w) => championsIn(w, 'normal').length > 0)).toBe(true);
+    for (const w of worlds) {
+      expect(championsIn(w, 'boss'), `seed ${w.seed}`).toEqual([]);
+      expect(championsIn(w, 'item'), `seed ${w.seed}`).toEqual([]);
+    }
+  });
+
+  it('are the same for the same seed', () => {
+    const crowned = (w: ReturnType<typeof createWorld>) =>
+      [...w.rooms.values()].flatMap((r) => r.layout.enemies.filter((e) => e.champion).map((e) => ({ room: r.floorRoom.id, ...e })));
+    for (const seed of [3, 17, 42]) {
+      expect(crowned(worlds[seed]).length).toBeGreaterThan(0);
+      expect(crowned(createWorld(seed))).toEqual(crowned(worlds[seed]));
+    }
+  });
+});

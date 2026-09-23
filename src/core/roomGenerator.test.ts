@@ -339,6 +339,38 @@ describe('generateRoom pickups', () => {
   });
 });
 
+describe('generateRoom champions', () => {
+  const normalRooms = () =>
+    [0, 1, 2].flatMap((floorIndex) =>
+      Array.from({ length: 800 }, (_, seed) => generateRoom({ id: '0,0', kind: 'normal', doors: ['left', 'right'] }, floorIndex, createRng(seed))),
+    );
+
+  it('marks a champion in about 15% of normal rooms', () => {
+    const rooms = normalRooms();
+    const rate = rooms.filter((r) => r.enemies.some((e) => e.champion)).length / rooms.length;
+    expect(rate).toBeGreaterThan(0.1);
+    expect(rate).toBeLessThan(0.2);
+  });
+
+  it('crowns at most one enemy per room, and every champion carries an extra drop from the room-clear pool', () => {
+    for (const r of normalRooms()) {
+      const champions = r.enemies.filter((e) => e.champion);
+      expect(champions.length).toBeLessThanOrEqual(1);
+      for (const c of champions) {
+        expect(['heart', 'key', 'bomb', 'chest', 'lockedChest']).toContain(c.champion!.drop.type);
+        if (c.champion!.drop.type === 'chest' || c.champion!.drop.type === 'lockedChest') {
+          expect(c.champion!.drop.contents?.length).toBeGreaterThan(0);
+        }
+      }
+    }
+  });
+
+  it('can crown any kind of regular enemy', () => {
+    const crowned = new Set(normalRooms().flatMap((r) => r.enemies.filter((e) => e.champion).map((e) => e.type)));
+    expect([...crowned].sort()).toEqual(['turret', 'worm', 'zombie']);
+  });
+});
+
 describe('The Stash (floor 1 puzzle)', () => {
   const stash = (seed: number, doors: readonly (typeof ALL_DOORS)[number][] = ALL_DOORS) =>
     generateRoom({ id: '0,0', kind: 'normal', doors: [...doors], archetype: 'stash' }, 0, createRng(seed));

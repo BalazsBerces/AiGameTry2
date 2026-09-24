@@ -382,8 +382,22 @@ describe('generateRoom pickups', () => {
       if (c.type === 'chest') expect(n).toBeGreaterThanOrEqual(1);
       else expect(n).toBeGreaterThanOrEqual(2);
       expect(n).toBeLessThanOrEqual(3);
-      for (const item of c.contents!) expect(['heart', 'key', 'bomb']).toContain(item.type);
+      for (const item of c.contents!) expect(['heart', 'key', 'bomb', 'damageUp']).toContain(item.type);
+      expect(c.contents!.filter((item) => item.type === 'damageUp').length).toBeLessThanOrEqual(1);
     }
+  });
+
+  it('swaps one item for a damage up in about 20% of chests and 45% of locked ones without a passive', () => {
+    const chests = Array.from({ length: 4000 }, (_, seed) => room(seed).pickups).flat();
+    const share = (type: 'chest' | 'lockedChest') => {
+      const pool = chests.filter((p) => p.type === type && !p.contents!.some((i) => i.type === 'passive'));
+      expect(pool.length).toBeGreaterThan(100);
+      return pool.filter((c) => c.contents!.some((i) => i.type === 'damageUp')).length / pool.length;
+    };
+    expect(share('chest')).toBeGreaterThan(0.13);
+    expect(share('chest')).toBeLessThan(0.27);
+    expect(share('lockedChest')).toBeGreaterThan(0.35);
+    expect(share('lockedChest')).toBeLessThan(0.55);
   });
 
   it('includes bombs among room-clear drops and chest contents', () => {

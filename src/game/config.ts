@@ -108,6 +108,7 @@ export const COLORS = {
   chest: 0x9a6a36,
   lockedChest: 0xc9a227,
   openChest: 0x4a3420,
+  damageUp: 0xff4d6d,
   passive: {
     homing: 0x5fd4e8,
     fireRate: 0xff9a3c,

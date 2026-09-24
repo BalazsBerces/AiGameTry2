@@ -14,7 +14,7 @@ import {
 import { generateRoom, type ChampionDrop, type ChestItem, type PickupType, type RoomLayout } from './roomGenerator';
 import { bombDestructible, hitsToBreak, isWalkable } from './tiles';
 import { floodFill } from './grid';
-import type { Passive, PassiveLevels } from './weaponModel';
+import type { Passive, PassiveLevels, StatUps } from './weaponModel';
 import { offerPassive, pickUpgrade } from './passivePool';
 
 export interface WorldRoom {
@@ -33,6 +33,7 @@ export interface PlayerState {
   keys: number;
   bombs: number;
   passives: PassiveLevels;
+  statUps: Required<StatUps>;
 }
 
 export interface WorldPickup {
@@ -125,7 +126,7 @@ function buildFloor(world: World, rng: Rng, floor: FloorLayout) {
   }
 }
 
-export type PickupResult = 'none' | 'healed' | 'key' | 'bomb' | 'opened' | 'passive';
+export type PickupResult = 'none' | 'healed' | 'key' | 'bomb' | 'opened' | 'passive' | 'damageUp';
 
 /** The player touched a pickup. Applies its effect and updates the room's pickups. */
 export function touchPickup(world: World, roomId: string, pickupId: number): PickupResult {
@@ -148,6 +149,10 @@ export function touchPickup(world: World, roomId: string, pickupId: number): Pic
       player.bombs++;
       remove();
       return 'bomb';
+    case 'damageUp':
+      player.statUps.damage++;
+      remove();
+      return 'damageUp';
     case 'lockedChest':
       if (player.keys === 0) return 'none';
       player.keys--;
@@ -380,7 +385,7 @@ export function createWorld(seed: number): World {
     currentRoomId: floors[0].startRoomId,
     cleared: new Set(),
     visited: new Set([floors[0].startRoomId]),
-    player: { health: STARTING_HEARTS * 2, maxHealth: STARTING_HEARTS * 2, keys: 0, bombs: STARTING_BOMBS, passives: {} },
+    player: { health: STARTING_HEARTS * 2, maxHealth: STARTING_HEARTS * 2, keys: 0, bombs: STARTING_BOMBS, passives: {}, statUps: { damage: 0 } },
     pickups: new Map(),
     nextPickupId: 1,
     tileHits: new Map(),

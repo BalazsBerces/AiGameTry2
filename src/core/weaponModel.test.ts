@@ -36,6 +36,33 @@ describe('resolveWeapon', () => {
   });
 });
 
+describe('resolveWeapon stat-ups', () => {
+  it('each damage up adds half a point to plain shots', () => {
+    expect(resolveWeapon({}, { damage: 1 })).toMatchObject({ fireDelayMs: 330, damage: 1.5 });
+    expect(resolveWeapon({}, { damage: 3 })).toMatchObject({ fireDelayMs: 330, damage: 2.5 });
+  });
+
+  it('damage ups raise the sword too', () => {
+    expect(resolveWeapon({ sword: 1 }, { damage: 1 })).toMatchObject({ mode: 'sword', fireDelayMs: 450, damage: 3.5 });
+  });
+
+  it('damage ups add to the base before fire rate and triple shot scale it', () => {
+    expect(resolveWeapon({ fireRate: 1 }, { damage: 1 }).damage).toBe(0.75);
+    expect(resolveWeapon({ triple: 1 }, { damage: 2 }).damage).toBe(1.5);
+  });
+
+  it('blade waves and chain lightning grow with it; orbitals and the dash do not', () => {
+    const plain = resolveWeapon({ sword: 1, homing: 1, chain: 1, orbital: 1, dash: 2 });
+    const boosted = resolveWeapon({ sword: 1, homing: 1, chain: 1, orbital: 1, dash: 2 }, { damage: 2 });
+    expect(boosted.damage).toBe(4);
+    expect(boosted.bladeWave).toBe(true);
+    expect(boosted.chain).toEqual(plain.chain);
+    expect(boosted.dash).toEqual(plain.dash);
+    expect(boosted.orbitals).toBe(plain.orbitals);
+    expect(boosted.poison).toEqual(plain.poison);
+  });
+});
+
 describe('resolveWeapon utility passives', () => {
   it('has no orbitals and no dash without them', () => {
     expect(resolveWeapon({})).toMatchObject({ orbitals: 0, dash: undefined });

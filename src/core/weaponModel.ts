@@ -30,6 +30,11 @@ export type PassiveLevel = 1 | 2;
 /** The passives the player owns, each with its level. */
 export type PassiveLevels = Partial<Record<Passive, PassiveLevel>>;
 
+/** Stackable stat-ups from chests: how many of each the player has collected. */
+export interface StatUps {
+  damage?: number;
+}
+
 export interface Weapon {
   mode: 'shots' | 'sword';
   fireDelayMs: number;
@@ -74,6 +79,8 @@ export const WEAPON = {
   shotDamage: 1,
   swordDelayMs: 450,
   swordDamage: 3,
+  /** Added to base damage (shots or sword) per damage up, before any passive multipliers. */
+  damageUpStep: 0.5,
   swordArcDeg: { 1: 90, 2: 140 },
   homingTurnRate: { 1: 5, 2: 8.5 },
   /** Fire-rate passive: multiplies the delay between attacks and their damage (shots and sword). */
@@ -92,15 +99,15 @@ export const WEAPON = {
   dash: { distanceTiles: 2.6, durationMs: 150, cooldownMs: { 1: 900, 2: 550 }, damage: { 1: 0, 2: 2 } },
 };
 
-/** Everything the player's passives, at their levels, make of their attack. Pickup order never matters. */
-export function resolveWeapon(passives: PassiveLevels): Weapon {
+/** Everything the player's passives, at their levels, and stat-ups make of their attack. Pickup order never matters. */
+export function resolveWeapon(passives: PassiveLevels, statUps: StatUps = {}): Weapon {
   const { sword, fireRate: fast, triple, pierce, ricochet, spectral, boomerang } = passives;
   const bladeWave = !!sword && SHOT_MODIFIERS.some((p) => passives[p]);
   return {
     mode: sword ? 'sword' : 'shots',
     fireDelayMs: (sword ? WEAPON.swordDelayMs : WEAPON.shotDelayMs) * (fast ? WEAPON.fireRateDelayFactor : 1),
     damage:
-      (sword ? WEAPON.swordDamage : WEAPON.shotDamage) *
+      ((sword ? WEAPON.swordDamage : WEAPON.shotDamage) + (statUps.damage ?? 0) * WEAPON.damageUpStep) *
       (fast ? WEAPON.fireRateDamageFactor[fast] : 1) *
       (triple && !sword ? WEAPON.triple.damageFactor : 1),
     // Homing steers projectiles: shots, or the sword's blade waves.

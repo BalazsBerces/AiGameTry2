@@ -63,6 +63,7 @@ export function championWorm(style: WormStyle): WormStyle {
 
 const sameCell = (a: Cell, b: Cell) => a.x === b.x && a.y === b.y;
 const OPPOSITE: Record<Direction, Direction> = { up: 'down', down: 'up', left: 'right', right: 'left' };
+const inRoom = (ctx: EnemyContext, c: Cell) => c.y >= 0 && c.x >= 0 && c.y < ctx.tiles.length && c.x < ctx.tiles[0].length;
 
 /**
  * What every piece of the worm boss shares: its hit points (phase two is judged on the whole
@@ -210,9 +211,8 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
 
   /** A segment is out of sight and out of reach inside the wall; it shows while gliding in or out, until the whole piece is under. */
   const hideInWalls = (ctx: EnemyContext, before: Cell[], underground: boolean) => {
-    const inRoom = (c: Cell | undefined) => !!c && c.y >= 0 && c.x >= 0 && c.y < ctx.tiles.length && c.x < ctx.tiles[0].length;
     state.worm.segments.forEach((c, i) => {
-      const shown = !underground && (inRoom(c) || inRoom(before[i]));
+      const shown = !underground && (inRoom(ctx, c) || (!!before[i] && inRoom(ctx, before[i])));
       state.parts[i].setVisible(shown);
       state.parts[i].body.enable = shown;
     });
@@ -275,10 +275,11 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
   const updateRampage = (ctx: EnemyContext, b: BossPiece, r: Rampage): boolean => {
     const head = state.parts[0];
     if (r.phase === 'lunging') {
-      const { path, stop, burst } = r.lunge!;
-      // It bursts straight through the first rock in its way.
-      if (path.length && burst && sameCell(path[0], burst) && ctx.time >= state.nextStepAt) ctx.smashRock(burst);
-      if (path.length && ctx.isWalkable(path[0])) return false;
+      const { path, stop, bursts } = r.lunge!;
+      const next = path[0];
+      // It bursts straight through the first rock in its way (on each side of the walls).
+      if (next && bursts.some((c) => sameCell(c, next)) && ctx.time >= state.nextStepAt) ctx.smashRock(next);
+      if (next && (!inRoom(ctx, next) || ctx.isWalkable(next))) return false;
       // Out of room: it slams into whatever is ahead once its last glide is done.
       if (ctx.time < state.nextStepAt) return false;
       const hit = path[0] ?? stop;
@@ -303,7 +304,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
       state.nextStepAt = ctx.time;
       return false;
     }
-    const lunge = planLunge(ctx.tiles, state.worm, ctx.playerTile);
+    const lunge = planLunge(ctx.tiles, ctx.doors, state.worm, ctx.playerTile);
     if (!lunge) {
       endLunge(ctx, r);
       return true;
@@ -335,7 +336,13 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
   const bossStep = (ctx: EnemyContext, b: BossPiece): Worm => {
     const { worm } = state;
     const lunge = b.rampage?.lunge;
-    if (lunge) return createWorm([lunge.path.shift()!, ...worm.segments.slice(0, -1)], lunge.heading);
+    if (lunge) {
+      const next = lunge.path.shift()!;
+      // Tunnelling through the walls leaves a hole at each end.
+      if (lunge.wrap && sameCell(next, lunge.wrap.entry)) drawHole(ctx, b.shared, next, OPPOSITE[lunge.heading]);
+      if (lunge.wrap && sameCell(next, lunge.wrap.exit)) drawHole(ctx, b.shared, next, lunge.heading);
+      return createWorm([next, ...worm.segments.slice(0, -1)], lunge.heading);
+    }
     if (!b.diving && !b.emerging) {
       b.diving = diveCell(worm, ctx.tiles, ctx.doors, ctx.time, b.readyAt);
       if (b.diving) drawHole(ctx, b.shared, b.diving, OPPOSITE[worm.heading]);

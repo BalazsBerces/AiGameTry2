@@ -192,41 +192,77 @@ export function rockfallAt(elapsedMs: number): { shadow: number; landed: boolean
 
 export interface Lunge {
   heading: Direction;
-  /** The cells the head races through, nearest first. */
+  /** The cells the head races through, nearest first (through the walls too, if it wraps). */
   path: Cell[];
-  /** The first rock in its way, on the path: it bursts straight through, smashing it. */
-  burst?: Cell;
+  /** Rocks on the path it bursts straight through, smashing them: the first on each side of a wrap. */
+  bursts: Cell[];
+  /** It tunnels into the outer wall at `entry` and straight out of the opposite one at `exit`. */
+  wrap?: { entry: Cell; exit: Cell };
   /** What it runs into at the end, inside the room (rock takes a blow); none at the outer wall. */
   stop?: Cell;
+}
+
+/** A straight run from `from` over floor, bursting through the first rock; `end` is what stops it. */
+function straightRun(tiles: Tile[][], from: Cell, heading: Direction) {
+  const path: Cell[] = [];
+  let burst: Cell | undefined;
+  let at = from;
+  for (;;) {
+    const tile = tiles[at.y]?.[at.x];
+    if (tile === 'rock' && !burst) burst = at;
+    else if (tile !== 'floor') break;
+    path.push(at);
+    at = ahead(at, heading);
+  }
+  return { path, burst, end: at };
+}
+
+/** The outer-wall cell across the room from `entry`, on the same line. */
+function acrossFrom(tiles: Tile[][], entry: Cell, heading: Direction): Cell {
+  if (heading === 'right') return { x: -1, y: entry.y };
+  if (heading === 'left') return { x: tiles[0].length, y: entry.y };
+  if (heading === 'down') return { x: entry.x, y: -1 };
+  return { x: entry.x, y: tiles.length };
 }
 
 /**
  * One lunge of a rampage: straight along one of the four lines from the head (never back into
  * its own neck), over open floor, bursting through the first rock in its way, until it runs into
- * anything else. It takes the line that brings it closest to the player, the longer run on a
- * tie; none if every line is blocked at once.
+ * anything else. Running into an outer wall, it tunnels straight through and out of the opposite
+ * wall on the same line, once, and lunges on (not through a doorway, nor into stone). It takes
+ * the line that brings it closest to the player, the longer run on a tie; none if every line is
+ * blocked at once.
  */
-export function planLunge(tiles: Tile[][], worm: Worm, player: Cell): Lunge | undefined {
+export function planLunge(tiles: Tile[][], doors: Door[], worm: Worm, player: Cell): Lunge | undefined {
   const [head, neck] = worm.segments;
   const manhattan = (a: Cell) => Math.abs(a.x - player.x) + Math.abs(a.y - player.y);
+  const doorway = (cell: Cell, side: Direction) => doors.some((d) => d.side === side && d.cell.x === cell.x && d.cell.y === cell.y);
   const lunges = DIRECTIONS.flatMap((heading): (Lunge & { closest: number })[] => {
     const first = ahead(head, heading);
     if (neck && first.x === neck.x && first.y === neck.y) return [];
-    const path: Cell[] = [];
-    let burst: Cell | undefined;
-    let at = first;
-    for (;;) {
-      const tile = tiles[at.y]?.[at.x];
-      if (tile === 'rock' && !burst) burst = at;
-      else if (tile !== 'floor') break;
-      path.push(at);
-      at = ahead(at, heading);
+    const before = straightRun(tiles, first, heading);
+    let path = before.path;
+    const bursts = before.burst ? [before.burst] : [];
+    let end = before.end;
+    let wrap: Lunge['wrap'];
+    if (outside(tiles, end)) {
+      const exit = acrossFrom(tiles, end, heading);
+      const after = straightRun(tiles, ahead(exit, heading), heading);
+      const blocked = doorway(ahead(end, OPPOSITE[heading]), heading) || doorway(ahead(exit, heading), OPPOSITE[heading]);
+      if (!blocked && after.path.length) {
+        wrap = { entry: end, exit };
+        path = [...path, end, exit, ...after.path];
+        if (after.burst) bursts.push(after.burst);
+        end = after.end;
+      }
     }
-    if (!path.length) return [];
-    return [{ heading, path, burst, stop: outside(tiles, at) ? undefined : at, closest: Math.min(...path.map(manhattan)) }];
+    const inRoom = path.filter((c) => !outside(tiles, c));
+    if (!inRoom.length) return [];
+    const stop = outside(tiles, end) ? undefined : end;
+    return [{ heading, path, bursts, wrap, stop, closest: Math.min(...inRoom.map(manhattan)) }];
   });
   const best = lunges.sort((a, b) => a.closest - b.closest || b.path.length - a.path.length)[0];
-  return best && { heading: best.heading, path: best.path, burst: best.burst, stop: best.stop };
+  return best && { heading: best.heading, path: best.path, bursts: best.bursts, wrap: best.wrap, stop: best.stop };
 }
 
 /**

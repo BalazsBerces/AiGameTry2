@@ -63,11 +63,15 @@ export interface BurrowExit {
   breaks: Cell[];
 }
 
+/** How often a burrow comes back out of one of its old holes, when any can still be used. */
+const HOLE_REUSE_CHANCE = 0.5;
+
 /**
- * Where a burrowing worm comes back out: a random spot on any of the room's outer walls whose
- * lane runs over floor or rock (never stone or a hole), away from the doorways.
+ * Where a burrowing worm comes back out: a spot on any of the room's outer walls whose lane runs
+ * over floor or rock (never stone or a hole), away from the doorways. Half the time that is one
+ * of its old `holes` (outer-wall cells), otherwise a random spot, which makes a new hole.
  */
-export function planExit(tiles: Tile[][], doors: Door[], rng: Rng): BurrowExit {
+export function planExit(tiles: Tile[][], doors: Door[], holes: Cell[], rng: Rng): BurrowExit {
   const height = tiles.length;
   const width = tiles[0].length;
   const edges: { cell: Cell; side: Direction }[] = [];
@@ -83,7 +87,8 @@ export function planExit(tiles: Tile[][], doors: Door[], rng: Rng): BurrowExit {
     if (!lane.every((c) => diggable(tiles[c.y]?.[c.x]))) return [];
     return [{ exit: ahead(cell, side), heading, lane, breaks: lane.filter((c) => tiles[c.y][c.x] === 'rock') }];
   });
-  return rng.pick(exits);
+  const old = exits.filter((e) => holes.some((h) => h.x === e.exit.x && h.y === e.exit.y));
+  return rng.pick(old.length && rng.next() < HOLE_REUSE_CHANCE ? old : exits);
 }
 
 export interface SpitShot {

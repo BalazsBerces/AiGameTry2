@@ -186,7 +186,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
   const afterBossStep = (ctx: EnemyContext, b: BossPiece, before: Cell[]) => {
     const after = state.worm.segments;
     if (b.diving && after.every((c) => sameCell(c, b.diving!))) {
-      b.burrow = { plan: planExit(ctx.tiles, ctx.doors, b.shared.rng), start: ctx.time };
+      b.burrow = { plan: planExit(ctx.tiles, ctx.doors, b.shared.holeCells, b.shared.rng), start: ctx.time };
       b.shared.hazards.push(b.burrow);
       b.diving = undefined;
       return;

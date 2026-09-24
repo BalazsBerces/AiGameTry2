@@ -73,7 +73,7 @@ describe('worm boss exit', () => {
   it('comes out of a spot in one of the outer walls, never a corner', () => {
     const sides = new Set<string>();
     for (let seed = 0; seed < 60; seed++) {
-      const { exit, heading } = planExit(maze, [], createRng(seed));
+      const { exit, heading } = planExit(maze, [], [], createRng(seed));
       expect(inRoom(exit), `seed ${seed}`).toBe(false);
       const front = { x: exit.x + STEP[heading].x, y: exit.y + STEP[heading].y };
       expect(inRoom(front), `seed ${seed}`).toBe(true);
@@ -84,7 +84,7 @@ describe('worm boss exit', () => {
 
   it('marks a lane of three cells running straight into the room from the exit', () => {
     for (let seed = 0; seed < 30; seed++) {
-      const { exit, heading, lane } = planExit(maze, [], createRng(seed));
+      const { exit, heading, lane } = planExit(maze, [], [], createRng(seed));
       expect(lane.map(key)).toEqual(
         [1, 2, 3].map((i) => key({ x: exit.x + STEP[heading].x * i, y: exit.y + STEP[heading].y * i })),
       );
@@ -93,7 +93,7 @@ describe('worm boss exit', () => {
 
   it('breaks exactly the rocks in its lane', () => {
     for (let seed = 0; seed < 30; seed++) {
-      const { lane, breaks } = planExit(maze, [], createRng(seed));
+      const { lane, breaks } = planExit(maze, [], [], createRng(seed));
       expect(breaks.map(key).sort()).toEqual(lane.filter((c) => maze[c.y][c.x] === 'rock').map(key).sort());
     }
   });
@@ -102,15 +102,46 @@ describe('worm boss exit', () => {
     const tiles = grid(['#.....', '#.....', '#.....', '......']);
     const door = { side: 'right' as const, cell: { x: 5, y: 1 } };
     for (let seed = 0; seed < 60; seed++) {
-      const { lane, exit } = planExit(tiles, [door], createRng(seed));
+      const { lane, exit } = planExit(tiles, [door], [], createRng(seed));
       for (const c of lane) expect(tiles[c.y][c.x], `seed ${seed}`).not.toBe('obstacle');
       expect(key(exit), `seed ${seed}`).not.toBe('6,1');
     }
   });
 });
 
+describe('worm boss exit through old holes', () => {
+  const tiles = grid(['......', '......', '......', '......', '......']);
+  const holes = [{ x: -1, y: 2 }, { x: 3, y: 5 }];
+
+  it('comes back out of an old hole about half the time', () => {
+    let reused = 0;
+    for (let seed = 0; seed < 200; seed++) {
+      const { exit } = planExit(tiles, [], holes, createRng(seed));
+      if (holes.some((h) => key(h) === key(exit))) reused++;
+    }
+    expect(reused).toBeGreaterThan(70);
+    expect(reused).toBeLessThan(130);
+  });
+
+  it('comes out of an old hole heading into the room, with its lane in front', () => {
+    for (let seed = 0; seed < 40; seed++) {
+      const plan = planExit(tiles, [], [{ x: 3, y: 5 }], createRng(seed));
+      if (key(plan.exit) !== '3,5') continue;
+      expect(plan.heading).toBe('up');
+      expect(plan.lane.map(key)).toEqual(['3,4', '3,3', '3,2']);
+    }
+  });
+
+  it('never reuses a hole whose lane has since been blocked by stone', () => {
+    const blocked = grid(['......', '..#...', '......', '......', '......']);
+    for (let seed = 0; seed < 60; seed++) {
+      expect(key(planExit(blocked, [], [{ x: 2, y: -1 }], createRng(seed)).exit), `seed ${seed}`).not.toBe('2,-1');
+    }
+  });
+});
+
 describe('worm boss burrow timeline', () => {
-  const plan = planExit(maze, [], createRng(3));
+  const plan = planExit(maze, [], [], createRng(3));
   const { undergroundMs, exitWarningMs, burstMs } = WORM_BOSS;
   const keys = (cells: Cell[]) => cells.map(key).sort();
 

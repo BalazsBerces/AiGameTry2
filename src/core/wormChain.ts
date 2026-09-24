@@ -64,3 +64,29 @@ export function killSegment(worm: Worm, index: number): Worm[] {
   if (back.length) pieces.push(createWorm(back, bodyHeading(back, worm.heading)));
   return pieces;
 }
+
+export interface WormPiece {
+  worm: Worm;
+  /** The killed worm's segment indices this piece is made of, head first. */
+  from: number[];
+}
+
+/**
+ * Kills one segment of the worm boss, which splits only once. The body closes up over the kill
+ * (every segment behind it moves up a cell, so the tail's cell is the one given up); then the
+ * first kill (`split` false) cuts it into two halves of equal length, wherever it landed, and
+ * any later kill only shortens the piece.
+ */
+export function killBossSegment(worm: Worm, index: number, split: boolean): WormPiece[] {
+  const rest = worm.segments.map((_, i) => i).filter((i) => i !== index);
+  const cells = worm.segments.slice(0, -1);
+  const cut = split ? rest.length : Math.ceil(rest.length / 2);
+  return [[0, cut], [cut, rest.length]]
+    .map(([start, end]) => ({ from: rest.slice(start, end), segments: cells.slice(start, end) }))
+    .filter(({ from }) => from.length)
+    .map(({ from, segments }, i) => ({
+      // The front piece keeps the old head's cell and heading; the back half faces along its own body.
+      worm: createWorm(segments, i === 0 ? worm.heading : bodyHeading(segments, worm.heading)),
+      from,
+    }));
+}

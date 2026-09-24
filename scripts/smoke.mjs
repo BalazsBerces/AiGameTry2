@@ -257,7 +257,17 @@ if (scenario === 'worm-boss') {
   for (let i = 0; i < 40 && (await status()).hidden.some((n) => n > 0); i++) await page.waitForTimeout(250);
   for (const part of [9, 4]) await hitPart(0, part, 3);
   console.log('after splitting', JSON.stringify(await status()));
-  for (let i = 0; i < 12; i++) {
+  // Down to half its hit points: kill segments just behind the heads, wherever they are out of the wall.
+  for (let killed = 2; killed < 11; ) {
+    killed += await page.evaluate(`(() => { const s = ${scene()};
+      const p = s.enemies.flatMap((e) => e.parts.slice(1, 2)).find((p) => p.body.enable);
+      if (!p) return 0;
+      for (let k = 0; k < 3; k++) s.damagePart(p, 1);
+      return 1; })()`);
+    await page.waitForTimeout(100);
+  }
+  console.log('at half', JSON.stringify(await status()));
+  for (let i = 0; i < 24; i++) {
     await page.waitForTimeout(500);
     if (i % 3 === 2) console.log(`phase-2 t=${(i + 1) * 0.5}s`, JSON.stringify(await status()));
   }

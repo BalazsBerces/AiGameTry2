@@ -1,7 +1,7 @@
 import type Phaser from 'phaser';
 import { DIRECTIONS, STEP, type Cell, type Direction } from '../../core/floorGenerator';
 import { createRng, type Rng } from '../../core/rng';
-import { createWorm, killSegment, nextStepDue, stepWorm, type Worm } from '../../core/wormChain';
+import { createWorm, killBossSegment, killSegment, nextStepDue, stepWorm, type Worm, type WormPiece } from '../../core/wormChain';
 import { burrowAt, diveCell, inPhaseTwo, planExit, spitWave, WORM_BOSS, type BurrowExit } from '../../core/wormBossAttack';
 import { COLORS, TUNING } from '../config';
 import { championBoost, championColor, flash, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
@@ -54,6 +54,8 @@ interface WormBossShared {
   maxHp: number;
   hp: number;
   pieces: number;
+  /** Once it has split in two, a kill only shortens a piece. */
+  split: boolean;
   hazards: { plan: BurrowExit; start: number }[];
   /** Lane marks and bursts, redrawn every frame. */
   ground: Phaser.GameObjects.Graphics;
@@ -253,24 +255,21 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
         return [enemy];
       }
       part.destroy();
-      // killSegment returns the front piece (if any) then the back piece (if any).
-      const pieces = killSegment(state.worm, index);
-      const sources = [
-        ...(index > 0 ? [{ parts: state.parts.slice(0, index), hp: state.hp.slice(0, index) }] : []),
-        ...(index < state.parts.length - 1 ? [{ parts: state.parts.slice(index + 1), hp: state.hp.slice(index + 1) }] : []),
-      ];
       const boss = state.boss;
+      const pieces = boss ? killBossSegment(state.worm, index, boss.shared.split) : splitAt(state.worm, index);
       if (boss) {
+        boss.shared.split = true;
         boss.shared.pieces += pieces.length - 1;
         if (boss.shared.pieces === 0) {
           boss.shared.ground.destroy();
           boss.shared.holes.destroy();
         }
       }
-      return pieces.map((worm, i) =>
+      return pieces.map(({ worm, from }, i) =>
         wormEnemy(scene, style, {
           worm,
-          ...sources[i],
+          parts: from.map((k) => state.parts[k]),
+          hp: from.map((k) => state.hp[k]),
           rng: state.rng.fork(`split ${index} ${i}`),
           nextStepAt: state.nextStepAt,
           ...(boss ? { boss: splitPiece(boss, worm) } : {}),
@@ -279,6 +278,15 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
     },
   };
   return enemy;
+}
+
+/** A regular worm splits wherever a segment dies: the pieces in front of and behind it. */
+function splitAt(worm: Worm, index: number): WormPiece[] {
+  const front = worm.segments.map((_, i) => i).slice(0, index);
+  const back = worm.segments.map((_, i) => i).slice(index + 1);
+  // killSegment returns the front piece (if any) then the back piece (if any).
+  const sources = [front, back].filter((from) => from.length);
+  return killSegment(worm, index).map((w, i) => ({ worm: w, from: sources[i] }));
 }
 
 /** A piece split off `parent`: one whose head is already in the wall keeps diving, one still in the exit hole keeps coming out. */
@@ -314,6 +322,7 @@ export function spawnWorm(
         maxHp: cells.length * style.segmentHp,
         hp: cells.length * style.segmentHp,
         pieces: 1,
+        split: false,
         hazards: [],
         ground: scene.add.graphics().setDepth(1),
         holes,

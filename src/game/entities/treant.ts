@@ -113,7 +113,10 @@ export function createTreant(scene: Phaser.Scene, x: number, y: number, _cell: C
       rng,
     });
     brain = step.treant;
-    for (const e of step.events) if (e.kind === 'podsLand') for (const pod of e.pods) ctx.landSeedPod(pod.cell, pod.sprout);
+    for (const e of step.events) {
+      if (e.kind === 'podsLand') for (const pod of e.pods) ctx.landSeedPod(pod.cell, pod.sprout);
+      if (e.kind === 'crush') ctx.crushSprout(e.cell);
+    }
 
     sprite.body.setVelocity((step.walk?.x ?? 0) * walkSpeed, (step.walk?.y ?? 0) * walkSpeed);
     for (const d of decor) d.shape.setPosition(sprite.x + d.dx, sprite.y + d.dy);

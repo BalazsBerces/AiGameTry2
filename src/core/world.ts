@@ -291,6 +291,16 @@ export function sproutTile(world: World, roomId: string, cell: Cell, tile: 'rock
   return true;
 }
 
+/** The Treant crushed one of its own sprouts: the rock or thorn at `cell` is floor again, for good. True if it was one. */
+export function clearSprout(world: World, roomId: string, cell: Cell): boolean {
+  const tiles = world.rooms.get(roomId)?.layout.tiles;
+  const tile = tiles?.[cell.y]?.[cell.x];
+  if (!tiles || (tile !== 'rock' && tile !== 'thorn')) return false;
+  tiles[cell.y][cell.x] = 'floor';
+  world.tileHits.delete(`${roomId}|${cell.x},${cell.y}`);
+  return true;
+}
+
 /**
  * A player shot hit `cell`: a glowshroom there bursts (its stun cloud is `stunBurst`) and is
  * floor from then on, for the rest of the run. True if one burst.

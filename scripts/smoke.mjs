@@ -698,10 +698,29 @@ if (scenario === 'treant') {
   const treant = () =>
     page.evaluate(`(() => { const s = ${scene()}; const p = s.enemies[0]?.parts[0]; const pl = s.player;
       return p && { at: [Math.round(p.x), Math.round(p.y)], player: [Math.round(pl.x), Math.round(pl.y)], moving: Math.round(Math.hypot(p.body.velocity.x, p.body.velocity.y)) }; })()`);
-  for (let i = 0; i < 16; i++) {
+  // Rock and thorn in the room: its pods add some, it crushes those it walks into, never the room's own.
+  const sprouts = () => page.evaluate(`${scene()}.world.rooms.get('${id}').layout.tiles.flat().filter((t) => t === 'rock' || t === 'thorn').length`);
+  console.log('rock+thorn at start', await sprouts());
+  for (let i = 0; i < 40; i++) {
     await page.waitForTimeout(500);
-    console.log(`t=${(i + 1) * 0.5}s`, JSON.stringify(await treant()));
-    if ([1, 5, 11, 15].includes(i)) await shot(`treant-${i}`);
+    console.log(`t=${(i + 1) * 0.5}s`, JSON.stringify(await treant()), 'rock+thorn', await sprouts());
+    if ([1, 5, 11, 15, 25, 39].includes(i)) await shot(`treant-${i}`);
+  }
+  // Set it down right beside one of its sprouts: it crushes that one straight away.
+  const beside = await page.evaluate(`(() => { const s = ${scene()}; const room = s.world.rooms.get('${id}');
+    const tiles = room.layout.tiles; let cell;
+    tiles.forEach((row, y) => row.forEach((t, x) => { if (!cell && (t === 'rock' || t === 'thorn')) cell = { x, y }; }));
+    return cell ?? null; })()`);
+  if (beside) {
+    const before = await sprouts();
+    await page.evaluate(`(() => { const s = ${scene()}; const room = s.world.rooms.get('${id}');
+      const p = s.enemies[0].parts[0];
+      const ox = room.floorRoom.cell.x * 720 + (15 * 2 - room.layout.width) / 2 * 48;
+      const oy = room.floorRoom.cell.y * 432 + (9 * 2 - room.layout.height) / 2 * 48;
+      p.body.reset(ox + (${beside.x} - 0.9) * 48, oy + (${beside.y} + 0.5) * 48); })()`);
+    await page.waitForTimeout(300);
+    console.log('set down beside sprout', JSON.stringify(beside), 'rock+thorn', before, '->', await sprouts());
+    await shot('treant-crushed');
   }
 }
 

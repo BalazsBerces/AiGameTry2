@@ -59,7 +59,7 @@ import { createBoar } from './entities/boar';
 import { isStunned, stun } from '../core/stun';
 import { applyPoison, chainTargets, poisonTick, rollsFreeze, type Poison } from '../core/onHit';
 import { createRng } from '../core/rng';
-import { smashRock } from '../core/world';
+import { clearSprout, smashRock } from '../core/world';
 import { createGhost } from './entities/ghost';
 import { stunBurst, GLOWSHROOM_RADIUS, type BurstTarget } from '../core/glowshroom';
 import { burstGlowshroom } from '../core/world';
@@ -798,6 +798,9 @@ export class GameScene extends Phaser.Scene {
       },
       doors: room.layout.doors,
       landSeedPod: (cell, tile) => this.landSeedPod(room, cell, tile),
+      crushSprout: (cell: Cell) => {
+        if (clearSprout(this.world, room.floorRoom.id, cell)) this.removeTerrain(room.floorRoom.id, cell);
+      },
     };
   }
 
@@ -1204,6 +1207,8 @@ export class GameScene extends Phaser.Scene {
         // Shot-blocking tiles are walls to physics; the rest (holes) only stop walking.
         if (!blocksShots(tile)) {
           (hurtsOnTouch(tile) ? this.thorns : this.holes).add(shape);
+          // Thorn can be a Treant sprout it may crush later (crushSprout).
+          if (hurtsOnTouch(tile)) this.terrain.set(`${room.floorRoom.id}|${tx},${ty}`, shape);
           return;
         }
         shape.setData({ roomId: room.floorRoom.id, tile: { x: tx, y: ty } });
@@ -1301,8 +1306,9 @@ export class GameScene extends Phaser.Scene {
     } else {
       shape.setData({ roomId, tile: cell });
       this.walls.add(shape);
-      this.terrain.set(`${roomId}|${cell.x},${cell.y}`, shape);
     }
+    // Kept by cell either way, so the Treant can crush it again (crushSprout).
+    this.terrain.set(`${roomId}|${cell.x},${cell.y}`, shape);
     this.roomObjects.get(roomId)?.push(shape);
     shape.setScale(0.2);
     this.tweens.add({ targets: shape, scale: 1, duration: 180, ease: 'Back.easeOut' });

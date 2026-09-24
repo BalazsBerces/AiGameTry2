@@ -40,6 +40,8 @@ export interface EnemyContext {
    * or, if the player is standing on it, bursts on them instead. True if it sprouted.
    */
   landSeedPod(cell: Cell, tile: 'rock' | 'thorn'): boolean;
+  /** The Treant walked into one of its own sprouts: it is floor again, for good. */
+  crushSprout(cell: Cell): void;
 }
 
 /**

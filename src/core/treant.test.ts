@@ -73,7 +73,56 @@ describe('treant walking', () => {
     const frames = Array.from({ length: 200 }, (_, i) => i * 20);
     expect(run(createTreant(0), frames).some((s) => s.treant.sweep)).toBe(false);
   });
+});
 
+describe('treant sprouts', () => {
+  /** Runs until its first volley lands, then returns the treant, the landed pods and the tiles with them sprouted. */
+  function afterFirstVolley() {
+    const tiles = open(26, 14);
+    let t = createTreant(0);
+    for (let time = 0; time < 5000; time += 20) {
+      const step = updateTreant(t, input(time, { tiles }));
+      t = step.treant;
+      const landed = step.events.find((e) => e.kind === 'podsLand');
+      if (landed?.kind === 'podsLand') {
+        for (const pod of landed.pods) tiles[pod.cell.y][pod.cell.x] = pod.sprout;
+        return { treant: t, pods: landed.pods, tiles, time };
+      }
+    }
+    throw new Error('no volley landed');
+  }
+
+  it('crushes a sprout of its own when it walks up against it', () => {
+    const { treant, pods, tiles, time } = afterFirstVolley();
+    const pod = pods[0];
+    const beside = { x: pod.cell.x - 1, y: pod.cell.y + 0.5 };
+    const step = updateTreant(treant, input(time + 20, { tiles, at: beside }));
+    expect(step.events).toContainEqual({ kind: 'crush', cell: pod.cell });
+    // Once crushed it is forgotten: it never asks again, even back in the same spot.
+    tiles[pod.cell.y][pod.cell.x] = 'floor';
+    const again = updateTreant(step.treant, input(time + 40, { tiles, at: beside }));
+    expect(again.events.filter((e) => e.kind === 'crush')).toEqual([]);
+  });
+
+  it('leaves the room’s own rock and thorn alone', () => {
+    const { treant, tiles, time } = afterFirstVolley();
+    const natural = { x: 20, y: 11 };
+    tiles[natural.y][natural.x] = 'rock';
+    tiles[natural.y][natural.x + 1] = 'thorn';
+    const step = updateTreant(treant, input(time + 20, { tiles, at: { x: natural.x + 1, y: natural.y - 0.5 } }));
+    expect(step.events.filter((e) => e.kind === 'crush')).toEqual([]);
+  });
+
+  it('forgets a pod that never sprouted (it burst on the player)', () => {
+    const { treant, pods, tiles, time } = afterFirstVolley();
+    const pod = pods[0];
+    tiles[pod.cell.y][pod.cell.x] = 'floor';
+    const step = updateTreant(treant, input(time + 20, { tiles, at: { x: pod.cell.x - 1, y: pod.cell.y + 0.5 } }));
+    expect(step.events.filter((e) => e.kind === 'crush')).toEqual([]);
+  });
+});
+
+describe('treant attacks', () => {
   it('plans its attacks from where it stands now', () => {
     const at = { x: 12.5, y: 3.5 };
     const [step] = run(createTreant(0), [0], () => ({ at }));

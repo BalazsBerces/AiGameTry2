@@ -128,8 +128,13 @@ describe('room sub-themes', () => {
         for (const d of room.layout.decor!) expect(room.layout.tiles[d.cell.y][d.cell.x], where).toBe('floor');
       }
     }
-    const decor = (seed: number) => [...createWorld(seed).rooms.values()].map((r) => r.layout.decor);
-    expect(decor(3)).toEqual(decor(3));
+    const dressing = (seed: number) => [...createWorld(seed).rooms.values()].map((r) => [r.layout.decor, r.layout.variants, r.layout.regions]);
+    expect(dressing(3)).toEqual(dressing(3));
+    for (const room of worlds[0].rooms.values()) {
+      expect(room.layout.variants?.length, room.floorRoom.id).toBe(room.layout.height);
+      const holes = room.layout.tiles.flat().filter((t) => t === 'hole').length;
+      expect(room.layout.regions!.reduce((n, r) => n + r.cells.length, 0), room.floorRoom.id).toBe(holes);
+    }
   });
 
   it('gives the same themes for the same seed', () => {

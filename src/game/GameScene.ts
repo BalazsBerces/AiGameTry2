@@ -160,6 +160,33 @@ function drawDecorMark(g: Phaser.GameObjects.Graphics, at: { x: number; y: numbe
   }
 }
 
+/** How far each tile variant shifts its tile's shade, until the art pass gives variants sprites of their own. */
+const VARIANT_SHADE = [-0.08, -0.03, 0.03, 0.08];
+
+/** `color` lightened or darkened by the variant's shift. */
+function shade(color: number, variant: number): number {
+  const f = VARIANT_SHADE[variant] ?? 0;
+  const channel = (shift: number) => Math.max(0, Math.min(255, Math.round(((color >> shift) & 0xff) * (1 + f))));
+  return (channel(16) << 16) | (channel(8) << 8) | channel(0);
+}
+
+/** A faint line round each pit or pond region, along the edges it shares with anything else. */
+function drawRegionRims(g: Phaser.GameObjects.Graphics, room: WorldRoom, color: number) {
+  const t = TUNING.tile;
+  g.lineStyle(2, color, 0.6);
+  for (const region of room.layout.regions ?? []) {
+    const inRegion = new Set(region.cells.map((c) => `${c.x},${c.y}`));
+    for (const c of region.cells) {
+      const { x, y } = tileCenter(room, c.x, c.y);
+      const [l, r, u, d] = [x - t / 2, x + t / 2, y - t / 2, y + t / 2];
+      if (!inRegion.has(`${c.x},${c.y - 1}`)) g.lineBetween(l, u, r, u);
+      if (!inRegion.has(`${c.x},${c.y + 1}`)) g.lineBetween(l, d, r, d);
+      if (!inRegion.has(`${c.x - 1},${c.y}`)) g.lineBetween(l, u, l, d);
+      if (!inRegion.has(`${c.x + 1},${c.y}`)) g.lineBetween(r, u, r, d);
+    }
+  }
+}
+
 interface TrackedCrusher {
   roomId: string;
   /** The room layout's own crusher: sliding moves it for the rest of the run. */
@@ -1066,6 +1093,17 @@ export class GameScene extends Phaser.Scene {
       .rectangle(floor.x - t / 2, floor.y - t / 2, width * t, height * t, FLOOR_COLOR[room.floorRoom.kind](palette))
       .setOrigin(0);
     const dressing = this.add.graphics();
+    const variants = room.layout.variants;
+    // Each floor tile tinted a touch lighter or darker by its variant.
+    room.layout.tiles.forEach((row, ty) =>
+      row.forEach((tile, tx) => {
+        const v = variants?.[ty]?.[tx];
+        if (tile !== 'floor' || v === undefined) return;
+        const c = tileCenter(room, tx, ty);
+        dressing.fillStyle(VARIANT_SHADE[v] < 0 ? 0x000000 : 0xffffff, Math.abs(VARIANT_SHADE[v]) * 0.35);
+        dressing.fillRect(c.x - t / 2, c.y - t / 2, t, t);
+      }),
+    );
     const theme = roomThemeById(room.layout.theme ?? '');
     for (const d of room.layout.decor ?? []) {
       const kind = theme?.decor.find((k) => k.id === d.kind);
@@ -1090,7 +1128,9 @@ export class GameScene extends Phaser.Scene {
           this.walls.add(this.add.rectangle(c.x, c.y, t, t, palette.wall));
           return;
         }
-        const shape = drawTile(this, c.x, c.y, looks[tile as Exclude<Tile, 'floor' | 'wall'>]);
+        const look = looks[tile as Exclude<Tile, 'floor' | 'wall'>];
+        const variant = variants?.[ty]?.[tx];
+        const shape = drawTile(this, c.x, c.y, variant === undefined ? look : { ...look, color: shade(look.color, variant) });
         // Shot-blocking tiles are walls to physics; the rest (holes) only stop walking.
         if (!blocksShots(tile)) {
           (hurtsOnTouch(tile) ? this.thorns : this.holes).add(shape);
@@ -1101,6 +1141,8 @@ export class GameScene extends Phaser.Scene {
         this.terrain.set(`${room.floorRoom.id}|${tx},${ty}`, shape);
       }),
     );
+    // Over the tiles, so each pit or pond reads as one shape.
+    drawRegionRims(this.add.graphics(), room, looks.hole.stroke ?? palette.accent);
   }
 
   /** Takes a room's drawn crusher blocks out of the breakable terrain and tracks them for sliding. */

@@ -10,7 +10,7 @@ import type { Crusher } from './crusher';
 import { candleCells } from './candleWitch';
 import { composeRoom, composes, type Spot } from './composer';
 import { addFiller } from './filler';
-import { dressRoom, type Decor } from './dressing';
+import { dressRoom, type Decor, type Region } from './dressing';
 import { roomThemesFor } from './roomThemes';
 
 export const ROOM_WIDTH = 13;
@@ -112,6 +112,10 @@ export interface RoomLayout {
   crushers?: Crusher[];
   /** Non-blocking set dressing on the floor, laid when the room was built (core/dressing). */
   decor?: Decor[];
+  /** variants[y][x]: which look of its kind each tile takes in the art pass; stable for the seed. */
+  variants?: number[][];
+  /** Connected pits, ponds and chasms as the room was built, for edging shorelines and rims. */
+  regions?: Region[];
 }
 
 export type PickupType = 'heart' | 'key' | 'bomb' | 'chest' | 'lockedChest' | 'passive';

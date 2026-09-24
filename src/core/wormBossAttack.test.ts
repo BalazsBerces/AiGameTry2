@@ -256,11 +256,24 @@ describe('worm boss rampage lunges', () => {
     expect(lunge?.stop).toBeUndefined();
   });
 
-  it('stops short of rock or stone, and says what it ran into', () => {
+  it('bursts through the first rock it runs into and lunges on', () => {
     const lunge = planLunge(room, worm([[4, 0], [3, 0], [2, 0]], 'right'), { x: 4, y: 4 });
     expect(lunge?.heading).toBe('down');
-    expect(lunge?.path).toEqual([{ x: 4, y: 1 }, { x: 4, y: 2 }]);
-    expect(lunge?.stop).toEqual({ x: 4, y: 3 });
+    expect(lunge?.path).toEqual([1, 2, 3, 4].map((y) => ({ x: 4, y })));
+    expect(lunge?.burst).toEqual({ x: 4, y: 3 });
+    expect(lunge?.stop).toBeUndefined();
+  });
+
+  it('stops short of a second rock, or of stone, and says what it ran into', () => {
+    const rocks = grid(['......', '.r.r..', '......', '.#....']);
+    const intoRock = planLunge(rocks, worm([[0, 1], [0, 0]], 'down'), { x: 5, y: 1 });
+    expect(intoRock?.path).toEqual([1, 2].map((x) => ({ x, y: 1 })));
+    expect(intoRock?.stop).toEqual({ x: 3, y: 1 });
+    const intoStone = planLunge(rocks, worm([[1, 0], [0, 0]], 'right'), { x: 1, y: 5 });
+    expect(intoStone?.heading).toBe('down');
+    expect(intoStone?.path).toEqual([1, 2].map((y) => ({ x: 1, y })));
+    expect(intoStone?.burst).toEqual({ x: 1, y: 1 });
+    expect(intoStone?.stop).toEqual({ x: 1, y: 3 });
   });
 
   it('picks the line that brings it closest to the player, the longer run on a tie', () => {
@@ -276,8 +289,8 @@ describe('worm boss rampage lunges', () => {
     }
   });
 
-  it('has nowhere to lunge when boxed in', () => {
-    const box = grid(['#r#', 'r..', '###']);
+  it('has nowhere to lunge when boxed in by stone', () => {
+    const box = grid(['###', '#..', '###']);
     expect(planLunge(box, worm([[1, 1], [2, 1]], 'left'), { x: 0, y: 0 })).toBeUndefined();
   });
 });

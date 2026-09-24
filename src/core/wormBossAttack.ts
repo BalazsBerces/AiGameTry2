@@ -194,14 +194,17 @@ export interface Lunge {
   heading: Direction;
   /** The cells the head races through, nearest first. */
   path: Cell[];
+  /** The first rock in its way, on the path: it bursts straight through, smashing it. */
+  burst?: Cell;
   /** What it runs into at the end, inside the room (rock takes a blow); none at the outer wall. */
   stop?: Cell;
 }
 
 /**
  * One lunge of a rampage: straight along one of the four lines from the head (never back into
- * its own neck), over open floor until it runs into anything. It takes the line that brings it
- * closest to the player, the longer run on a tie; none if every line is blocked at once.
+ * its own neck), over open floor, bursting through the first rock in its way, until it runs into
+ * anything else. It takes the line that brings it closest to the player, the longer run on a
+ * tie; none if every line is blocked at once.
  */
 export function planLunge(tiles: Tile[][], worm: Worm, player: Cell): Lunge | undefined {
   const [head, neck] = worm.segments;
@@ -210,16 +213,20 @@ export function planLunge(tiles: Tile[][], worm: Worm, player: Cell): Lunge | un
     const first = ahead(head, heading);
     if (neck && first.x === neck.x && first.y === neck.y) return [];
     const path: Cell[] = [];
+    let burst: Cell | undefined;
     let at = first;
-    while (tiles[at.y]?.[at.x] === 'floor') {
+    for (;;) {
+      const tile = tiles[at.y]?.[at.x];
+      if (tile === 'rock' && !burst) burst = at;
+      else if (tile !== 'floor') break;
       path.push(at);
       at = ahead(at, heading);
     }
     if (!path.length) return [];
-    return [{ heading, path, stop: outside(tiles, at) ? undefined : at, closest: Math.min(...path.map(manhattan)) }];
+    return [{ heading, path, burst, stop: outside(tiles, at) ? undefined : at, closest: Math.min(...path.map(manhattan)) }];
   });
   const best = lunges.sort((a, b) => a.closest - b.closest || b.path.length - a.path.length)[0];
-  return best && { heading: best.heading, path: best.path, stop: best.stop };
+  return best && { heading: best.heading, path: best.path, burst: best.burst, stop: best.stop };
 }
 
 /**

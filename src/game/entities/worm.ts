@@ -272,7 +272,9 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
   const updateRampage = (ctx: EnemyContext, b: BossPiece, r: Rampage): boolean => {
     const head = state.parts[0];
     if (r.phase === 'lunging') {
-      const { path, stop } = r.lunge!;
+      const { path, stop, burst } = r.lunge!;
+      // It bursts straight through the first rock in its way.
+      if (path.length && burst && sameCell(path[0], burst) && ctx.time >= state.nextStepAt) ctx.smashRock(burst);
       if (path.length && ctx.isWalkable(path[0])) return false;
       // Out of room: it slams into whatever is ahead once its last glide is done.
       if (ctx.time < state.nextStepAt) return false;

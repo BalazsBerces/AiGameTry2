@@ -341,11 +341,15 @@ export class GameScene extends Phaser.Scene {
 
   /**
    * Homing shots turn at a limited rate, keeping their speed: the player's toward the nearest
-   * enemy part, enemy ones (the Shadow's) toward the player.
+   * enemy part with a clear line past anything that blocks shots (so they don't curve into
+   * rocks after hidden enemies), enemy ones (the Shadow's) toward the player.
    */
   private steerHomingShots(deltaMs: number) {
     const maxTurn = (TUNING.homingTurnRate * deltaMs) / 1000;
+    const room = this.currentRoom;
     const parts = this.enemies.flatMap((e) => e.parts);
+    const clearShot = (from: { x: number; y: number }, to: { x: number; y: number }) =>
+      lineOfSight(room.layout.tiles, this.toTileUnits(room, from), this.toTileUnits(room, to), blocksShots);
     const steer = (group: Phaser.Physics.Arcade.Group, targetFor: (shot: Phaser.GameObjects.Arc) => { x: number; y: number } | undefined) => {
       for (const obj of group.getChildren()) {
         const shot = obj as Phaser.GameObjects.Arc;
@@ -358,7 +362,10 @@ export class GameScene extends Phaser.Scene {
       }
     };
     const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Phaser.Math.Distance.Between(a.x, a.y, b.x, b.y);
-    steer(this.shots, (shot) => (parts.length ? parts.reduce((best, p) => (dist(shot, p) < dist(shot, best) ? p : best)) : undefined));
+    steer(this.shots, (shot) => {
+      const visible = parts.filter((p) => clearShot(shot, p));
+      return visible.length ? visible.reduce((best, p) => (dist(shot, p) < dist(shot, best) ? p : best)) : undefined;
+    });
     steer(this.enemyShots, () => this.player);
   }
 

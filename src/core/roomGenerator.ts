@@ -22,7 +22,7 @@ export const CELL_TILES = { w: ROOM_WIDTH + 2, h: ROOM_HEIGHT + 2 };
  * missing cell of an L room's box, is drawn as room wall and nothing ever enters it. Behaviour
  * lives in `TILES`.
  */
-export type Tile = 'floor' | 'obstacle' | 'rock' | 'hole' | 'thorn' | 'crusher' | 'crystal' | 'wall';
+export type Tile = 'floor' | 'obstacle' | 'rock' | 'hole' | 'thorn' | 'crusher' | 'crystal' | 'wall' | 'glowshroom';
 
 export interface DoorSpec {
   side: Direction;

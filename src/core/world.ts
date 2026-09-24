@@ -226,6 +226,17 @@ export function sproutTile(world: World, roomId: string, cell: Cell, tile: 'rock
   return true;
 }
 
+/**
+ * A player shot hit `cell`: a glowshroom there bursts (its stun cloud is `stunBurst`) and is
+ * floor from then on, for the rest of the run. True if one burst.
+ */
+export function burstGlowshroom(world: World, roomId: string, cell: Cell): boolean {
+  const tiles = world.rooms.get(roomId)?.layout.tiles;
+  if (tiles?.[cell.y]?.[cell.x] !== 'glowshroom') return false;
+  tiles[cell.y][cell.x] = 'floor';
+  return true;
+}
+
 /** Spends a bomb if the player has one; true if one was placed. */
 export function placeBomb(world: World): boolean {
   if (world.player.bombs <= 0) return false;

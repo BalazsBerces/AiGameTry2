@@ -108,6 +108,21 @@ export const TILES: Record<Tile, TileProps> = {
     reflectsShots: false,
     bombDestructible: false,
   },
+  /**
+   * A cave glowshroom: a waist-high cap that stops feet, flyers and shots (a shot is how it gets
+   * burst, see `burstGlowshroom`) but not sight. A player shot bursts it at once into a stun cloud,
+   * and it is floor from then on; it never cracks, and bombs leave it be.
+   */
+  glowshroom: {
+    walkable: false,
+    blocksShots: true,
+    blocksSight: false,
+    flyersPass: false,
+    phasingPasses: true,
+    hurtsOnTouch: false,
+    reflectsShots: false,
+    bombDestructible: false,
+  },
 };
 
 export const isWalkable = (tile: Tile) => TILES[tile].walkable;

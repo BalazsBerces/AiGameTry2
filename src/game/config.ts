@@ -52,6 +52,8 @@ export const TUNING = {
   stunMark: { radius: 7, spinDegPerSec: 360 },
   /** Drifts straight at the player through any terrain; its visible/faded cycle lives in core/ghost. */
   ghost: { hp: 4, radius: 15, speed: 60 },
+  /** How long a burst glowshroom's cloud lingers on screen; its reach and stun live in core/glowshroom. */
+  glowCloud: { showMs: 450 },
 };
 
 /** Floor, wall, door and terrain colours come from each floor's theme (core/themes). */
@@ -117,4 +119,5 @@ export const COLORS = {
   podShadow: 0x1a1208,
   sweepTelegraph: 0xd8b25a,
   sweep: 0x6a8a3a,
+  glowCloud: 0x8af0b8,
 };

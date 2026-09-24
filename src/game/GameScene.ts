@@ -44,6 +44,9 @@ import { createBoar } from './entities/boar';
 import { isStunned } from '../core/stun';
 import { smashRock } from '../core/world';
 import { createGhost } from './entities/ghost';
+import { stunBurst, GLOWSHROOM_RADIUS, type BurstTarget } from '../core/glowshroom';
+import { burstGlowshroom } from '../core/world';
+import type { Stunnable } from '../core/stun';
 
 type Keys = Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
 type PhysicsRect = Phaser.GameObjects.Rectangle & { body: Phaser.Physics.Arcade.Body };
@@ -142,6 +145,9 @@ export class GameScene extends Phaser.Scene {
   private flyers!: Phaser.Physics.Arcade.Group;
   /** The star drawn over each currently stunned enemy. */
   private stunMarks = new Map<Enemy, Shape>();
+  /** The player's share of the stun (a glowshroom cloud): no moving or shooting until it wears off. */
+  private playerStun: Stunnable = {};
+  private playerStunMark?: Shape;
 
   constructor() {
     super('game');
@@ -165,6 +171,8 @@ export class GameScene extends Phaser.Scene {
     this.terrain = new Map();
     this.crushers = [];
     this.stunMarks = new Map();
+    this.playerStun = {};
+    this.playerStunMark = undefined;
     for (const room of this.world.rooms.values()) this.drawRoom(room);
     for (const room of this.world.rooms.values()) this.trackCrushers(room);
 
@@ -238,10 +246,14 @@ export class GameScene extends Phaser.Scene {
       (this.move.down.isDown ? 1 : 0) - (this.move.up.isDown ? 1 : 0),
     );
     if (dir.lengthSq() > 0) dir.normalize().scale(TUNING.playerSpeed);
+    // The shared stun (core/stun) holds the player too: no moving, no shooting.
+    const stunned = isStunned(this.playerStun, time);
+    if (stunned) dir.set(0, 0);
     this.player.body.setVelocity(dir.x, dir.y);
     this.player.setAlpha(time < this.invincibleUntil && Math.floor(time / 80) % 2 === 0 ? 0.3 : 1);
+    this.updatePlayerStunMark(time, stunned);
 
-    this.tryShoot(time);
+    if (!stunned) this.tryShoot(time);
     this.steerHomingShots(delta);
     this.dropShotsOutsideRoom();
     this.updateEnemies(time);
@@ -383,6 +395,20 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** The same spinning star over the player's head while they are stunned. */
+  private updatePlayerStunMark(time: number, stunned: boolean) {
+    if (!stunned) {
+      this.playerStunMark?.destroy();
+      this.playerStunMark = undefined;
+      return;
+    }
+    const { radius, spinDegPerSec } = TUNING.stunMark;
+    this.playerStunMark ??= this.add.star(0, 0, 4, radius / 2, radius, COLORS.stunMark).setDepth(DEPTH.player + 1);
+    this.playerStunMark
+      .setPosition(this.player.x, this.player.y - this.player.displayHeight / 2 - radius)
+      .setAngle((time / 1000) * spinDegPerSec);
+  }
+
   private enemyContext(time: number): EnemyContext {
     const room = this.currentRoom;
     const tileOf = (x: number, y: number) => tileAt(room, x, y);
@@ -447,9 +473,39 @@ export class GameScene extends Phaser.Scene {
     const roomId = wall.getData('roomId') as string | undefined;
     if (!roomId || !wall.active) return;
     const cell = wall.getData('tile') as Cell;
+    if (burstGlowshroom(this.world, roomId, cell)) {
+      this.removeTerrain(roomId, cell);
+      this.releaseStunCloud(roomId, cell);
+      return;
+    }
     const result = hitTile(this.world, roomId, cell);
     if (result === 'broken') this.removeTerrain(roomId, cell);
     else if (result === 'damaged') wall.setAlpha(wall.alpha - 0.25);
+  }
+
+  /**
+   * A burst glowshroom's cloud: stuns every enemy (by its nearest part) and the player within
+   * reach of `cell` (core/glowshroom), if it burst in the room they're in.
+   */
+  private releaseStunCloud(roomId: string, cell: Cell) {
+    const room = this.world.rooms.get(roomId)!;
+    const c = tileCenter(room, cell.x, cell.y);
+    const cloud = this.add.circle(c.x, c.y, GLOWSHROOM_RADIUS * TUNING.tile, COLORS.glowCloud, 0.45).setDepth(DEPTH.player + 1);
+    cloud.setScale(0.3);
+    this.tweens.add({ targets: cloud, scale: 1, alpha: 0, duration: TUNING.glowCloud.showMs, ease: 'Quad.easeOut', onComplete: () => cloud.destroy() });
+    if (roomId !== this.world.currentRoomId) return;
+    const centre = { x: cell.x + 0.5, y: cell.y + 0.5 };
+    const nearest = (e: Enemy) =>
+      e.parts
+        .filter((p) => p.active)
+        .map((p) => this.toTileUnits(room, p))
+        .sort((a, b) => Math.hypot(a.x - centre.x, a.y - centre.y) - Math.hypot(b.x - centre.x, b.y - centre.y))[0];
+    const targets: BurstTarget<Stunnable>[] = [{ target: this.playerStun, at: this.toTileUnits(room, this.player) }];
+    for (const e of this.enemies) {
+      const at = nearest(e);
+      if (at) targets.push({ target: e, at });
+    }
+    stunBurst(cell, targets, this.time.now);
   }
 
   /**

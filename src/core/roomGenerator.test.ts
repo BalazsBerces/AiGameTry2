@@ -6,6 +6,7 @@ import { generateRoom, WORM_LENGTH, type DoorSpec } from './roomGenerator';
 import { createWorld } from './world';
 import { AXIS_DIRECTIONS, slideCrusher } from './crusher';
 import { validateRoom } from './roomValidator';
+import { GLOWSHROOM_RADIUS } from './glowshroom';
 
 const ALL_DOORS = ['up', 'down', 'left', 'right'] as const;
 const room = (seed: number, doors: readonly (typeof ALL_DOORS)[number][] = ALL_DOORS) =>
@@ -691,7 +692,7 @@ describe('every archetype', () => {
 
   it.each([
     [1, ['jar', 'fourCorners', 'pillaredHall', 'sentryIsland', 'stash', 'thornMaze', 'waspNest', 'boarRun']],
-    [2, ['courtyard', 'gallery', 'serpentGarden', 'track', 'twinJars', 'vault', 'crystalGallery']],
+    [2, ['courtyard', 'gallery', 'serpentGarden', 'track', 'twinJars', 'vault', 'crystalGallery', 'glowshroomCave']],
     [3, ['crossfire', 'fortress', 'killbox', 'minefield', 'nest', 'ruins', 'crusherCorridor', 'knightGuard', 'hauntedHall']],
   ])('gives floor %i its own set of ideas, one of them a breather that fits every door set', (floor, ids) => {
     const own = ARCHETYPES.filter((a) => a.floor === floor - 1 && a.kind === 'normal' && supportsShape(a, '1x1'));
@@ -1185,6 +1186,53 @@ describe('Crystal Gallery (floor 2)', () => {
         for (let seed = 0; seed < 10; seed++) {
           const r = generateRoom({ id: '0,0', kind: 'normal', doors: [...doors] }, floorIndex, createRng(seed));
           expect(count(r, 'crystal'), `floor ${floorIndex + 1} seed ${seed} doors ${doors}`).toBe(0);
+        }
+      }
+    }
+  });
+});
+
+describe('Glowshroom Cave (floor 2)', () => {
+  const cave = (seed: number, doors: readonly (typeof SIDES)[number][]) =>
+    generateRoom({ id: '0,0', kind: 'normal', doors: [...doors], archetype: 'glowshroomCave' }, 1, createRng(seed));
+  const glowshrooms = (r: ReturnType<typeof cave>) =>
+    r.tiles.flatMap((row, y) => row.flatMap((t, x) => (t === 'glowshroom' ? [{ x, y }] : [])));
+
+  it('scatters glowshrooms through a valid mirrored cave, walling nothing off, for every door set', () => {
+    for (const doors of EVERY_DOOR_SET) {
+      for (let seed = 0; seed < 30; seed++) {
+        const r = cave(seed, doors);
+        const where = `seed ${seed} doors ${doors}`;
+        expect(r.archetype, where).toBe('glowshroomCave');
+        expect(glowshrooms(r).length, where).toBeGreaterThanOrEqual(4);
+        expect(validateRoom(r, { axes: ['vertical', 'horizontal'] }), where).toEqual([]);
+        expect(reachable(r, r.doors[0].cell).size, where).toBe(count(r, 'floor'));
+      }
+    }
+  });
+
+  it('is built around stun openings: some enemy always starts within a burst of a glowshroom', () => {
+    for (let seed = 0; seed < 40; seed++) {
+      const r = cave(seed, ALL_DOORS);
+      const inReach = r.enemies.filter((e) =>
+        glowshrooms(r).some((g) => Math.hypot(e.cell.x - g.x, e.cell.y - g.y) <= GLOWSHROOM_RADIUS),
+      );
+      expect(inReach.length, `seed ${seed}`).toBeGreaterThan(0);
+    }
+  });
+
+  it('is the same room for the same seed, and varies across seeds', () => {
+    expect(cave(5, ALL_DOORS)).toEqual(cave(5, ALL_DOORS));
+    const layouts = new Set(Array.from({ length: 30 }, (_, seed) => JSON.stringify([cave(seed, ALL_DOORS).tiles, cave(seed, ALL_DOORS).enemies])));
+    expect(layouts.size).toBeGreaterThan(3);
+  });
+
+  it('only grows glowshrooms in the caves', () => {
+    for (const floorIndex of [0, 2]) {
+      for (const doors of EVERY_DOOR_SET) {
+        for (let seed = 0; seed < 10; seed++) {
+          const r = generateRoom({ id: '0,0', kind: 'normal', doors: [...doors] }, floorIndex, createRng(seed));
+          expect(count(r, 'glowshroom'), `floor ${floorIndex + 1} seed ${seed} doors ${doors}`).toBe(0);
         }
       }
     }

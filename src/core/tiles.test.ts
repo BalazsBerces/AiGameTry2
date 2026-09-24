@@ -101,3 +101,23 @@ describe('crystal tile', () => {
     expect(hurtsOnTouch('crystal')).toBe(false);
   });
 });
+
+describe('glowshroom tile', () => {
+  it('stands in the way of feet and flyers, but only ghosts drift through it', () => {
+    expect(isWalkable('glowshroom')).toBe(false);
+    expect(flyersPass('glowshroom')).toBe(false);
+    expect(phasingPasses('glowshroom')).toBe(true);
+  });
+
+  it('catches shots (so shooting it bursts it) without hiding what is behind it', () => {
+    expect(blocksShots('glowshroom')).toBe(true);
+    expect(reflectsShots('glowshroom')).toBe(false);
+    expect(blocksSight('glowshroom')).toBe(false);
+  });
+
+  it('bursts rather than cracking, and is neither bombed away nor hurts on touch', () => {
+    expect(hitsToBreak('glowshroom')).toBeUndefined();
+    expect(bombDestructible('glowshroom')).toBe(false);
+    expect(hurtsOnTouch('glowshroom')).toBe(false);
+  });
+});

@@ -8,6 +8,7 @@ import { AXIS_DIRECTIONS, slideCrusher } from './crusher';
 import { validateRoom } from './roomValidator';
 import { GLOWSHROOM_RADIUS } from './glowshroom';
 import { themeForFloor } from './themes';
+import { candleCells } from './candleWitch';
 
 const ALL_DOORS = ['up', 'down', 'left', 'right'] as const;
 const room = (seed: number, doors: readonly (typeof ALL_DOORS)[number][] = ALL_DOORS) =>
@@ -250,6 +251,32 @@ describe('generateRoom Iron Maiden arena (floor 3)', () => {
       expect(a.tiles[m.y][m.x]).toBe('floor');
       // The entrance is on the top wall, so it starts in the bottom half.
       expect(m.y).toBeGreaterThanOrEqual(7);
+    }
+  });
+});
+
+describe('generateRoom Candle Witch arena (floor 3)', () => {
+  const arenas = Array.from({ length: 300 }, (_, seed) =>
+    generateRoom({ id: '0,0', kind: 'boss', doors: [{ side: 'up', at: { x: 1, y: 0 } }] }, 2, createRng(seed)),
+  ).filter((a) => a.enemies[0]?.type === 'candleWitch');
+
+  it('turns up on floor 3', () => {
+    expect(arenas.length).toBeGreaterThan(50);
+  });
+
+  it('is open floor, with the candles in its corners', () => {
+    for (const a of arenas) {
+      expect(count(a, 'floor')).toBe(a.width * a.height);
+      for (const c of candleCells(a.width, a.height)) expect(a.tiles[c.y][c.x]).toBe('floor');
+    }
+  });
+
+  it('floats exactly one witch in the middle of the room', () => {
+    for (const a of arenas) {
+      expect(a.enemies.map((e) => e.type)).toEqual(['candleWitch']);
+      const w = a.enemies[0].cell;
+      expect(Math.abs(w.x - (a.width - 1) / 2)).toBeLessThanOrEqual(1);
+      expect(Math.abs(w.y - (a.height - 1) / 2)).toBeLessThanOrEqual(1);
     }
   });
 });

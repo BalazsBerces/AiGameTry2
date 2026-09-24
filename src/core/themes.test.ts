@@ -33,7 +33,14 @@ describe('floor themes', () => {
   it('gives the forest the Treant, the caves the Worm boss and the dungeon a pool with the Iron Maiden', () => {
     expect(themeForFloor(0).bosses).toEqual(['treantBoss']);
     expect(themeForFloor(1).bosses).toEqual(['wormBoss']);
-    expect(themeForFloor(2).bosses).toContain('ironMaiden');
+    expect([...themeForFloor(2).bosses].sort()).toEqual(['candleWitch', 'ironMaiden']);
+  });
+
+  it('meets both dungeon bosses across seeds, about half the time each', () => {
+    const picks = Array.from({ length: 400 }, (_, seed) => bossForFloor(2, createRng(seed)));
+    const witches = picks.filter((b) => b === 'candleWitch').length;
+    expect(witches).toBeGreaterThan(150);
+    expect(witches).toBeLessThan(250);
   });
 
   it("picks each floor's boss from its theme's pool", () => {

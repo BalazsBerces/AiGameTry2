@@ -12,6 +12,8 @@ export const ENEMY_CLASS: Record<EnemyType, EnemyClass> = {
   worm: 'walker',
   wormBoss: 'walker',
   ironMaiden: 'walker',
+  /** Floats over her open crypt, so she only has to be shootable. */
+  candleWitch: 'flyer',
   goblin: 'walker',
   seedSpitter: 'stationary',
   ghoul: 'walker',

@@ -297,9 +297,26 @@ if (scenario === 'floor3-boss') {
     console.log(`t=${(i + 1) * 0.5}s`, JSON.stringify(await status()));
     if ([3, 7, 8, 9].includes(i)) await shot(`floor3-${type}-${i}`);
   }
-  const left = [];
+  if (type === 'candleWitch') {
+    // Snuff two candles with a hit each, then watch her go and relight one.
+    const lit = () => page.evaluate(`${scene()}.enemies[0].parts.slice(1).map((p) => p.fillColor === 0xe8dcc0)`);
+    await page.evaluate(`(() => { const s = ${scene()}; const e = s.enemies[0]; s.damagePart(e.parts[2], 1); s.damagePart(e.parts[4], 1); })()`);
+    console.log('snuffed candles 1 and 3', JSON.stringify(await lit()));
+    for (let i = 0; i < 10; i++) {
+      await page.waitForTimeout(1000);
+      console.log(`  +${i + 1}s lit`, JSON.stringify(await lit()), 'witch at', JSON.stringify((await status()).at));
+      if (i === 6) await shot('floor3-candleWitch-relight');
+    }
+  }
+  let sawDark = false;
   for (let i = 0; i < 800 && (await page.evaluate(`${scene()}.enemies.length`)); i++) {
     await hurtOnce();
+    if (!sawDark && (await page.evaluate(`${scene()}.children.list.some((o) => o.type === 'RenderTexture')`))) {
+      sawDark = true;
+      await page.waitForTimeout(1500);
+      await shot(`floor3-${type}-dark`);
+      console.log('the room went dark', JSON.stringify(await status()));
+    }
     if (i === 200) {
       await shot(`floor3-${type}-phase2`);
       console.log('phase two', JSON.stringify(await status()));

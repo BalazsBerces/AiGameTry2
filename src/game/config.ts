@@ -25,6 +25,8 @@ export const TUNING = {
   wormBoss: { segmentSize: 38, segmentHp: 2.5, stepMs: 230, shotSpeed: 185 },
   /** Its walk/open cycle, stomps, volleys, spikes and chains live in core/ironMaiden. */
   ironMaiden: { hp: 60, width: 40, height: 46, speed: 70, shotSpeed: 175 },
+  /** Candles, patterns, relighting and the dark live in core/candleWitch. */
+  candleWitch: { hp: 70, radius: 18, speed: 60, relightSpeed: 160, candleShotSpeed: 150, curseSpeed: 200 },
   /** Multipliers for a room's champion: size, hit points, and movement (or firing) speed. */
   champion: { scale: 1.35, hp: 2, speed: 1.15 },
   /** Faster than a zombie; runs off to regroup when hurt (core/forestCast). */
@@ -130,4 +132,9 @@ export const COLORS = {
   maidenRivets: 0xb8bcc4,
   maidenInside: 0x7a1c20,
   maidenGlow: 0xe8643a,
+  witchRobe: 0x3a2450,
+  witchTrim: 0x1a1024,
+  witchFlame: 0xffb04a,
+  candleWax: 0xe8dcc0,
+  candleSnuffed: 0x7a7468,
 };

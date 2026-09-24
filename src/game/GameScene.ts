@@ -27,6 +27,7 @@ import {
 import { COLORS, TUNING } from './config';
 import type { Enemy, EnemyContext, EnemySprite } from './entities/enemy';
 import { createIronMaidenBoss } from './entities/ironMaiden';
+import { createCandleWitch, DARK_DEPTH } from './entities/candleWitch';
 import { createTurret } from './entities/turret';
 import { BOSS_WORM, championWorm, REGULAR_WORM, spawnWorm } from './entities/worm';
 import { createZombie } from './entities/zombie';
@@ -55,12 +56,14 @@ type PhysicsRect = Phaser.GameObjects.Rectangle & { body: Phaser.Physics.Arcade.
 const DEPTH = { player: 10 };
 
 type At = (c: Cell) => { x: number; y: number };
-const ENEMY_FACTORIES: Record<EnemyType, (scene: Phaser.Scene, spawn: EnemySpawn, at: At) => Enemy> = {
+type RoomSize = { width: number; height: number };
+const ENEMY_FACTORIES: Record<EnemyType, (scene: Phaser.Scene, spawn: EnemySpawn, at: At, size: RoomSize) => Enemy> = {
   zombie: (scene, s, at) => createZombie(scene, at(s.cell).x, at(s.cell).y, !!s.champion, s.hp),
   turret: (scene, s, at) => createTurret(scene, at(s.cell).x, at(s.cell).y, !!s.champion),
   worm: (scene, s, at) => spawnWorm(scene, [s.cell, ...(s.tail ?? [])], at, s.champion ? championWorm(REGULAR_WORM) : REGULAR_WORM),
   wormBoss: (scene, s, at) => spawnWorm(scene, [s.cell, ...(s.tail ?? [])], at, BOSS_WORM, true),
   ironMaiden: (scene, s, at) => createIronMaidenBoss(scene, at(s.cell).x, at(s.cell).y),
+  candleWitch: (scene, s, at, size) => createCandleWitch(scene, s.cell, s.anchors ?? [], at, size),
   goblin: (scene, s, at) => createGoblin(scene, at(s.cell).x, at(s.cell).y, !!s.champion),
   seedSpitter: (scene, s, at) => createSeedSpitter(scene, at(s.cell).x, at(s.cell).y, !!s.champion),
   ghoul: (scene, s, at) => createGhoul(scene, at(s.cell).x, at(s.cell).y, !!s.champion),
@@ -213,7 +216,9 @@ export class GameScene extends Phaser.Scene {
     this.flyers = this.physics.add.group();
     this.physics.add.collider(this.flyers, this.walls);
     this.physics.add.overlap(this.shots, this.enemyParts, (shot, part) => this.hitEnemy(shot, part as EnemySprite));
-    this.physics.add.overlap(this.player, this.enemyParts, () => this.hurtPlayer());
+    this.physics.add.overlap(this.player, this.enemyParts, (_, part) => {
+      if (!this.enemies.find((e) => e.parts.includes(part as EnemySprite))?.harmless?.(part as EnemySprite)) this.hurtPlayer();
+    });
     // An event rather than JustDown polling, so a tap shorter than a frame still counts.
     kb.addKey('E').on('down', () => this.dropBomb());
 
@@ -436,7 +441,8 @@ export class GameScene extends Phaser.Scene {
         lineOfSight(room.layout.tiles, this.toTileUnits(room, from), this.toTileUnits(room, this.player), blocksSight),
       fireEnemyShot: (x, y, vx, vy, homing = false, bounces = 0) => {
         const color = bounces > 0 ? COLORS.crystalShot : COLORS.enemyShot;
-        const shot = this.add.circle(x, y, TUNING.enemyShotRadius, color).setData({ homing, bounces });
+        // Drawn over the Candle Witch's dark, so shots can always be dodged.
+        const shot = this.add.circle(x, y, TUNING.enemyShotRadius, color).setData({ homing, bounces }).setDepth(DARK_DEPTH + 2);
         this.enemyShots.add(shot);
         (shot.body as Phaser.Physics.Arcade.Body).setCircle(TUNING.enemyShotRadius).setVelocity(vx, vy);
       },
@@ -685,7 +691,7 @@ export class GameScene extends Phaser.Scene {
   private spawnEnemies(room: WorldRoom) {
     const at = (c: Cell) => tileCenter(room, c.x, c.y);
     for (const spawn of room.layout.enemies) {
-      const enemy = ENEMY_FACTORIES[spawn.type](this, spawn, at);
+      const enemy = ENEMY_FACTORIES[spawn.type](this, spawn, at, room.layout);
       if (spawn.champion) this.champions.set(enemy, spawn.champion.drop);
       this.addEnemy(enemy);
     }

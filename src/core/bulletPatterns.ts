@@ -13,6 +13,17 @@ export function spiral(arms: number, timeMs: number, degPerSec: number): number[
   return ring(arms, (((degPerSec * timeMs) / 1000) * Math.PI) / 180);
 }
 
+/**
+ * When a pattern repeating every `every` ms from `start + first` fires between `from`
+ * (exclusive) and `to` (inclusive): the beats an update from `from` to `to` has to play.
+ */
+export function beats(start: number, first: number, every: number, from: number, to: number): number[] {
+  const out: number[] = [];
+  const k0 = Math.max(0, Math.ceil((from - start - first) / every));
+  for (let t = start + first + k0 * every; t <= to; t += every) if (t > from) out.push(t);
+  return out;
+}
+
 /** `count` bullets spread evenly across `width` radians, centred on `aim`. */
 export function fan(aim: number, count: number, width: number): number[] {
   if (count === 1) return [aim];

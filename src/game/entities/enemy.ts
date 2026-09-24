@@ -58,6 +58,8 @@ export interface Enemy extends Stunnable {
   blocks?(part: EnemySprite, heading: { x: number; y: number }): boolean;
   /** Flyers (with `collidesWithTerrain` false) still hit walls and stone, but cross holes and thorns. */
   flies?: boolean;
+  /** Parts that don't hurt the player on touch (the Candle Witch's candles); every part hurts if left out. */
+  harmless?(part: EnemySprite): boolean;
 }
 
 /** Stat multipliers for a champion, or none for a regular enemy. */

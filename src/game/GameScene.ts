@@ -687,6 +687,7 @@ export class GameScene extends Phaser.Scene {
       time,
       walkBetween: (a, b) => ctx.walkDistanceTo(b)[a.y]?.[a.x] ?? Infinity,
       healRate: TUNING.goblin.healRate,
+      repairCooldownMs: TUNING.goblin.repairCooldownMs,
     });
     goblins.forEach((e, i) => e.pack!.follow(decided[i]));
     for (const e of this.enemies) {

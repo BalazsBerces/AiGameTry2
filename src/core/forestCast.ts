@@ -25,6 +25,8 @@ export interface Goblin {
   meetAt?: Cell;
   /** While being healed: when it last got HP back. */
   healedAt?: number;
+  /** After its heal was broken: it fights on, and won't pair up again before this. */
+  pairAgainAt?: number;
 }
 
 /** How long a hurt goblin keeps away before coming back (placeholder). */
@@ -47,6 +49,8 @@ export interface PackMember {
   /** The tile it stands on. */
   cell: Cell;
   goblin: Goblin;
+  /** The player hit it since the last frame. */
+  hit?: boolean;
 }
 
 /** What the pack knows about the room this frame. */
@@ -56,6 +60,8 @@ export interface PackWorld {
   walkBetween(a: Cell, b: Cell): number;
   /** Share of its max HP a goblin being healed gets back per second. */
   healRate: number;
+  /** How long a pair whose heal was broken fights on before either may pair up again. */
+  repairCooldownMs: number;
 }
 
 /** A goblin's new state, and the HP it gets back this frame. */
@@ -72,14 +78,18 @@ export interface PackDecision {
 export function updateGoblinPack(pack: readonly PackMember[], world: PackWorld): PackDecision[] {
   if (pack.length === 1) return [{ goblin: updateGoblin(pack[0].goblin, pack[0].hp, pack[0].maxHp, world.time), heal: 0 }];
   const partnerOf = new Map<number, PackMember>();
-  // A pair stays together until both are back to full.
+  // A pair stays together until both are back to full, unless the player hits either of them.
   const byId = new Map(pack.map((m) => [m.id, m]));
+  const broken = new Set<number>();
   for (const m of pack) {
     const partner = m.goblin.partner === undefined ? undefined : byId.get(m.goblin.partner);
-    if (partner?.goblin.partner === m.id && (m.hp < m.maxHp || partner.hp < partner.maxHp)) partnerOf.set(m.id, partner);
+    if (partner?.goblin.partner !== m.id || (m.hp >= m.maxHp && partner.hp >= partner.maxHp)) continue;
+    if (m.hit || partner.hit) broken.add(m.id);
+    else partnerOf.set(m.id, partner);
   }
+  const cooling = (m: PackMember) => broken.has(m.id) || (m.goblin.pairAgainAt ?? -Infinity) > world.time;
   // Then the closest two hurt goblins (on foot) pair, then the closest two of the rest, and so on.
-  const hurt = pack.filter((m) => m.hp < m.maxHp / 2 && !partnerOf.has(m.id));
+  const hurt = pack.filter((m) => m.hp < m.maxHp / 2 && !partnerOf.has(m.id) && !cooling(m));
   const pairs = hurt
     .flatMap((a, i) => hurt.slice(i + 1).map((b) => ({ a, b, steps: world.walkBetween(a.cell, b.cell) })))
     .filter((p) => Number.isFinite(p.steps))
@@ -107,6 +117,9 @@ export function updateGoblinPack(pack: readonly PackMember[], world: PackWorld):
       const heal = Math.min(m.maxHp - m.hp, (world.healRate * m.maxHp * (world.time - since)) / 1000);
       return { goblin: { ...goblin, healedAt: world.time }, heal };
     }
+    // A broken pair fights on, hurt or not, until it may pair up again.
+    if (broken.has(m.id)) return { goblin: { ...rest, mode: 'chase', pairAgainAt: world.time + world.repairCooldownMs }, heal: 0 };
+    if (cooling(m)) return { goblin: { ...rest, mode: 'chase' }, heal: 0 };
     return { goblin: { ...rest, mode: m.hp < m.maxHp / 2 ? 'hide' : 'chase' }, heal: 0 };
   });
 }

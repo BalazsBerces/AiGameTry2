@@ -65,15 +65,19 @@ export function createGoblin(scene: Phaser.Scene, x: number, y: number, champion
     sprite.body.setVelocity((dx / len) * v, (dy / len) * v);
   });
   enemy.pack = {
-    member: (ctx) => ({ id, hp, maxHp, cell: ctx.tileOf(sprite.x, sprite.y), goblin: state }),
+    member: (ctx) => ({ id, hp, maxHp, cell: ctx.tileOf(sprite.x, sprite.y), goblin: state, hit: struck }),
     follow: (decision) => {
       state = decision.goblin;
       hp = Math.min(maxHp, hp + decision.heal);
+      struck = false;
     },
   };
+  // Hit since the pack last decided: that breaks a heal.
+  let struck = false;
   // Its own HP count, since healing raises it again.
   enemy.hit = (_part, damage) => {
     hp -= damage;
+    struck = true;
     if (hp > 0) {
       flash(scene, sprite);
       return [enemy];

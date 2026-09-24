@@ -32,7 +32,7 @@ describe('goblin pack', () => {
   /** Open floor: walking between two cells takes their grid distance. */
   const walkBetween = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
   /** Heals half a goblin's max HP a second: 2 HP/s for these 4 HP goblins. */
-  const world = (time: number) => ({ time, walkBetween, healRate: 0.5 });
+  const world = (time: number) => ({ time, walkBetween, healRate: 0.5, repairCooldownMs: 1000 });
   const decide = (pack: Member[], time = 1000) => updateGoblinPack(pack, world(time)).map((d) => d.goblin);
   /** The same goblins a frame later, carrying the states just decided. */
   const carry = (pack: Member[], decided: ReturnType<typeof decide>) => pack.map((m, i) => ({ ...m, goblin: decided[i] }));
@@ -109,6 +109,37 @@ describe('goblin pack', () => {
     expect(pack.map((m) => m.goblin.mode)).toEqual(['mend', 'heal']);
     pack = frame(pack, 5500);
     expect(pack.map((m) => m.hp)).toEqual([2, 1]);
+  });
+
+  it('breaks the heal when either of the pair is hit, and both fight on with what they got back', () => {
+    for (const struck of [0, 1]) {
+      let pack = frame([at(1, 1.5, { x: 4, y: 2 }), at(2, 1, { x: 5, y: 2 })], 1000);
+      pack = frame(pack, 1500);
+      expect(pack.map((m) => m.hp)).toEqual([1.5, 2]);
+      pack = frame(pack.map((m, i) => (i === struck ? { ...m, hit: true } : m)), 1600);
+      expect(pack.map((m) => [m.goblin.mode, m.goblin.partner, m.hp])).toEqual([['chase', undefined, 1.5], ['chase', undefined, 2]]);
+    }
+  });
+
+  it('keeps a broken pair fighting for 1s before they may pair up again', () => {
+    let pack = frame([at(1, 1, { x: 4, y: 2 }), at(2, 1, { x: 5, y: 2 })], 1000);
+    pack = frame(pack.map((m) => ({ ...m, hit: m.id === 1 })), 1100);
+    const calm = (p: typeof pack) => p.map((m) => ({ ...m, hit: false }));
+    // Both still hurt, but fighting.
+    pack = frame(calm(pack), 1500);
+    expect(pack.map((m) => m.goblin.mode)).toEqual(['chase', 'chase']);
+    pack = frame(calm(pack), 2099);
+    expect(pack.map((m) => m.goblin.mode)).toEqual(['chase', 'chase']);
+    pack = frame(calm(pack), 2100);
+    expect(pack.map((m) => m.goblin.mode)).toEqual(['mend', 'heal']);
+  });
+
+  it('sends the survivor back to hiding when its partner dies', () => {
+    const [a, , c] = frame([at(1, 1, { x: 0, y: 0 }), at(2, 1, { x: 6, y: 0 }), at(3, 4)], 1000);
+    expect(a.goblin.mode).toBe('seek');
+    // Goblin 2 is killed on its way over.
+    const [survivor] = frame([a, c], 1100);
+    expect([survivor.goblin.mode, survivor.goblin.partner]).toEqual(['hide', undefined]);
   });
 
   it('lets the last goblin alive flee once for 2.5s, then fight to the death', () => {

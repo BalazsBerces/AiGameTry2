@@ -1,7 +1,7 @@
 import type Phaser from 'phaser';
 import { DIRECTIONS, STEP, type Cell, type Direction } from '../../core/floorGenerator';
 import { createRng, type Rng } from '../../core/rng';
-import { createWorm, killSegment, stepWorm, type Worm } from '../../core/wormChain';
+import { createWorm, killSegment, nextStepDue, stepWorm, type Worm } from '../../core/wormChain';
 import {
   burrowAt,
   canAttack,
@@ -193,7 +193,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
       const phaseTwo = state.boss && inPhaseTwo(state.boss.shared.hp, state.boss.shared.maxHp);
       const stepMs = style.stepMs * (phaseTwo ? WORM_BOSS.phaseTwoStepFactor : 1);
       if (state.nextStepAt === 0) state.nextStepAt = ctx.time;
-      state.nextStepAt += stepMs;
+      state.nextStepAt = nextStepDue(state.nextStepAt, ctx.time, stepMs);
       // Snap to the cells reached, then glide toward the next ones over one step.
       state.worm.segments.forEach((c, i) => {
         const p = ctx.tileCenter(c);

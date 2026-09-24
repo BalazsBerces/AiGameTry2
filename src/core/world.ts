@@ -12,6 +12,7 @@ import {
 } from './floorGenerator';
 import { generateRoom, type ChampionDrop, type ChestItem, type PickupType, type RoomLayout } from './roomGenerator';
 import { bombDestructible, hitsToBreak, isWalkable } from './tiles';
+import { floodFill } from './grid';
 import type { Passive, PassiveLevels } from './weaponModel';
 import { offerPassive, pickUpgrade } from './passivePool';
 
@@ -197,11 +198,30 @@ export function upgradeAfterBoss(world: World, roomId: string): Passive | undefi
   return upgrade;
 }
 
-/** A champion died on `cell`: its extra pickup lands there, in plain sight. */
+/**
+ * A champion died on `cell`: its extra pickup lands there, in plain sight, or on the nearest
+ * floor the player can walk to if it died somewhere they can't (a flyer over a pond, a ghost in stone).
+ */
 export function dropChampionLoot(world: World, roomId: string, drop: ChampionDrop, cell: Cell) {
   const list = world.pickups.get(roomId) ?? [];
-  list.push({ id: world.nextPickupId++, ...drop, cell, visible: true });
+  list.push({ id: world.nextPickupId++, ...drop, cell: reachableNear(world.rooms.get(roomId)!.layout, cell), visible: true });
   world.pickups.set(roomId, list);
+}
+
+/** `cell` if the player can walk to it from the doors, else the nearest cell they can. */
+function reachableNear(layout: RoomLayout, cell: Cell): Cell {
+  const from = layout.doors[0]?.cell;
+  if (!from) return cell;
+  const reachable = floodFill(layout.tiles, from, isWalkable);
+  if (reachable.has(`${cell.x},${cell.y}`)) return cell;
+  let best = cell;
+  let bestDist = Infinity;
+  for (const key of reachable) {
+    const [x, y] = key.split(',').map(Number);
+    const d = Math.hypot(x - cell.x, y - cell.y);
+    if (d < bestDist) [best, bestDist] = [{ x, y }, d];
+  }
+  return best;
 }
 
 export type TileHitResult = 'none' | 'damaged' | 'broken';

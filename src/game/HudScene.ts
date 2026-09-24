@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { currentFloorIndex, minimapRooms, roomLabel } from '../core/world';
 import { PASSIVE_POOL } from '../core/roomGenerator';
-import type { PassiveLevels } from '../core/weaponModel';
+import { WEAPON, type PassiveLevels } from '../core/weaponModel';
 import { COLORS } from './config';
 import { CELL_PX_H, LABEL_STRIP_H } from './geometry';
 import type { GameScene } from './GameScene';
@@ -11,6 +11,8 @@ const HEART = { size: 18, gap: 6, x: 14, y: 14 };
 const MAP = { w: 150, h: 84, margin: 10, cellW: 16, cellH: 10, gap: 2 };
 /** The row of owned passives under the keys and bombs. */
 const PASSIVES = { x: HEART.x + 7, y: HEART.y + HEART.size + 44, radius: 6, pitch: 20 };
+/** Chest stat-up totals, under the passives. */
+const STAT_UPS = { x: HEART.x, y: PASSIVES.y + 12 };
 
 /** Overlay drawn in screen space on top of the game scene. */
 export class HudScene extends Phaser.Scene {
@@ -20,6 +22,7 @@ export class HudScene extends Phaser.Scene {
   private keysText!: Phaser.GameObjects.Text;
   private bombsText!: Phaser.GameObjects.Text;
   private roomText!: Phaser.GameObjects.Text;
+  private statUpsText!: Phaser.GameObjects.Text;
 
   constructor() {
     super('hud');
@@ -44,6 +47,7 @@ export class HudScene extends Phaser.Scene {
       fontSize: '14px',
       color: COLORS.text,
     });
+    this.statUpsText = this.add.text(STAT_UPS.x, STAT_UPS.y, '', { fontFamily: 'monospace', fontSize: '12px', color: COLORS.text });
     this.floorText = this.add
       .text(x + MAP.w, MAP.margin + MAP.h + 4, '', { fontFamily: 'monospace', fontSize: '14px', color: COLORS.text })
       .setOrigin(1, 0);
@@ -62,6 +66,9 @@ export class HudScene extends Phaser.Scene {
     this.roomText.setText(roomLabel(world.rooms.get(world.currentRoomId)!));
     this.keysText.setText(`x ${world.player.keys}`);
     this.bombsText.setText(`x ${world.player.bombs}`);
+    const { damage, rate } = world.player.statUps;
+    // Hidden until the first stat-up.
+    this.statUpsText.setText(damage || rate ? `DMG +${(damage * WEAPON.damageUpStep).toFixed(1)}  RATE ×${rate}` : '');
   }
 
   private drawHearts(health: number, maxHealth: number) {

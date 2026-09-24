@@ -118,11 +118,14 @@ export interface RoomLayout {
   regions?: Region[];
 }
 
-export type PickupType = 'heart' | 'key' | 'bomb' | 'chest' | 'lockedChest' | 'passive';
+/** Stackable stat-ups a chest can hold instead of one of its items. */
+export type StatUpType = 'damageUp' | 'rateUp';
+
+export type PickupType = 'heart' | 'key' | 'bomb' | 'chest' | 'lockedChest' | 'passive' | StatUpType;
 
 /** Something a chest releases. */
 /** A passive with no `passive` yet is decided when it comes out (core/world). */
-export type ChestItem = { type: 'heart' } | { type: 'key' } | { type: 'bomb' } | { type: 'passive'; passive?: Passive };
+export type ChestItem = { type: 'heart' } | { type: 'key' } | { type: 'bomb' } | { type: StatUpType } | { type: 'passive'; passive?: Passive };
 
 export interface PickupSpawn {
   type: PickupType;
@@ -540,6 +543,8 @@ export const PICKUPS = {
   chestContents: { min: 1, max: 3 },
   lockedChestContents: { min: 2, max: 3 },
   lockedChestPassiveChance: 0.35,
+  /** Chance one of a chest's items is swapped for a stat-up (locked: only when it holds no passive). */
+  statUpChance: { chest: 0.3, lockedChest: 0.65 },
 };
 
 /** Chance a normal room with enemies makes one of them a champion; a placeholder for playtest tuning. */
@@ -583,7 +588,9 @@ function rollChestContents(type: 'chest' | 'lockedChest', rng: Rng): ChestItem[]
   // Which passive is decided when the chest is opened (core/world), against what the player owns by then.
   if (type === 'lockedChest' && rng.next() < PICKUPS.lockedChestPassiveChance) return [{ type: 'passive' }];
   const range = type === 'chest' ? PICKUPS.chestContents : PICKUPS.lockedChestContents;
-  return Array.from({ length: rng.int(range.min, range.max) }, () => ({ type: rng.pick(['heart', 'key', 'bomb'] as const) }));
+  const items: ChestItem[] = Array.from({ length: rng.int(range.min, range.max) }, () => ({ type: rng.pick(['heart', 'key', 'bomb'] as const) }));
+  if (rng.next() < PICKUPS.statUpChance[type]) items[rng.int(0, items.length - 1)] = { type: rng.pick(['damageUp', 'rateUp'] as const) };
+  return items;
 }
 
 /** Loot an idea placed: shown from the start, with any chest filled here. */

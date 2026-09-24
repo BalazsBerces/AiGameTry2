@@ -385,6 +385,47 @@ describe('shownPickups', () => {
   });
 });
 
+describe('stat-ups', () => {
+  it('starts a run with none', () => {
+    expect(createWorld(1).player.statUps).toEqual({ damage: 0, rate: 0 });
+  });
+
+  it('counts fire rate ups separately from damage ups', () => {
+    const world = createWorld(1);
+    const id = firstNormalRoom(world).floorRoom.id;
+    world.pickups.set(id, [
+      { id: 1, type: 'rateUp', cell: { x: 2, y: 2 } },
+      { id: 2, type: 'damageUp', cell: { x: 3, y: 2 } },
+    ]);
+    expect(touchPickup(world, id, 1)).toBe('rateUp');
+    expect(touchPickup(world, id, 2)).toBe('damageUp');
+    expect(world.player.statUps).toEqual({ damage: 1, rate: 1 });
+    expect(world.pickups.get(id)).toEqual([]);
+  });
+
+  it('counts each damage up picked up and removes it', () => {
+    const world = createWorld(1);
+    const id = firstNormalRoom(world).floorRoom.id;
+    world.pickups.set(id, [
+      { id: 1, type: 'damageUp', cell: { x: 2, y: 2 } },
+      { id: 2, type: 'damageUp', cell: { x: 3, y: 2 } },
+    ]);
+    expect(touchPickup(world, id, 1)).toBe('damageUp');
+    expect(touchPickup(world, id, 2)).toBe('damageUp');
+    expect(world.player.statUps).toEqual({ damage: 2, rate: 0 });
+    expect(world.pickups.get(id)).toEqual([]);
+  });
+
+  it('comes out of a chest as a pickup like the rest of its contents', () => {
+    const world = createWorld(1);
+    const id = firstNormalRoom(world).floorRoom.id;
+    world.rooms.get(id)!.layout.tiles.forEach((row) => row.fill('floor'));
+    world.pickups.set(id, [{ id: 1, type: 'chest', cell: { x: 6, y: 3 }, contents: [{ type: 'damageUp' }, { type: 'key' }] }]);
+    touchPickup(world, id, 1);
+    expect(world.pickups.get(id)!.map((p) => p.type).sort()).toEqual(['damageUp', 'key', 'openChest']);
+  });
+});
+
 describe('passives', () => {
   const itemRoomOf = (world: ReturnType<typeof createWorld>) => [...world.rooms.values()].find((r) => r.floorRoom.kind === 'item')!.floorRoom.id;
   const passiveIn = (world: ReturnType<typeof createWorld>, id: string) => world.pickups.get(id)!.find((p) => p.type === 'passive');

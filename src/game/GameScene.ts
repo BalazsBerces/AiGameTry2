@@ -118,6 +118,9 @@ const PICKUP_SHAPES: Record<WorldPickup['type'], (scene: Phaser.Scene, x: number
   chest: (s, x, y) => s.add.rectangle(x, y, 34, 26, COLORS.chest),
   lockedChest: (s, x, y) => s.add.rectangle(x, y, 34, 26, COLORS.lockedChest).setStrokeStyle(3, COLORS.key),
   openChest: (s, x, y) => s.add.rectangle(x, y, 34, 26, COLORS.openChest),
+  // Upward arrowheads: a stat going up.
+  damageUp: (s, x, y) => s.add.triangle(x, y, 0, 18, 10, 0, 20, 18, COLORS.damageUp).setStrokeStyle(2, 0xffffff),
+  rateUp: (s, x, y) => s.add.triangle(x, y, 0, 18, 10, 0, 20, 18, COLORS.rateUp).setStrokeStyle(2, 0xffffff),
 };
 
 const FLOOR_COLOR: Record<RoomKind, (p: Palette) => number> = {
@@ -390,7 +393,7 @@ export class GameScene extends Phaser.Scene {
 
   /** Keeps one orb per Orbital level circling the player, evenly spaced. */
   private circleOrbs(time: number) {
-    const count = resolveWeapon(this.world.player.passives).orbitals;
+    const count = resolveWeapon(this.world.player.passives, this.world.player.statUps).orbitals;
     const { radius, size, degPerSec } = TUNING.orbital;
     // A copy: destroying an orb takes it out of the group's own list.
     const orbs = [...this.orbs.getChildren()] as Phaser.GameObjects.Arc[];
@@ -416,7 +419,7 @@ export class GameScene extends Phaser.Scene {
 
   /** Space or Shift: dash the way the player is moving, if they have the passive and it has cooled down. */
   private requestDash() {
-    const rules = resolveWeapon(this.world.player.passives).dash;
+    const rules = resolveWeapon(this.world.player.passives, this.world.player.statUps).dash;
     const now = this.time.now;
     if (!rules || this.runOver || isStunned(this.playerStun, now)) return;
     const moving = {
@@ -436,7 +439,7 @@ export class GameScene extends Phaser.Scene {
   private touchEnemy(part: EnemySprite) {
     const enemy = this.enemies.find((e) => e.parts.includes(part));
     if (enemy?.harmless?.(part)) return;
-    const dash = resolveWeapon(this.world.player.passives).dash;
+    const dash = resolveWeapon(this.world.player.passives, this.world.player.statUps).dash;
     if (enemy && dash?.damage && isDashing(this.dash, this.time.now)) {
       if (!this.dashHits.has(enemy)) {
         this.dashHits.add(enemy);
@@ -454,7 +457,7 @@ export class GameScene extends Phaser.Scene {
   private tryShoot(time: number) {
     const aim = DIRECTIONS.find((d) => this.aim[d].isDown);
     if (!aim || time < this.nextShotAt) return;
-    const weapon = resolveWeapon(this.world.player.passives);
+    const weapon = resolveWeapon(this.world.player.passives, this.world.player.statUps);
     this.nextShotAt = time + weapon.fireDelayMs;
     if (weapon.mode === 'sword') {
       this.swingSword(aim, weapon.damage, weapon.swordArcDeg);
@@ -573,7 +576,7 @@ export class GameScene extends Phaser.Scene {
     const at = { x: part.x, y: part.y };
     this.damagePart(part, damage);
     if (!enemy) return;
-    const weapon = resolveWeapon(this.world.player.passives);
+    const weapon = resolveWeapon(this.world.player.passives, this.world.player.statUps);
     const time = this.time.now;
     const alive = this.enemies.includes(enemy);
     if (weapon.poison && alive) {
@@ -608,7 +611,7 @@ export class GameScene extends Phaser.Scene {
 
   /** Poison ticks away on every poisoned enemy, a green puff with each tick. */
   private tickPoison(time: number) {
-    const rules = resolveWeapon(this.world.player.passives).poison;
+    const rules = resolveWeapon(this.world.player.passives, this.world.player.statUps).poison;
     for (const [enemy, poison] of this.poisoned) {
       if (!this.enemies.includes(enemy) || !rules) {
         this.poisoned.delete(enemy);
@@ -642,7 +645,7 @@ export class GameScene extends Phaser.Scene {
    * into rocks after hidden enemies), homing enemy shots toward the player.
    */
   private steerHomingShots(time: number, deltaMs: number) {
-    const maxTurn = (resolveWeapon(this.world.player.passives).homingTurnRate * deltaMs) / 1000;
+    const maxTurn = (resolveWeapon(this.world.player.passives, this.world.player.statUps).homingTurnRate * deltaMs) / 1000;
     const room = this.currentRoom;
     const parts = this.enemies.flatMap((e) => e.parts);
     // What blocks the view is what the shot couldn't fly through: a spectral shot homes through rock.
@@ -1061,11 +1064,13 @@ export class GameScene extends Phaser.Scene {
     const pickup = this.world.pickups.get(this.world.currentRoomId)?.find((p) => p.id === id);
     if (!pickup) return;
     // Chests stay touchable; everything that can drop out of one is locked out briefly after opening.
-    const isItem = pickup.type === 'heart' || pickup.type === 'key' || pickup.type === 'bomb' || pickup.type === 'passive';
+    const isItem = pickup.type !== 'chest' && pickup.type !== 'lockedChest' && pickup.type !== 'openChest';
     if (isItem && this.time.now < this.itemLockoutUntil) return;
     const result = touchPickup(this.world, this.world.currentRoomId, id);
     if (result === 'none') return;
     if (result === 'opened') this.itemLockoutUntil = this.time.now + TUNING.chestLockoutMs;
+    if (result === 'damageUp') this.announce('Damage up', COLORS.damageUp);
+    if (result === 'rateUp') this.announce('Fire rate up', COLORS.rateUp);
     this.showPickups();
   }
 

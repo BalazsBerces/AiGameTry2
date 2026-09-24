@@ -1,4 +1,12 @@
 import type { Rng } from './rng';
+import type { Tile } from './roomGenerator';
+
+/**
+ * What a composed room's layout paints (core/composer): each sub-theme decides the real tile.
+ * `cover` blocks feet and shots, `breakable` can be shot through, `pit` stops feet but not shots,
+ * `hazard` is the theme's dangerous ground and `feature` its centrepiece.
+ */
+export type Role = 'cover' | 'breakable' | 'pit' | 'hazard' | 'feature';
 
 /** A room's own sense of place within its floor: a marsh or a crypt, not just "the forest". */
 export interface RoomTheme {
@@ -6,19 +14,61 @@ export interface RoomTheme {
   name: string;
   /** The only floor this sub-theme appears on. */
   floor: number;
+  /** The tile each layout role becomes here. Only the bramble thicket's hazard is thorns. */
+  roles: Record<Role, Tile>;
+  /** How much likelier each encounter (by id) is here than one left out, which counts 1. */
+  encounterWeights: Readonly<Record<string, number>>;
 }
 
 const ROOM_THEMES: readonly RoomTheme[] = [
-  { id: 'grove', name: 'grove', floor: 0 },
-  { id: 'marsh', name: 'marsh', floor: 0 },
-  { id: 'bramble', name: 'bramble thicket', floor: 0 },
-  { id: 'grotto', name: 'crystal grotto', floor: 1 },
-  { id: 'hollow', name: 'mushroom hollow', floor: 1 },
-  { id: 'rift', name: 'rift', floor: 1 },
-  { id: 'crypt', name: 'crypt', floor: 2 },
-  { id: 'cellblock', name: 'cellblock', floor: 2 },
-  { id: 'machineHall', name: 'machine hall', floor: 2 },
+  {
+    id: 'grove', name: 'grove', floor: 0,
+    roles: { cover: 'obstacle', breakable: 'rock', pit: 'hole', hazard: 'obstacle', feature: 'obstacle' },
+    encounterWeights: { prowlers: 3 },
+  },
+  {
+    id: 'marsh', name: 'marsh', floor: 0,
+    roles: { cover: 'rock', breakable: 'rock', pit: 'hole', hazard: 'hole', feature: 'hole' },
+    encounterWeights: { ledgeSentries: 3 },
+  },
+  {
+    id: 'bramble', name: 'bramble thicket', floor: 0,
+    roles: { cover: 'rock', breakable: 'rock', pit: 'hole', hazard: 'thorn', feature: 'obstacle' },
+    encounterWeights: { prowlers: 3 },
+  },
+  {
+    id: 'grotto', name: 'crystal grotto', floor: 1,
+    roles: { cover: 'obstacle', breakable: 'rock', pit: 'hole', hazard: 'crystal', feature: 'crystal' },
+    encounterWeights: { ledgeSentries: 3 },
+  },
+  {
+    id: 'hollow', name: 'mushroom hollow', floor: 1,
+    roles: { cover: 'obstacle', breakable: 'rock', pit: 'hole', hazard: 'glowshroom', feature: 'glowshroom' },
+    encounterWeights: { prowlers: 3 },
+  },
+  {
+    id: 'rift', name: 'rift', floor: 1,
+    roles: { cover: 'rock', breakable: 'rock', pit: 'hole', hazard: 'hole', feature: 'obstacle' },
+    encounterWeights: { ledgeSentries: 3 },
+  },
+  {
+    id: 'crypt', name: 'crypt', floor: 2,
+    roles: { cover: 'obstacle', breakable: 'rock', pit: 'hole', hazard: 'hole', feature: 'obstacle' },
+    encounterWeights: { prowlers: 3 },
+  },
+  {
+    id: 'cellblock', name: 'cellblock', floor: 2,
+    roles: { cover: 'obstacle', breakable: 'rock', pit: 'hole', hazard: 'obstacle', feature: 'obstacle' },
+    encounterWeights: { ledgeSentries: 3 },
+  },
+  {
+    id: 'machineHall', name: 'machine hall', floor: 2,
+    roles: { cover: 'obstacle', breakable: 'rock', pit: 'hole', hazard: 'hole', feature: 'obstacle' },
+    encounterWeights: { ledgeSentries: 3 },
+  },
 ];
+
+export const roomThemeById = (id: string) => ROOM_THEMES.find((t) => t.id === id);
 
 /** The floor's sub-themes; floors past the last keep its themes. */
 export const roomThemesFor = (floorIndex: number): RoomTheme[] => {

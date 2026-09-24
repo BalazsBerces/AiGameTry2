@@ -8,6 +8,8 @@ import { themeForFloor } from './themes';
 import { isWalkable } from './tiles';
 import type { Crusher } from './crusher';
 import { candleCells } from './candleWitch';
+import { composeRoom, composes } from './composer';
+import { roomThemesFor } from './roomThemes';
 
 export const ROOM_WIDTH = 13;
 export const ROOM_HEIGHT = 7;
@@ -40,6 +42,8 @@ export interface RoomSpec {
   archetype?: string;
   /** Map cells the room spans; a single cell if left out (the boss room is always 2x2). */
   shape?: RoomShape;
+  /** The room's floor sub-theme (core/roomThemes); a composed big room is built to suit it. */
+  theme?: string;
 }
 
 /** Interior size in tiles: one 13x7 room per map cell, plus the wall rings between cells. */
@@ -97,8 +101,11 @@ export interface RoomLayout {
   pickups: PickupSpawn[];
   /** The idea the room was built from, if any. */
   archetype?: string;
-  /** The room's floor sub-theme (core/roomThemes), set once its whole floor is built. */
+  /** The room's floor sub-theme (core/roomThemes): a 1x1 idea's own, else the one it was built to suit. */
   theme?: string;
+  /** A composed big room's layout and encounter (core/composer), in place of an archetype. */
+  layout?: string;
+  encounter?: string;
   /** Crusher blocks and their axes; each stands on a `crusher` tile, which moves with it. */
   crushers?: Crusher[];
 }
@@ -391,21 +398,44 @@ function buildFromArchetype(spec: RoomSpec, doors: Door[], floorIndex: number, r
   return { tiles, enemies: [] as EnemySpawn[], pickups: [] as PickupSpawn[], archetype: fallback.id };
 }
 
-export function generateRoom(spec: RoomSpec, floorIndex: number, rng: Rng): RoomLayout {
-  const { width, height } = roomSize(spec.kind, spec.shape);
-  const doors = spec.doors
+/** A big room composed from a layout and an encounter to suit its theme; left empty (always valid) if none will do. */
+function buildComposed(spec: RoomSpec, doors: Door[], floorIndex: number, rng: Rng) {
+  const shape = spec.shape ?? '1x1';
+  const theme = spec.theme ?? roomThemesFor(floorIndex)[0].id;
+  const composed = composeRoom({ shape, doors, theme, floorIndex, rng });
+  if (composed) return { ...composed, parts: { layout: composed.layout, encounter: composed.encounter } };
+  const { width, height } = roomSize(spec.kind, shape);
+  return { tiles: wallOff(emptyTiles(width, height), shape), enemies: [] as EnemySpawn[], pickups: [] as PickupSpawn[], parts: {} };
+}
+
+/** Where the doors of a `width` x `height` room open; a bare side is a door in its top-left cell. */
+export const placeDoors = (specs: readonly (Direction | DoorSpec)[], width: number, height: number): Door[] =>
+  specs
     .map((d): DoorSpec => (typeof d === 'string' ? { side: d, at: { x: 0, y: 0 } } : d))
     .map((d) => ({ side: d.side, cell: doorCell(d, width, height) }));
-  if (archetypesFor(floorIndex, spec.kind, spec.shape ?? '1x1').length) {
-    const built = buildFromArchetype(spec, doors, floorIndex, rng);
+
+/** The room's sub-theme: a 1x1 idea's own tag, else the one it was asked to suit. */
+function themed(spec: RoomSpec, built?: object): { theme?: string } {
+  const archetype = built && 'archetype' in built ? String(built.archetype) : '';
+  const theme = archetypeById(archetype)?.theme ?? spec.theme;
+  return theme ? { theme } : {};
+}
+
+export function generateRoom(spec: RoomSpec, floorIndex: number, rng: Rng): RoomLayout {
+  const { width, height } = roomSize(spec.kind, spec.shape);
+  const doors = placeDoors(spec.doors, width, height);
+  const composed = spec.kind === 'normal' && composes(spec.shape ?? '1x1');
+  if (composed || archetypesFor(floorIndex, spec.kind, spec.shape ?? '1x1').length) {
+    const built = composed ? buildComposed(spec, doors, floorIndex, rng) : buildFromArchetype(spec, doors, floorIndex, rng);
     const pickups = built.pickups.map((p) => placeLoot(p, rng));
     if (spec.kind === 'normal') pickups.push(...rollClearDrop(built.tiles, doors, built.enemies, pickups, rng));
     const { walker, walkerHp } = themeForFloor(floorIndex);
     const floorEnemies = built.enemies.map((e) => (walkerHp && e.type === walker ? { ...e, hp: walkerHp } : e));
     // Its own stream, so champion rolls never shift the room's layout.
     const enemies = spec.kind === 'normal' ? crownChampion(floorEnemies, rng.fork('champion')) : floorEnemies;
-    const crushers = 'crushers' in built ? built.crushers : undefined;
-    return { id: spec.id, width, height, tiles: built.tiles, doors, enemies, pickups, archetype: built.archetype, ...(crushers ? { crushers } : {}) };
+    const { crushers } = built as { crushers?: Crusher[] };
+    const origin = 'parts' in built ? built.parts : { archetype: built.archetype };
+    return { id: spec.id, width, height, tiles: built.tiles, doors, enemies, pickups, ...origin, ...themed(spec, built), ...(crushers ? { crushers } : {}) };
   }
   // Normal and item rooms come from archetypes above; boss arenas are built here, start rooms stay empty.
   const isDoor = (c: Cell) => doors.some((d) => d.cell.x === c.x && d.cell.y === c.y);
@@ -460,7 +490,7 @@ export function generateRoom(spec: RoomSpec, floorIndex: number, rng: Rng): Room
       .sort((a, b) => Math.hypot(a.x - target.x, a.y - target.y) - Math.hypot(b.x - target.x, b.y - target.y))[0];
     if (cell) enemies.push({ type: 'treantBoss', cell });
   }
-  return { id: spec.id, width, height, tiles, doors, enemies, pickups: [] };
+  return { id: spec.id, width, height, tiles, doors, enemies, pickups: [], ...themed(spec) };
 }
 
 /** Pickup odds; all numbers are placeholders for playtest tuning. */

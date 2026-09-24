@@ -92,7 +92,8 @@ function buildFloor(world: World, rng: Rng, floor: FloorLayout) {
   const doorsOf = new Map(
     floor.rooms.map((r) => [r.id, [...roomDoors(floor, r.id), ...crossFloorDoors(world.floors, floor.floorIndex, r)]]),
   );
-  // Themes steer which ideas the rooms are built from; a built idea's own tag then has the last word.
+  // Themes steer which ideas the rooms are built from; those ideas' own tags then have the last
+  // word, and the rooms without one (big, start, item, boss) fill in around them.
   const graph = floor.rooms.map((r) => ({ id: r.id, neighbors: roomDoors(floor, r.id).map((d) => d.to) }));
   const wanted = assignRoomThemes(graph, floor.floorIndex, rng.fork('themes'));
   const archetypes = assignArchetypes(
@@ -106,10 +107,13 @@ function buildFloor(world: World, rng: Rng, floor: FloorLayout) {
     floor.floorIndex,
     rng.fork('archetypes'),
   );
+  const tagged = graph.map((r) => ({ ...r, fixed: archetypeById(archetypes.get(r.id) ?? '')?.theme }));
+  const themes = assignRoomThemes(tagged, floor.floorIndex, rng.fork('settled themes'));
   for (const floorRoom of floor.rooms) {
     const doors = doorsOf.get(floorRoom.id)!;
+    const archetype = archetypes.get(floorRoom.id);
     const layout = generateRoom(
-      { id: floorRoom.id, kind: floorRoom.kind, doors, archetype: archetypes.get(floorRoom.id), shape: floorRoom.shape },
+      { id: floorRoom.id, kind: floorRoom.kind, doors, archetype, shape: floorRoom.shape, theme: themes.get(floorRoom.id) },
       floor.floorIndex,
       rng.fork(`room ${floorRoom.id}`),
     );
@@ -119,9 +123,6 @@ function buildFloor(world: World, rng: Rng, floor: FloorLayout) {
       layout.pickups.map((p) => ({ id: world.nextPickupId++, ...p })),
     );
   }
-  const built = graph.map((r) => ({ ...r, fixed: archetypeById(world.rooms.get(r.id)!.layout.archetype ?? '')?.theme }));
-  const themes = assignRoomThemes(built, floor.floorIndex, rng.fork('settled themes'));
-  for (const { id } of graph) world.rooms.get(id)!.layout.theme = themes.get(id);
 }
 
 export type PickupResult = 'none' | 'healed' | 'key' | 'bomb' | 'opened' | 'passive';
@@ -347,11 +348,13 @@ export function minimapRooms(world: World): { room: WorldRoom; visited: boolean;
 export const currentFloorIndex = (world: World) => world.rooms.get(world.currentRoomId)!.floorIndex;
 
 /**
- * The room's kind, sub-theme and the idea it was built from (a boss arena's boss), for playtest
- * reports: `normal · bramble · thornMaze`.
+ * The room's kind, sub-theme and the idea it was built from (a boss arena's boss, a composed
+ * room's layout and encounter), for playtest reports: `normal · bramble · thornMaze`,
+ * `normal · marsh · gauntlet + ledgeSentries`.
  */
 export function roomLabel({ floorRoom, layout }: WorldRoom) {
-  const idea = floorRoom.kind === 'boss' ? layout.enemies[0]?.type : layout.archetype;
+  const composed = layout.layout && `${layout.layout} + ${layout.encounter}`;
+  const idea = floorRoom.kind === 'boss' ? layout.enemies[0]?.type : (composed ?? layout.archetype);
   return [floorRoom.kind, layout.theme, idea].filter(Boolean).join(' · ');
 }
 

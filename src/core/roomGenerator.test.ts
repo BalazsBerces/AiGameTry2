@@ -734,8 +734,8 @@ describe('every archetype', () => {
     }
   }, 30_000);
 
-  it.each([0, 1, 2])('gives floor %i a wide, a tall, a big and an L idea, one of each fitting every door set', (floorIndex) => {
-    for (const shape of ['2x1', '1x2', '2x2', ...L_SHAPES] as const) {
+  it.each([0, 1, 2])('gives floor %i a tall, a big and an L idea, one of each fitting every door set', (floorIndex) => {
+    for (const shape of ['1x2', '2x2', ...L_SHAPES] as const) {
       const own = ARCHETYPES.filter((a) => a.floor === floorIndex && a.kind === 'normal' && a.shapes?.includes(shape));
       expect(own.some((a) => EVERY_DOOR_SET.every((d) => a.fits(d))), shape).toBe(true);
       for (const doors of EVERY_SHAPED_DOOR_SET[shape].slice(0, 20)) {
@@ -757,6 +757,24 @@ describe('every archetype', () => {
       for (let seed = 0; seed < 10; seed++) {
         const r = generateRoom({ id: '0,0', kind: 'normal', doors: [...doors] }, floor - 1, createRng(seed));
         expect(ids).toContain(r.archetype);
+      }
+    }
+  });
+});
+
+describe('composed wide rooms', () => {
+  it('builds every wide normal room from a layout and an encounter, on every floor and door set', () => {
+    for (const [floorIndex, theme] of ['marsh', 'rift', 'crypt'].entries()) {
+      for (const [i, doors] of EVERY_SHAPED_DOOR_SET['2x1'].entries()) {
+        const spec = { id: '0,0', kind: 'normal' as const, doors, shape: '2x1' as const, theme };
+        const r = generateRoom(spec, floorIndex, createRng(i));
+        const where = `floor ${floorIndex + 1} doors ${JSON.stringify(doors)}`;
+        expect(r.layout, where).toBeDefined();
+        expect(r.encounter, where).toBeDefined();
+        expect(r.archetype, where).toBeUndefined();
+        expect([r.width, r.height], where).toEqual([26, 7]);
+        expect(r.enemies.length, where).toBeGreaterThan(0);
+        expect(generateRoom(spec, floorIndex, createRng(i)), where).toEqual(r);
       }
     }
   });

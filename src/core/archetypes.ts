@@ -45,15 +45,15 @@ export const supportsShape = (a: Archetype, shape: RoomShape) => (a.shapes ?? ['
 
 const fitsAll = () => true;
 
-/** Paints on an all-floor grid, mirroring every cell across the given axes. */
-class Canvas {
-  readonly tiles: Tile[][];
+/** Paints on an all-floor grid (of tiles, or of a layout's roles), mirroring every cell across the given axes. */
+export class Canvas<T extends string = Tile> {
+  readonly tiles: (T | 'floor')[][];
   constructor(
     readonly width: number,
     readonly height: number,
     private readonly axes: MirrorAxis[],
   ) {
-    this.tiles = Array.from({ length: height }, () => Array<Tile>(width).fill('floor'));
+    this.tiles = Array.from({ length: height }, () => Array<T | 'floor'>(width).fill('floor'));
   }
 
   /** The cell and its images across the canvas's axes (deduplicated). */
@@ -66,7 +66,7 @@ class Canvas {
     return out.filter((p) => !seen.has(`${p.x},${p.y}`) && !!seen.add(`${p.x},${p.y}`));
   }
 
-  paint(cells: Cell[], tile: Tile) {
+  paint(cells: Cell[], tile: T | 'floor') {
     for (const c of cells.flatMap((p) => this.images(p))) {
       if (c.x >= 0 && c.y >= 0 && c.x < this.width && c.y < this.height) this.tiles[c.y][c.x] = tile;
     }
@@ -763,51 +763,6 @@ const hauntedHall: Archetype = {
 };
 
 /**
- * Wide room, every floor: run the gauntlet down a long hall. The floor's turrets line ledges
- * along the top and bottom walls behind a moat of holes, a pack of its walkers holds the middle,
- * and scattered cover breaks up the lane. Door columns and the side doors' row stay clear, so
- * it fits every door set.
- */
-const gauntlet = (floor: number): Archetype => ({
-  id: `gauntlet${floor + 1}`,
-  floor,
-  kind: 'normal',
-  shapes: ['2x1'],
-  fits: fitsAll,
-  build({ width, height, rng }) {
-    const axes: MirrorAxis[] = ['vertical', 'horizontal'];
-    const canvas = new Canvas(width, height, axes);
-    // The ledge spans the middle of each long wall, sealed at its ends; doors sit at x 5 and 20.
-    const ledgeEnd = rng.int(8, 9);
-    canvas.paint(
-      [{ x: ledgeEnd, y: 0 }, ...Array.from({ length: 13 - ledgeEnd }, (_, i) => ({ x: ledgeEnd + i, y: 1 }))],
-      'hole',
-    );
-    const cover = rng.pick([
-      [{ x: 3, y: 2 }],
-      [{ x: 2, y: 2 }, { x: 8, y: 3 }],
-      [{ x: 7, y: 2 }],
-      [{ x: 3, y: 2 }, { x: 10, y: 3 }],
-    ]);
-    canvas.paint(cover, rng.next() < 0.5 ? 'rock' : 'obstacle');
-    const post = { x: rng.int(ledgeEnd + 2, 12), y: 0 };
-    const posts = canvas.images(post);
-    // Both ledges manned, or only the top one.
-    const manned = rng.next() < 0.5 ? posts : posts.filter((c) => c.y === 0);
-    const pack = canvas.images(rng.pick([{ x: 12, y: 3 }, { x: 12, y: 2 }, { x: 11, y: 3 }]));
-    return {
-      tiles: canvas.tiles,
-      enemies: [
-        ...turretsOf(floor, manned),
-        ...walkersOf(floor, pack),
-      ],
-      pickups: [],
-      symmetry: { axes },
-    };
-  },
-});
-
-/**
  * Tall room, every floor: a descent down three terraces. Two drops of holes cross the room,
  * crossed only at stairs (the gaps), with the floor's walkers waiting on the landing between
  * and its turrets covering the stairs from the corners. Doors sit on the terraces, clear of the
@@ -1191,7 +1146,7 @@ export const ARCHETYPES: readonly Archetype[] = [
   reliquary,
   thornMaze,
   crusherCorridor,
-  ...[0, 1, 2].flatMap((floor) => [gauntlet(floor), descent(floor)]),
+  ...[0, 1, 2].map(descent),
   crystalGallery,
   knightGuard,
   waspNest,

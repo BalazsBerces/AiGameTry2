@@ -30,6 +30,13 @@ describe('roomLabel', () => {
     expect(roomLabel(room)).toBe('normal · bramble · thornMaze');
   });
 
+  it('names a composed room by its kind, sub-theme, layout and encounter', () => {
+    const room = firstNormalRoom(createWorld(1));
+    room.layout.archetype = undefined;
+    Object.assign(room.layout, { theme: 'marsh', layout: 'gauntlet', encounter: 'ledgeSentries' });
+    expect(roomLabel(room)).toBe('normal · marsh · gauntlet + ledgeSentries');
+  });
+
   it('names a boss arena by its sub-theme and the boss waiting in it', () => {
     const room = [...createWorld(1).rooms.values()].find((r) => r.floorRoom.kind === 'boss')!;
     room.layout.enemies = [{ type: 'ironMaiden', cell: { x: 6, y: 3 } }];
@@ -89,6 +96,21 @@ describe('room sub-themes', () => {
       }
     }
     expect(shared / pairs).toBeGreaterThan(0.5);
+  });
+
+  it("composes wide rooms to suit their own theme: the fight leans the theme's way", () => {
+    const sentryThemes = new Set(['marsh', 'grotto', 'rift', 'cellblock', 'machineHall']);
+    const tally = { sentry: [0, 0], prowler: [0, 0] };
+    for (let seed = 0; seed < 150; seed++) {
+      for (const room of createWorld(seed).rooms.values()) {
+        if (room.floorRoom.shape !== '2x1' || room.floorRoom.kind !== 'normal') continue;
+        const lean = tally[sentryThemes.has(room.layout.theme!) ? 'sentry' : 'prowler'];
+        lean[0]++;
+        if (room.layout.encounter === 'ledgeSentries') lean[1]++;
+      }
+    }
+    expect(tally.sentry[1] / tally.sentry[0]).toBeGreaterThan(0.6);
+    expect(tally.prowler[1] / tally.prowler[0]).toBeLessThan(0.4);
   });
 
   it('gives the same themes for the same seed', () => {
@@ -277,13 +299,17 @@ describe('createWorld room shapes', () => {
     return { x: room.floorRoom.cell.x * CELL_TILES.w + pad.x + cell.x, y: room.floorRoom.cell.y * CELL_TILES.h + pad.y + cell.y };
   };
 
-  it('sizes every room by its shape and builds shaped rooms from ideas drawn for that shape', () => {
+  it('sizes every room by its shape, composes wide rooms and builds the other shapes from ideas drawn for them', () => {
     for (let seed = 0; seed < 40; seed++) {
       const world = createWorld(seed);
       for (const room of world.rooms.values()) {
         const where = `seed ${seed} ${room.floorRoom.id} ${room.floorRoom.shape}`;
         expect([room.layout.width, room.layout.height], where).toEqual(SIZE[room.floorRoom.shape]);
         if (room.floorRoom.kind !== 'normal') continue;
+        if (room.floorRoom.shape === '2x1') {
+          expect([room.layout.layout, room.layout.encounter].every(Boolean), where).toBe(true);
+          continue;
+        }
         expect(supportsShape(archetypeById(room.layout.archetype!)!, room.floorRoom.shape), where).toBe(true);
       }
     }

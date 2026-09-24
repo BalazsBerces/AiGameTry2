@@ -914,6 +914,32 @@ if (scenario === 'utility-passives') {
     await page.evaluate(`${scene()}.world.player.health`));
 }
 
+if (scenario === 'perf') {
+  // Every passive at level 2 (sword aside), firing non-stop in floor 3's boss room; samples the frame rate.
+  const id = await page.evaluate(`[...${scene()}.world.rooms.values()].find((r) => r.floorIndex === 2 && r.floorRoom.kind === 'boss').floorRoom.id`);
+  await page.evaluate(`(() => { const s = ${scene()};
+    s.invincibleUntil = Infinity;
+    s.world.player.passives = { homing: 2, fireRate: 2, triple: 2, pierce: 2, ricochet: 2, spectral: 2, boomerang: 2, poison: 2, chain: 2, freeze: 2, orbital: 2, dash: 2 };
+    const room = s.world.rooms.get('${id}');
+    s.enterRoom(room, s.time.now);
+    s.player.body.reset(room.floorRoom.cell.x * 720 + 720, room.floorRoom.cell.y * 432 + 432);
+    // Keep the boss alive for the whole sample.
+    const e = s.enemies[0]; const hit = e.hit; e.hit = (p, d) => hit(p, Math.min(d, 0.0001));
+  })()`);
+  const fps = [];
+  const aims = ['ArrowUp', 'ArrowRight', 'ArrowDown', 'ArrowLeft'];
+  for (let i = 0; i < 16; i++) {
+    await page.keyboard.down(aims[i % 4]);
+    await page.waitForTimeout(500);
+    await page.keyboard.up(aims[i % 4]);
+    fps.push(await page.evaluate(`Math.round(window.game.loop.actualFps)`));
+  }
+  const counts = await page.evaluate(`({ shots: ${scene()}.shots.getChildren().length, enemyShots: ${scene()}.enemyShots.getChildren().length })`);
+  await shot('02-perf');
+  console.log('boss', await page.evaluate(`${scene()}.world.rooms.get('${id}').layout.enemies[0].type`), 'fps samples', JSON.stringify(fps),
+    'min', Math.min(...fps), 'in flight at the end', JSON.stringify(counts));
+}
+
 if (scenario === 'boss-upgrade') {
   // With homing at level 1, kill the floor 1 boss: homing should go up to level 2, with a message and a HUD ring.
   const id = await page.evaluate(`[...${scene()}.world.rooms.values()].find((r) => r.floorIndex === 0 && r.floorRoom.kind === 'boss').floorRoom.id`);

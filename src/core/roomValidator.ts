@@ -1,6 +1,9 @@
 import type { Cell } from './floorGenerator';
+import { ENEMY_CLASS } from './enemies';
 import { floodFill, lineOfSight } from './grid';
-import { blocksSight, isWalkable, type Door, type RoomLayout, type Tile } from './roomGenerator';
+import type { Door, RoomLayout, Tile } from './roomGenerator';
+import { blocksSight, isWalkable } from './tiles';
+import { AXIS_DIRECTIONS, settleCrusher, slideCrusher, type Crusher } from './crusher';
 
 export type MirrorAxis = 'vertical' | 'horizontal';
 
@@ -18,16 +21,21 @@ export type ViolationRule =
   | 'enemy-near-door'
   | 'overlap'
   | 'spawn-off-floor'
-  | 'asymmetric';
+  | 'asymmetric'
+  | 'crusher-lane';
 
 export interface Violation {
   rule: ViolationRule;
   cell?: Cell;
 }
 
-export type RoomToValidate = Pick<RoomLayout, 'tiles' | 'doors' | 'enemies' | 'pickups'>;
+export type RoomToValidate = Pick<RoomLayout, 'tiles' | 'doors' | 'enemies' | 'pickups'> & { crushers?: readonly Crusher[] };
 
 const key = (c: Cell) => `${c.x},${c.y}`;
+const isWalkableAt = (tiles: Tile[][], c: Cell) => {
+  const tile = tiles[c.y]?.[c.x];
+  return tile !== undefined && isWalkable(tile);
+};
 
 /** The tile a door opens onto and the one just inside it: both must stay open floor. */
 export const doorApproach = ({ side, cell }: Door): Cell[] => {
@@ -45,7 +53,7 @@ export function validateRoom(room: RoomToValidate, symmetry: Symmetry): Violatio
   const reachable = doors.length ? floodFill(tiles, doors[0].cell, isWalkable) : new Set<string>();
   for (const d of doors) if (!reachable.has(key(d.cell))) violations.push({ rule: 'door-unreachable', cell: d.cell });
   for (const d of doors) {
-    if (doorApproach(d).some((c) => tiles[c.y]?.[c.x] !== 'floor')) violations.push({ rule: 'door-blocked', cell: d.cell });
+    if (doorApproach(d).some((c) => !isWalkableAt(tiles, c))) violations.push({ rule: 'door-blocked', cell: d.cell });
   }
 
   const standable = [...reachable].map((k) => {
@@ -53,14 +61,16 @@ export function validateRoom(room: RoomToValidate, symmetry: Symmetry): Violatio
     return { x: x + 0.5, y: y + 0.5 };
   });
   for (const e of room.enemies) {
-    if (e.type === 'turret') {
+    const kind = ENEMY_CLASS[e.type];
+    if (kind === 'phasing') continue;
+    if (kind === 'stationary' || kind === 'flyer') {
       const from = { x: e.cell.x + 0.5, y: e.cell.y + 0.5 };
       if (!standable.some((p) => lineOfSight(tiles, from, p, blocksSight))) {
         violations.push({ rule: 'turret-unshootable', cell: e.cell });
       }
       continue;
     }
-    // Everything else walks (a worm needs its whole body reachable).
+    // Walkers need their whole body reachable (a worm's tail too).
     if (![e.cell, ...(e.tail ?? [])].every((c) => reachable.has(key(c)))) {
       violations.push({ rule: 'walker-unreachable', cell: e.cell });
     }
@@ -75,13 +85,35 @@ export function validateRoom(room: RoomToValidate, symmetry: Symmetry): Violatio
     if (seen.has(key(c))) violations.push({ rule: 'overlap', cell: c });
     seen.add(key(c));
   }
-  for (const c of spawnCells) if (tiles[c.y]?.[c.x] !== 'floor') violations.push({ rule: 'spawn-off-floor', cell: c });
+  for (const c of spawnCells) if (!isWalkableAt(tiles, c)) violations.push({ rule: 'spawn-off-floor', cell: c });
 
   if (!isSymmetric(tiles, symmetry)) violations.push({ rule: 'asymmetric' });
+  for (const c of room.crushers ?? []) if (!crusherLaneHolds(room, c)) violations.push({ rule: 'crusher-lane', cell: c.cell });
   return violations;
 }
 
-/** Terrain mirrors across every declared axis; feature tiles (and their mirror images) are exempt. */
+/**
+ * Crusher lanes: wherever the crusher settles along its axis (the others left where they
+ * start), every door stays reachable with its approach open and every walker can be reached.
+ */
+function crusherLaneHolds(room: RoomToValidate, crusher: Crusher): boolean {
+  return AXIS_DIRECTIONS[crusher.axis].every((dir) => {
+    const { stop } = slideCrusher(room.tiles, crusher.cell, dir);
+    const tiles = room.tiles.map((row) => [...row]);
+    settleCrusher(tiles, { ...crusher }, stop);
+    const { doors } = room;
+    const reachable = doors.length ? floodFill(tiles, doors[0].cell, isWalkable) : new Set<string>();
+    if (doors.some((d) => !reachable.has(key(d.cell)) || doorApproach(d).some((c) => !isWalkableAt(tiles, c)))) return false;
+    return room.enemies
+      .filter((e) => ENEMY_CLASS[e.type] === 'walker')
+      .every((e) => [e.cell, ...(e.tail ?? [])].every((c) => reachable.has(key(c))));
+  });
+}
+
+/**
+ * Terrain mirrors across every declared axis; feature tiles (and their mirror images) are exempt.
+ * So is an L room's missing cell (`wall`) and its image: each arm mirrors along its own length.
+ */
 function isSymmetric(tiles: Tile[][], { axes, feature = [] }: Symmetry): boolean {
   if (!axes.length) return false;
   const height = tiles.length;
@@ -93,7 +125,9 @@ function isSymmetric(tiles: Tile[][], { axes, feature = [] }: Symmetry): boolean
     tiles.every((row, y) =>
       row.every((tile, x) => {
         const m = mirror({ x, y }, axis);
-        return exempt.has(key({ x, y })) || exempt.has(key(m)) || tile === tiles[m.y][m.x];
+        const image = tiles[m.y][m.x];
+        if (tile === 'wall' || image === 'wall') return true;
+        return exempt.has(key({ x, y })) || exempt.has(key(m)) || tile === image;
       }),
     ),
   );

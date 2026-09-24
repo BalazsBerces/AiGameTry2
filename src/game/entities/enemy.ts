@@ -1,6 +1,9 @@
 import type Phaser from 'phaser';
 import type { Cell, Direction } from '../../core/floorGenerator';
+import type { Door, Tile } from '../../core/roomGenerator';
 import type { Weapon } from '../../core/weaponModel';
+import type { Stunnable } from '../../core/stun';
+import { COLORS, TUNING } from '../config';
 
 export type Body = Phaser.Physics.Arcade.Body;
 export type EnemySprite = Phaser.GameObjects.Shape & { body: Body };
@@ -18,19 +21,32 @@ export interface EnemyContext {
   isWalkable(tile: Cell): boolean;
   /** Obstacles block sight; holes do not. */
   canSeePlayer(from: { x: number; y: number }): boolean;
-  /** Homing enemy shots steer toward the player. */
-  fireEnemyShot(x: number, y: number, vx: number, vy: number, homing?: boolean): void;
+  /** Homing enemy shots steer toward the player; `bounces` is how often it ricochets off stone. */
+  fireEnemyShot(x: number, y: number, vx: number, vy: number, homing?: boolean, bounces?: number): void;
   /** A sword arc from `from` in direction `aim`; hurts the player if they're inside it. */
   swingAtPlayer(from: { x: number; y: number }, aim: Direction): void;
   /** World position of the room's centre. */
   roomCenter: { x: number; y: number };
-  /** Cells the room generator validated for mid-fight summons. */
-  summonPoints: Cell[];
-  /** Brings in a new zombie at a summon point; returns it so the summoner can track it. */
-  summonZombie(cell: Cell): Enemy;
+  /** The current room's tiles, for enemies that plan attacks over the terrain. */
+  tiles: Tile[][];
+  /** Hurts the player directly (for ground attacks such as the Treant's roots); invincibility frames apply. */
+  hurtPlayer(): void;
+  /** A charging boar ran into this tile: rock there breaks for good (core/world `smashRock`). */
+  smashRock(tile: Cell): void;
+  /** The current room's doors (attacks that reshape terrain keep their approaches clear). */
+  doors: Door[];
+  /**
+   * A seed pod comes down on `cell`: it sprouts `tile` there for good (the world's tiles change),
+   * or, if the player is standing on it, bursts on them instead. True if it sprouted.
+   */
+  landSeedPod(cell: Cell, tile: 'rock' | 'thorn'): boolean;
 }
 
-export interface Enemy {
+/**
+ * Every enemy can be stunned (core/stun): `stun(enemy, time, ms)` from anywhere, and the scene
+ * holds it still, skipping its `update`, until the stun wears off.
+ */
+export interface Enemy extends Stunnable {
   /** Hittable sprites; touching any of them hurts the player. */
   parts: EnemySprite[];
   /** Physics walkers collide with terrain; grid movers (worms) plan their own moves instead. */
@@ -40,6 +56,28 @@ export interface Enemy {
   onPlayerAttack?(ctx: EnemyContext, aim: Direction, weapon: Weapon): void;
   /** Damages one part. Returns the enemies that replace this one: itself, nothing (dead), or split pieces. */
   hit(part: EnemySprite, damage: number): Enemy[];
+  /**
+   * Whether a shot or sword blow travelling along `heading` is turned aside by the part (the
+   * knight's shield) instead of hurting it. Bombs, crushers and thorns never ask.
+   */
+  blocks?(part: EnemySprite, heading: { x: number; y: number }): boolean;
+  /** Flyers (with `collidesWithTerrain` false) still hit walls and stone, but cross holes and thorns. */
+  flies?: boolean;
+}
+
+/** Stat multipliers for a champion, or none for a regular enemy. */
+export const championBoost = (champion: boolean) => (champion ? TUNING.champion : { scale: 1, hp: 1, speed: 1 });
+
+/** A champion's colour: its own blended halfway to gold. */
+export function championColor(color: number, champion: boolean) {
+  if (!champion) return color;
+  const mix = (shift: number) => Math.round((((color >> shift) & 0xff) + ((COLORS.champion >> shift) & 0xff)) / 2) << shift;
+  return mix(16) | mix(8) | mix(0);
+}
+
+/** Outlines a champion's sprite in gold. */
+export function markChampion(sprite: Phaser.GameObjects.Shape, champion: boolean) {
+  if (champion) sprite.setStrokeStyle(3, COLORS.champion);
 }
 
 /** Flash a part briefly to show it took damage. */

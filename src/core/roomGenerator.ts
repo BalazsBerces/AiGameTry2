@@ -1,9 +1,12 @@
-import { archetypeById, archetypesFor, fallbackArchetype } from './archetypes';
-import type { Cell, Direction, RoomKind } from './floorGenerator';
+import { archetypeById, archetypesFor, fallbackArchetype, supportsShape } from './archetypes';
+import { missingCell, SHAPE_CELLS, type Cell, type Direction, type RoomKind, type RoomShape } from './floorGenerator';
 import { floodFill } from './grid';
 import { validateRoom } from './roomValidator';
 import type { Passive } from './weaponModel';
 import type { Rng } from './rng';
+import { themeForFloor } from './themes';
+import { isWalkable } from './tiles';
+import type { Crusher } from './crusher';
 
 export const ROOM_WIDTH = 13;
 export const ROOM_HEIGHT = 7;
@@ -12,11 +15,14 @@ export const BOSS_HEIGHT = 14;
 /** Tiles per map cell: a 13x7 room interior plus its one-tile wall ring. */
 export const CELL_TILES = { w: ROOM_WIDTH + 2, h: ROOM_HEIGHT + 2 };
 
-/** `obstacle` is stone; `rock` is the same but breaks after a few player shots. */
-export type Tile = 'floor' | 'obstacle' | 'rock' | 'hole';
-
-/** Player shots it takes to break a rock. */
-export const ROCK_HITS = 3;
+/**
+ * `obstacle` is stone; `rock` is the same but breaks after a few player shots; `thorn` is a
+ * bush that hurts whoever walks into it; `crusher` is a block that slides when it sees the
+ * player; `crystal` bounces every shot. `wall` is not part of the room at all: it fills the
+ * missing cell of an L room's box, is drawn as room wall and nothing ever enters it. Behaviour
+ * lives in `TILES`.
+ */
+export type Tile = 'floor' | 'obstacle' | 'rock' | 'hole' | 'thorn' | 'crusher' | 'crystal' | 'wall' | 'glowshroom';
 
 export interface DoorSpec {
   side: Direction;
@@ -31,16 +37,45 @@ export interface RoomSpec {
   doors: (Direction | DoorSpec)[];
   /** Idea to build the room from, as assigned per floor; picked here if left out. */
   archetype?: string;
+  /** Map cells the room spans; a single cell if left out (the boss room is always 2x2). */
+  shape?: RoomShape;
 }
 
-export const roomSize = (kind: RoomKind) =>
-  kind === 'boss' ? { width: BOSS_WIDTH, height: BOSS_HEIGHT } : { width: ROOM_WIDTH, height: ROOM_HEIGHT };
+/** Interior size in tiles: one 13x7 room per map cell, plus the wall rings between cells. */
+export const roomSize = (kind: RoomKind, shape: RoomShape = '1x1') => {
+  if (kind === 'boss') return { width: BOSS_WIDTH, height: BOSS_HEIGHT };
+  const cells = SHAPE_CELLS[shape];
+  const cols = Math.max(...cells.map((c) => c.x)) + 1;
+  const rows = Math.max(...cells.map((c) => c.y)) + 1;
+  return { width: cols * ROOM_WIDTH, height: rows * ROOM_HEIGHT };
+};
 
 /** Wall thickness in tiles between the room's map-cell block edge and its interior. */
 export function roomPadding(width: number, height: number) {
   const cellsW = Math.ceil(width / ROOM_WIDTH);
   const cellsH = Math.ceil(height / ROOM_HEIGHT);
   return { x: (cellsW * CELL_TILES.w - width) / 2, y: (cellsH * CELL_TILES.h - height) / 2 };
+}
+
+/**
+ * Interior tiles outside the room: those of an L's missing map cell (its whole 15x9-tile block,
+ * clipped to the interior), so the arms meet with the corner between them filled. Never true
+ * for full blocks.
+ */
+export function outsideRoom(shape: RoomShape, width: number, height: number): (c: Cell) => boolean {
+  const gap = missingCell(shape);
+  if (!gap) return () => false;
+  const pad = roomPadding(width, height);
+  const x0 = gap.x * CELL_TILES.w - pad.x;
+  const y0 = gap.y * CELL_TILES.h - pad.y;
+  return (c) => c.x >= x0 && c.x < x0 + CELL_TILES.w && c.y >= y0 && c.y < y0 + CELL_TILES.h;
+}
+
+/** Turns every tile outside the room into `wall`, whatever was painted there. */
+function wallOff(tiles: Tile[][], shape: RoomShape): Tile[][] {
+  const outside = outsideRoom(shape, tiles[0].length, tiles.length);
+  tiles.forEach((row, y) => row.forEach((_, x) => outside({ x, y }) && (row[x] = 'wall')));
+  return tiles;
 }
 
 export interface Door {
@@ -59,10 +94,10 @@ export interface RoomLayout {
   enemies: EnemySpawn[];
   /** Rolled at generation; revealed once the room is cleared. */
   pickups: PickupSpawn[];
-  /** Cells where a boss may summon enemies during the fight (validated like any spawn). */
-  summonPoints: Cell[];
   /** The idea the room was built from, if any. */
   archetype?: string;
+  /** Crusher blocks and their axes; each stands on a `crusher` tile, which moves with it. */
+  crushers?: Crusher[];
 }
 
 export type PickupType = 'heart' | 'key' | 'bomb' | 'chest' | 'lockedChest' | 'passive';
@@ -83,7 +118,23 @@ export interface PickupSpawn {
 
 export const PASSIVE_POOL: readonly Passive[] = ['homing', 'fireRate', 'sword'];
 
-export type EnemyType = 'zombie' | 'turret' | 'worm' | 'wormBoss' | 'hiveBoss' | 'shadowBoss';
+export type EnemyType =
+  | 'zombie'
+  | 'turret'
+  | 'worm'
+  | 'wormBoss'
+  | 'shadowBoss'
+  | 'treantBoss'
+  | 'goblin'
+  | 'seedSpitter'
+  | 'ghoul'
+  | 'crystalTurret'
+  | 'gargoyle'
+  | 'knight'
+  | 'wasp'
+  | 'boar'
+  | 'ghost'
+  | 'bat';
 
 export interface EnemySpawn {
   type: EnemyType;
@@ -91,7 +142,14 @@ export interface EnemySpawn {
   cell: Cell;
   /** A worm's body behind the head, in order. */
   tail?: Cell[];
+  /** Tougher and always drops `drop` (from the normal room-clear pool) when killed. */
+  champion?: { drop: ChampionDrop };
+  /** Hit points overriding the type's default: a floor's tougher variant (the dungeon's zombies). */
+  hp?: number;
 }
+
+/** A champion's extra pickup; it lands wherever the champion dies. */
+export type ChampionDrop = Omit<PickupSpawn, 'cell'>;
 
 /** Doors sit at the centre of the wall of the map cell they belong to. */
 function doorCell({ side, at }: DoorSpec, width: number, height: number): Cell {
@@ -187,15 +245,14 @@ function placeLabyrinth(tiles: Tile[][], rng: Rng, keepClear: (c: Cell) => boole
 
 type TerrainStrategy = (tiles: Tile[][], rng: Rng, keepClear: (c: Cell) => boolean) => void;
 
-export type BossType = 'wormBoss' | 'hiveBoss' | 'shadowBoss';
+export type BossType = 'wormBoss' | 'shadowBoss' | 'treantBoss';
 
-const BOSS_BY_FLOOR: readonly BossType[] = ['wormBoss', 'hiveBoss', 'shadowBoss'];
-export const bossForFloor = (floorIndex: number): BossType => BOSS_BY_FLOOR[Math.min(floorIndex, BOSS_BY_FLOOR.length - 1)];
+export const bossForFloor = (floorIndex: number): BossType => themeForFloor(floorIndex).boss;
 
 const BOSS_ARENAS: Record<BossType, TerrainStrategy> = {
   wormBoss: placeLabyrinth,
-  hiveBoss: placeCover,
   shadowBoss: placePillars,
+  treantBoss: placeCaveMouth,
 };
 
 /**
@@ -233,45 +290,41 @@ function shuffle<T>(items: readonly T[], rng: Rng): T[] {
   return out;
 }
 
-/** Top-left tile of the Hive's 2x2 core: the middle of the 26x14 arena. */
-export const HIVE_CORE: Cell = { x: 12, y: 6 };
-
-const COVER_SHAPES: readonly Cell[][] = [
-  [{ x: 0, y: 0 }, { x: 1, y: 0 }],
-  [{ x: 0, y: 0 }, { x: 0, y: 1 }],
-  [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }],
-  [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }],
-];
+/** Treant arena rock: how deep the jagged rim reaches in from each wall, and how many loose boulders. */
+const CAVE_MOUTH = { maxDepth: 3, boulders: { min: 2, max: 4 } };
 
 /**
- * Hive arena: blocks of cover mirrored into all four quadrants, leaving the core's
- * surroundings open so the player can reach it and use the cover against its spirals.
+ * Treant arena, a clearing at the mouth of the cave: a jagged rim of rock grows in from every
+ * wall (kept off the doorways), with a few boulders near the edges. The middle stays open, so
+ * root lines can be read and dodged sideways.
  */
-function placeCover(tiles: Tile[][], rng: Rng, keepClear: (c: Cell) => boolean) {
+function placeCaveMouth(tiles: Tile[][], rng: Rng, keepClear: (c: Cell) => boolean) {
   const height = tiles.length;
   const width = tiles[0].length;
-  const nearCore = (c: Cell) => c.x >= HIVE_CORE.x - 3 && c.x <= HIVE_CORE.x + 4 && c.y >= HIVE_CORE.y - 2 && c.y <= HIVE_CORE.y + 3;
+  const { maxDepth } = CAVE_MOUTH;
   const nearDoor = (c: Cell) =>
-    [-1, 0, 1].some((dx) => [-1, 0, 1].some((dy) => keepClear({ x: c.x + dx, y: c.y + dy })));
-  const blocks = rng.int(3, 5);
-  for (let i = 0; i < blocks; i++) {
-    const shape = rng.pick(COVER_SHAPES);
-    const ox = rng.int(1, Math.floor(width / 2) - 3);
-    const oy = rng.int(1, Math.floor(height / 2) - 2);
-    for (const p of shape) {
-      const c = { x: ox + p.x, y: oy + p.y };
-      const mirrored = [c, { x: width - 1 - c.x, y: c.y }, { x: c.x, y: height - 1 - c.y }, { x: width - 1 - c.x, y: height - 1 - c.y }];
-      for (const m of mirrored) if (!nearCore(m) && !nearDoor(m)) tiles[m.y][m.x] = 'obstacle';
-    }
+    [-2, -1, 0, 1, 2].some((dx) => [-2, -1, 0, 1, 2].some((dy) => keepClear({ x: c.x + dx, y: c.y + dy })));
+  const block = (c: Cell) => {
+    if (!nearDoor(c)) tiles[c.y][c.x] = 'obstacle';
+  };
+  /** A random walk of rim depths, one per cell along a wall. */
+  const rim = (length: number) => {
+    let depth = rng.int(0, maxDepth);
+    return Array.from({ length }, () => (depth = Math.min(maxDepth, Math.max(0, depth + rng.int(-1, 1)))));
+  };
+  rim(width).forEach((d, x) => { for (let y = 0; y < d; y++) block({ x, y }); });
+  rim(width).forEach((d, x) => { for (let y = 0; y < d; y++) block({ x, y: height - 1 - y }); });
+  rim(height).forEach((d, y) => { for (let x = 0; x < d; x++) block({ x, y }); });
+  rim(height).forEach((d, y) => { for (let x = 0; x < d; x++) block({ x: width - 1 - x, y }); });
+  // Boulders sit in the band between the rim and the open middle.
+  const boulders = rng.int(CAVE_MOUTH.boulders.min, CAVE_MOUTH.boulders.max);
+  for (let i = 0; i < boulders; i++) {
+    const x = rng.next() < 0.5 ? rng.int(3, 5) : rng.int(width - 6, width - 4);
+    const y = rng.int(2, height - 3);
+    block({ x, y });
+    if (rng.next() < 0.5) block({ x, y: y + 1 });
   }
 }
-
-export const isWalkable = (tile: Tile) => tile === 'floor';
-/** Tiles that stop shots and line of sight; holes do not. */
-export const blocksSight = (tile: Tile) => tile === 'obstacle' || tile === 'rock';
-export const isBreakable = (tile: Tile) => tile === 'rock';
-/** Bombs blow away stone as well as rock; holes stay holes. */
-export const isBlastable = (tile: Tile) => tile === 'rock' || tile === 'obstacle';
 
 const roomOrigin = (tiles: Tile[][], doors: Door[]): Cell =>
   doors[0]?.cell ?? { x: Math.floor(tiles[0].length / 2), y: Math.floor(tiles.length / 2) };
@@ -294,36 +347,44 @@ const MAX_ARCHETYPE_ATTEMPTS = 40;
  * over, and if even that fails the room is left empty, which is always valid.
  */
 function buildFromArchetype(spec: RoomSpec, doors: Door[], floorIndex: number, rng: Rng) {
-  const { width, height } = roomSize(spec.kind);
+  const shape = spec.shape ?? '1x1';
+  const { width, height } = roomSize(spec.kind, shape);
   const sides = doors.map((d) => d.side);
-  const fitting = archetypesFor(floorIndex, spec.kind).filter((a) => a.fits(sides));
+  const fitting = archetypesFor(floorIndex, spec.kind, shape).filter((a) => a.fits(sides));
   const named = spec.archetype ? archetypeById(spec.archetype) : undefined;
-  const assigned = named?.fits(sides) ? named : undefined;
-  const fallback = fallbackArchetype(floorIndex, spec.kind);
+  const assigned = named && supportsShape(named, shape) && named.fits(sides) ? named : undefined;
+  const fallback = fallbackArchetype(floorIndex, spec.kind, shape);
   const chosen = assigned ?? (fitting.length ? rng.pick(fitting) : fallback);
   for (const archetype of [chosen, fallback]) {
     for (let attempt = 0; attempt < MAX_ARCHETYPE_ATTEMPTS; attempt++) {
-      const built = archetype.build({ width, height, doors, rng });
+      const drawn = archetype.build({ width, height, doors, rng, shape });
+      const built = { ...drawn, tiles: wallOff(drawn.tiles, shape) };
       if (validateRoom({ ...built, doors }, built.symmetry).length === 0) return { ...built, archetype: archetype.id };
     }
   }
-  return { tiles: emptyTiles(width, height), enemies: [] as EnemySpawn[], pickups: [] as PickupSpawn[], archetype: fallback.id };
+  const tiles = wallOff(emptyTiles(width, height), shape);
+  return { tiles, enemies: [] as EnemySpawn[], pickups: [] as PickupSpawn[], archetype: fallback.id };
 }
 
 export function generateRoom(spec: RoomSpec, floorIndex: number, rng: Rng): RoomLayout {
-  const { width, height } = roomSize(spec.kind);
+  const { width, height } = roomSize(spec.kind, spec.shape);
   const doors = spec.doors
     .map((d): DoorSpec => (typeof d === 'string' ? { side: d, at: { x: 0, y: 0 } } : d))
     .map((d) => ({ side: d.side, cell: doorCell(d, width, height) }));
-  if (archetypesFor(floorIndex, spec.kind).length) {
+  if (archetypesFor(floorIndex, spec.kind, spec.shape ?? '1x1').length) {
     const built = buildFromArchetype(spec, doors, floorIndex, rng);
     const pickups = built.pickups.map((p) => placeLoot(p, rng));
     if (spec.kind === 'normal') pickups.push(...rollClearDrop(built.tiles, doors, built.enemies, pickups, rng));
-    return { id: spec.id, width, height, tiles: built.tiles, doors, enemies: built.enemies, pickups, summonPoints: [], archetype: built.archetype };
+    const { walker, walkerHp } = themeForFloor(floorIndex);
+    const floorEnemies = built.enemies.map((e) => (walkerHp && e.type === walker ? { ...e, hp: walkerHp } : e));
+    // Its own stream, so champion rolls never shift the room's layout.
+    const enemies = spec.kind === 'normal' ? crownChampion(floorEnemies, rng.fork('champion')) : floorEnemies;
+    const crushers = 'crushers' in built ? built.crushers : undefined;
+    return { id: spec.id, width, height, tiles: built.tiles, doors, enemies, pickups, archetype: built.archetype, ...(crushers ? { crushers } : {}) };
   }
   // Normal and item rooms come from archetypes above; boss arenas are built here, start rooms stay empty.
   const isDoor = (c: Cell) => doors.some((d) => d.cell.x === c.x && d.cell.y === c.y);
-  let tiles = emptyTiles(width, height);
+  let tiles = wallOff(emptyTiles(width, height), spec.shape ?? '1x1');
   const terrain = spec.kind === 'boss' ? BOSS_ARENAS[bossForFloor(floorIndex)] : undefined;
   for (let attempt = 0; terrain && attempt < MAX_TERRAIN_ATTEMPTS; attempt++) {
     const candidate = emptyTiles(width, height);
@@ -356,19 +417,19 @@ export function generateRoom(spec: RoomSpec, floorIndex: number, rng: Rng): Room
     )[0];
     enemies.push({ type: 'shadowBoss', cell });
   }
-  const summonPoints: Cell[] = [];
-  if (spec.kind === 'boss' && bossForFloor(floorIndex) === 'hiveBoss') {
-    enemies.push({ type: 'hiveBoss', cell: HIVE_CORE });
-    const core = [0, 1].flatMap((dx) => [0, 1].map((dy) => `${HIVE_CORE.x + dx},${HIVE_CORE.y + dy}`));
-    const nearDoor = (c: Cell) => doors.some((d) => Math.abs(d.cell.x - c.x) <= 1 && Math.abs(d.cell.y - c.y) <= 1);
-    const ringDistance = (c: Cell) => Math.max(Math.abs(c.x - (HIVE_CORE.x + 0.5)), Math.abs(c.y - (HIVE_CORE.y + 0.5)));
-    summonPoints.push(
-      ...reachableCells(tiles, doors).filter(
-        (c) => !core.includes(`${c.x},${c.y}`) && !nearDoor(c) && ringDistance(c) >= 2 && ringDistance(c) <= 3,
-      ),
-    );
+  if (spec.kind === 'boss' && bossForFloor(floorIndex) === 'treantBoss') {
+    // The Treant roots itself across the clearing from the entrance, on open ground it can fill.
+    const entrance = doors[0]?.cell ?? { x: 0, y: 0 };
+    const centre = { x: (width - 1) / 2, y: (height - 1) / 2 };
+    const target = { x: centre.x + (centre.x - entrance.x) * 0.65, y: centre.y + (centre.y - entrance.y) * 0.65 };
+    const open = (c: Cell) => [-1, 0, 1].every((dx) => [-1, 0, 1].every((dy) => tiles[c.y + dy]?.[c.x + dx] === 'floor'));
+    const farFromDoors = (c: Cell) => doors.every((d) => Math.abs(d.cell.x - c.x) + Math.abs(d.cell.y - c.y) > 3);
+    const cell = reachableCells(tiles, doors)
+      .filter((c) => open(c) && farFromDoors(c))
+      .sort((a, b) => Math.hypot(a.x - target.x, a.y - target.y) - Math.hypot(b.x - target.x, b.y - target.y))[0];
+    if (cell) enemies.push({ type: 'treantBoss', cell });
   }
-  return { id: spec.id, width, height, tiles, doors, enemies, pickups: [], summonPoints };
+  return { id: spec.id, width, height, tiles, doors, enemies, pickups: [] };
 }
 
 /** Pickup odds; all numbers are placeholders for playtest tuning. */
@@ -379,6 +440,16 @@ export const PICKUPS = {
   lockedChestContents: { min: 2, max: 3 },
   lockedChestPassiveChance: 0.35,
 };
+
+/** Chance a normal room with enemies makes one of them a champion; a placeholder for playtest tuning. */
+export const CHAMPION_CHANCE = 0.15;
+
+function crownChampion(enemies: EnemySpawn[], rng: Rng): EnemySpawn[] {
+  if (!enemies.length || rng.next() >= CHAMPION_CHANCE) return enemies;
+  const index = rng.int(0, enemies.length - 1);
+  const { cell: _, ...drop } = rollPickup(enemies[index].cell, rng);
+  return enemies.map((e, i) => (i === index ? { ...e, champion: { drop } } : e));
+}
 
 function weighted<K extends string>(weights: Record<K, number>, rng: Rng): K {
   const entries = Object.entries(weights) as [K, number][];

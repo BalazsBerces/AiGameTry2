@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { createWorld, detonateBomb, hitTile, placeBomb, shownPickups, touchPickup } from './world';
+import { validateRoom } from './roomValidator';
+import { burstGlowshroom, createWorld, detonateBomb, hitTile, placeBomb, shownPickups, smashRock, sproutTile, touchPickup, type WorldRoom } from './world';
+import { archetypeById, supportsShape } from './archetypes';
+import { CELL_TILES, roomPadding } from './roomGenerator';
 
 const firstNormalRoom = (world: ReturnType<typeof createWorld>) =>
   [...world.rooms.values()].find((r) => r.floorRoom.kind === 'normal')!;
@@ -24,6 +27,100 @@ describe('hitTile', () => {
     for (let i = 0; i < 5; i++) expect(hitTile(world, room.floorRoom.id, { x: 6, y: 3 })).toBe('none');
     expect(room.layout.tiles[3][6]).toBe('obstacle');
     expect(hitTile(world, room.floorRoom.id, { x: 0, y: 0 })).toBe('none');
+  });
+});
+
+describe('smashRock', () => {
+  it('breaks a rock outright, for good, forgetting any cracks it had', () => {
+    const world = createWorld(1);
+    const room = firstNormalRoom(world);
+    const id = room.floorRoom.id;
+    room.layout.tiles[3][6] = 'rock';
+    hitTile(world, id, { x: 6, y: 3 });
+    expect(smashRock(world, id, { x: 6, y: 3 })).toBe(true);
+    expect(world.rooms.get(id)!.layout.tiles[3][6]).toBe('floor');
+    room.layout.tiles[3][6] = 'rock';
+    expect(hitTile(world, id, { x: 6, y: 3 })).toBe('damaged');
+    expect(hitTile(world, id, { x: 6, y: 3 })).toBe('damaged');
+  });
+
+  it('leaves stone, holes and floor alone', () => {
+    const world = createWorld(1);
+    const room = firstNormalRoom(world);
+    const tiles = room.layout.tiles;
+    tiles[1][1] = 'obstacle';
+    tiles[1][2] = 'hole';
+    tiles[1][3] = 'floor';
+    for (const x of [1, 2, 3]) expect(smashRock(world, room.floorRoom.id, { x, y: 1 })).toBe(false);
+    expect(tiles[1].slice(1, 4)).toEqual(['obstacle', 'hole', 'floor']);
+  });
+});
+
+describe('sproutTile', () => {
+  it('grows a seed pod into rock that stays in the room until it is broken', () => {
+    const world = createWorld(1);
+    const room = firstNormalRoom(world);
+    room.layout.tiles[3][6] = 'floor';
+    expect(sproutTile(world, room.floorRoom.id, { x: 6, y: 3 }, 'rock')).toBe(true);
+    expect(world.rooms.get(room.floorRoom.id)!.layout.tiles[3][6]).toBe('rock');
+    let result = hitTile(world, room.floorRoom.id, { x: 6, y: 3 });
+    expect(result).toBe('damaged');
+    while (result === 'damaged') result = hitTile(world, room.floorRoom.id, { x: 6, y: 3 });
+    expect(result).toBe('broken');
+    expect(room.layout.tiles[3][6]).toBe('floor');
+  });
+
+  it('grows a thorn bush on floor', () => {
+    const world = createWorld(1);
+    const room = firstNormalRoom(world);
+    room.layout.tiles[2][4] = 'floor';
+    expect(sproutTile(world, room.floorRoom.id, { x: 4, y: 2 }, 'thorn')).toBe(true);
+    expect(room.layout.tiles[2][4]).toBe('thorn');
+  });
+
+  it('only sprouts on floor inside the room', () => {
+    const world = createWorld(1);
+    const room = firstNormalRoom(world);
+    room.layout.tiles[3][6] = 'hole';
+    room.layout.tiles[3][7] = 'obstacle';
+    expect(sproutTile(world, room.floorRoom.id, { x: 6, y: 3 }, 'rock')).toBe(false);
+    expect(sproutTile(world, room.floorRoom.id, { x: 7, y: 3 }, 'thorn')).toBe(false);
+    expect(sproutTile(world, room.floorRoom.id, { x: -1, y: 3 }, 'rock')).toBe(false);
+    expect(room.layout.tiles[3][6]).toBe('hole');
+    expect(room.layout.tiles[3][7]).toBe('obstacle');
+  });
+});
+
+describe('burstGlowshroom', () => {
+  it('pops a glowshroom on the first shot, leaving floor for the rest of the run', () => {
+    const world = createWorld(1);
+    const room = firstNormalRoom(world);
+    room.layout.tiles[3][6] = 'glowshroom';
+    expect(burstGlowshroom(world, room.floorRoom.id, { x: 6, y: 3 })).toBe(true);
+    expect(world.rooms.get(room.floorRoom.id)!.layout.tiles[3][6]).toBe('floor');
+    expect(burstGlowshroom(world, room.floorRoom.id, { x: 6, y: 3 })).toBe(false);
+  });
+
+  it('leaves every other tile alone', () => {
+    const world = createWorld(1);
+    const room = firstNormalRoom(world);
+    const tiles = room.layout.tiles;
+    tiles[1][1] = 'rock';
+    tiles[1][2] = 'obstacle';
+    tiles[1][3] = 'crystal';
+    tiles[1][4] = 'floor';
+    for (const x of [1, 2, 3, 4]) expect(burstGlowshroom(world, room.floorRoom.id, { x, y: 1 })).toBe(false);
+    expect(tiles[1].slice(1, 5)).toEqual(['rock', 'obstacle', 'crystal', 'floor']);
+    expect(burstGlowshroom(world, room.floorRoom.id, { x: -1, y: 1 })).toBe(false);
+  });
+
+  it('is not cracked by shots nor smashed by a charge like a rock', () => {
+    const world = createWorld(1);
+    const room = firstNormalRoom(world);
+    room.layout.tiles[3][6] = 'glowshroom';
+    expect(hitTile(world, room.floorRoom.id, { x: 6, y: 3 })).toBe('none');
+    expect(smashRock(world, room.floorRoom.id, { x: 6, y: 3 })).toBe(false);
+    expect(room.layout.tiles[3][6]).toBe('glowshroom');
   });
 });
 
@@ -79,6 +176,49 @@ describe('bombs', () => {
   });
 });
 
+describe('createWorld room shapes', () => {
+  const SIZE: Record<string, [number, number]> = {
+    '1x1': [13, 7], '2x1': [26, 7], '1x2': [13, 14], '2x2': [26, 14],
+    'L-tl': [26, 14], 'L-tr': [26, 14], 'L-bl': [26, 14], 'L-br': [26, 14],
+  };
+  /** A door's tile in world tile coordinates: the room's block origin, its wall padding, then the door cell. */
+  const doorTile = (room: WorldRoom, cell: { x: number; y: number }) => {
+    const pad = roomPadding(room.layout.width, room.layout.height);
+    return { x: room.floorRoom.cell.x * CELL_TILES.w + pad.x + cell.x, y: room.floorRoom.cell.y * CELL_TILES.h + pad.y + cell.y };
+  };
+
+  it('sizes every room by its shape and builds shaped rooms from ideas drawn for that shape', () => {
+    for (let seed = 0; seed < 40; seed++) {
+      const world = createWorld(seed);
+      for (const room of world.rooms.values()) {
+        const where = `seed ${seed} ${room.floorRoom.id} ${room.floorRoom.shape}`;
+        expect([room.layout.width, room.layout.height], where).toEqual(SIZE[room.floorRoom.shape]);
+        if (room.floorRoom.kind !== 'normal') continue;
+        expect(supportsShape(archetypeById(room.layout.archetype!)!, room.floorRoom.shape), where).toBe(true);
+      }
+    }
+  });
+
+  it('lines every door up with the neighbour’s door on the same tile row or column', () => {
+    for (let seed = 0; seed < 40; seed++) {
+      const world = createWorld(seed);
+      for (const room of world.rooms.values()) {
+        for (const door of room.layout.doors) {
+          const here = doorTile(room, door.cell);
+          const facing = { up: 'down', down: 'up', left: 'right', right: 'left' }[door.side];
+          const matches = room.neighbors
+            .map((id) => world.rooms.get(id)!)
+            .flatMap((n) => n.layout.doors.filter((d) => d.side === facing).map((d) => doorTile(n, d.cell)))
+            .filter((there) => (door.side === 'up' || door.side === 'down' ? there.x === here.x : there.y === here.y))
+            // Across the two rooms' walls: at most two tiles of padding each, plus one step.
+            .filter((there) => Math.abs(there.x - here.x) + Math.abs(there.y - here.y) <= 5);
+          expect(matches, `seed ${seed} ${room.floorRoom.id} ${door.side} at ${here.x},${here.y}`).toHaveLength(1);
+        }
+      }
+    }
+  });
+});
+
 describe('shownPickups', () => {
   it('shows only loot the room placed in plain sight until the room is cleared', () => {
     const world = createWorld(1);
@@ -101,5 +241,94 @@ describe('shownPickups', () => {
     world.rooms.get(id)!.layout.tiles.forEach((row) => row.fill('floor'));
     expect(touchPickup(world, id, 1)).toBe('opened');
     expect(shownPickups(world, id).map((p) => p.type).sort()).toEqual(['heart', 'key', 'openChest']);
+  });
+});
+
+describe('champions', () => {
+  const worlds = Array.from({ length: 150 }, (_, seed) => createWorld(seed));
+  const championsIn = (world: ReturnType<typeof createWorld>, kind: string) =>
+    [...world.rooms.values()].filter((r) => r.floorRoom.kind === kind).flatMap((r) => r.layout.enemies.filter((e) => e.champion));
+
+  it('appear in normal rooms across runs, but never in boss or item rooms', () => {
+    expect(worlds.some((w) => championsIn(w, 'normal').length > 0)).toBe(true);
+    for (const w of worlds) {
+      expect(championsIn(w, 'boss'), `seed ${w.seed}`).toEqual([]);
+      expect(championsIn(w, 'item'), `seed ${w.seed}`).toEqual([]);
+    }
+  });
+
+  it('are the same for the same seed', () => {
+    const crowned = (w: ReturnType<typeof createWorld>) =>
+      [...w.rooms.values()].flatMap((r) => r.layout.enemies.filter((e) => e.champion).map((e) => ({ room: r.floorRoom.id, ...e })));
+    for (const seed of [3, 17, 42]) {
+      expect(crowned(worlds[seed]).length).toBeGreaterThan(0);
+      expect(crowned(createWorld(seed))).toEqual(crowned(worlds[seed]));
+    }
+  });
+});
+
+describe('forest cast', () => {
+  it('fills floor 1 rooms with goblins, seed-spitters, wasps and boars only, and valid rooms', () => {
+    const seen = new Set<string>();
+    for (let seed = 0; seed < 60; seed++) {
+      const world = createWorld(seed);
+      for (const room of world.rooms.values()) {
+        if (room.floorIndex !== 0 || room.floorRoom.kind === 'boss') continue;
+        const { layout } = room;
+        for (const e of layout.enemies) seen.add(e.type);
+        // Symmetry is checked per archetype in the room generator sweeps; here, everything else.
+        const violations = validateRoom(layout, { axes: [] }).filter((v) => v.rule !== 'asymmetric');
+        expect(violations, `seed ${seed} room ${layout.id}`).toEqual([]);
+      }
+    }
+    expect([...seen].sort()).toEqual(['boar', 'goblin', 'seedSpitter', 'wasp']);
+  });
+});
+
+describe('the caves cast', () => {
+  it('fills floor 2 rooms with ghouls, crystal turrets, worms and bats only', () => {
+    const types = new Set<string>();
+    for (let seed = 0; seed < 40; seed++) {
+      for (const room of createWorld(seed).rooms.values()) {
+        if (room.floorIndex !== 1 || room.floorRoom.kind === 'boss') continue;
+        for (const e of room.layout.enemies) types.add(e.type);
+      }
+    }
+    expect([...types].sort()).toEqual(['bat', 'crystalTurret', 'ghoul', 'worm']);
+  });
+});
+
+describe('floor casts across whole runs', () => {
+  const castOf = (seed: number) => {
+    const types: Set<string>[] = [new Set(), new Set(), new Set()];
+    const hp: (number | undefined)[][] = [[], [], []];
+    for (const room of createWorld(seed).rooms.values()) {
+      if (room.floorRoom.kind !== 'normal') continue;
+      for (const e of room.layout.enemies) {
+        types[room.floorIndex].add(e.type);
+        if (e.type === 'zombie') hp[room.floorIndex].push(e.hp);
+      }
+    }
+    return { types, hp };
+  };
+  const runs = Array.from({ length: 60 }, (_, seed) => castOf(seed));
+
+  it('never spawns worms or plain turrets on floor 3, whose turret is the gargoyle', () => {
+    for (const { types } of runs) {
+      expect(types[2].has('worm')).toBe(false);
+      expect(types[2].has('turret')).toBe(false);
+    }
+    expect(runs.some(({ types }) => types[2].has('gargoyle'))).toBe(true);
+  });
+
+  it('keeps gargoyles off floors 1 and 2', () => {
+    for (const { types } of runs) for (const f of [0, 1]) expect(types[f].has('gargoyle')).toBe(false);
+  });
+
+  it('makes floor 3 zombies tougher than the plain zombie (3 hit points) of floors 1 and 2', () => {
+    const dungeon = runs.flatMap(({ hp }) => hp[2]);
+    expect(dungeon.length).toBeGreaterThan(0);
+    for (const h of dungeon) expect(h).toBeGreaterThan(3);
+    for (const h of runs.flatMap(({ hp }) => [...hp[0], ...hp[1]])) expect(h).toBeUndefined();
   });
 });

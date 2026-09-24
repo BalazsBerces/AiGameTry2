@@ -3,7 +3,7 @@ import { DIRECTIONS, STEP, type Cell } from '../../core/floorGenerator';
 import { createRng, type Rng } from '../../core/rng';
 import { createWorm, killSegment, stepWorm, type Worm } from '../../core/wormChain';
 import { COLORS, TUNING } from '../config';
-import { flash, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
+import { championBoost, championColor, flash, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
 
 export interface WormStyle {
   segmentSize: number;
@@ -28,6 +28,18 @@ export const BOSS_WORM: WormStyle = {
   headColor: COLORS.wormBossHead,
   bodyColor: COLORS.wormBossBody,
 };
+
+/** A worm crowned champion: bigger, tougher, quicker and gold-tinted. */
+export function championWorm(style: WormStyle): WormStyle {
+  const boost = championBoost(true);
+  return {
+    segmentSize: style.segmentSize * boost.scale,
+    segmentHp: style.segmentHp * boost.hp,
+    stepMs: style.stepMs / boost.speed,
+    headColor: championColor(style.headColor, true),
+    bodyColor: championColor(style.bodyColor, true),
+  };
+}
 
 const sameCell = (a: Cell, b: Cell) => a.x === b.x && a.y === b.y;
 

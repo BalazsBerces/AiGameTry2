@@ -493,12 +493,12 @@ if (scenario === 'full-run') {
     const ok = await walkTo(boss.id);
     console.log(`floor ${f + 1}: reached boss ${boss.id}: ${ok}, HUD floor ${await floorNow()}, locks ${await page.evaluate(`${scene()}.doorLocks.length`)}`);
     if (!ok) break;
-    if (f === 1) {
-      await page.waitForTimeout(6000);
-      await shot('03-hive');
-      console.log('  hive fight after 6s:', await page.evaluate(`(() => { const s = ${scene()}; return {
-        enemies: s.enemies.map((e) => e.parts.length === 1 && e.parts[0].radius ? 'hive' : 'other').join(','),
-        enemyShots: s.enemyShots.getLength() }; })()`));
+    if (f === 0) {
+      await page.waitForTimeout(1000);
+      await shot('03-treant-roots');
+      console.log('  treant fight after 1s:', await page.evaluate(`(() => { const s = ${scene()}; return {
+        enemies: s.enemies.map((e) => e.parts.length === 1 && e.parts[0].radius ? 'treant' : 'other').join(','),
+        health: s.world.player.health }; })()`));
     }
     if (f === 2) {
       const shadowInfo = () => page.evaluate(`(() => { const s = ${scene()}; const ctx = s.enemyContext(s.time.now);
@@ -587,7 +587,7 @@ if (scenario === 'immovable') {
     return { before, after, moved: Math.round(Math.hypot(after[0] - before[0], after[1] - before[1])) };
   };
   console.log('turret pushed by zombies (moved should be 0):', await pushTest(`{ type: 'turret', cell: { x: 6, y: 4 } }`));
-  console.log('hive pushed by zombies (moved should be 0):', await pushTest(`{ type: 'hiveBoss', cell: { x: 5, y: 3 } }`));
+  console.log('treant pushed by zombies (moved should be 0):', await pushTest(`{ type: 'treantBoss', cell: { x: 5, y: 3 } }`));
 }
 
 if (scenario === 'end-race') {
@@ -663,6 +663,37 @@ if (scenario === 'rooms') {
     await page.waitForTimeout(600);
     await shot(`room-f${floor}-${id.replace(',', '_')}`);
     console.log(id, JSON.stringify(info));
+  }
+}
+
+if (scenario === 'floors') {
+  // Screenshots themed rooms on every floor: the rooms with the most terrain (holes first), then the boss room.
+  for (const floor of [0, 1, 2]) {
+    const ids = await page.evaluate(`(() => {
+      const rooms = [...${scene()}.world.rooms.values()].filter((r) => r.floorIndex === ${floor});
+      const count = (r, t) => r.layout.tiles.flat().filter((x) => x === t).length;
+      const normal = rooms.filter((r) => r.floorRoom.kind === 'normal')
+        .sort((a, b) => count(b, 'hole') * 10 + count(b, 'obstacle') + count(b, 'rock') - (count(a, 'hole') * 10 + count(a, 'obstacle') + count(a, 'rock')));
+      return [...normal.slice(0, 2), ...rooms.filter((r) => r.floorRoom.kind === 'boss')].map((r) => r.floorRoom.id);
+    })()`);
+    for (const id of ids) {
+      const info = await page.evaluate(`(() => { const s = ${scene()};
+        for (const e of s.enemies) for (const p of e.parts) p.destroy();
+        s.enemies = [];
+        for (const l of s.doorLocks) l.destroy();
+        s.doorLocks = [];
+        s.invincibleUntil = Infinity;
+        const room = s.world.rooms.get('${id}');
+        const door = room.layout.doors[0];
+        s.player.body.reset(room.floorRoom.cell.x * 720 + (door.cell.x + 1.5) * 48, room.floorRoom.cell.y * 432 + (door.cell.y + 1.5) * 48);
+        s.enterRoom(room, s.time.now);
+        s.enemiesWakeAt = Infinity;
+        return { kind: room.floorRoom.kind, archetype: room.layout.archetype };
+      })()`);
+      await page.waitForTimeout(600);
+      await shot(`floor${floor}-${info.kind}-${id.replace(',', '_')}`);
+      console.log(floor, id, JSON.stringify(info));
+    }
   }
 }
 

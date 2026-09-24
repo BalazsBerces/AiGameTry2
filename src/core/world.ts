@@ -10,15 +10,8 @@ import {
   type FloorRoom,
   type RoomDoor,
 } from './floorGenerator';
-import {
-  generateRoom,
-  isBlastable,
-  isBreakable,
-  ROCK_HITS,
-  type ChestItem,
-  type PickupType,
-  type RoomLayout,
-} from './roomGenerator';
+import { generateRoom, type ChampionDrop, type ChestItem, type PickupType, type RoomLayout } from './roomGenerator';
+import { bombDestructible, hitsToBreak, isWalkable } from './tiles';
 import type { Passive } from './weaponModel';
 
 export interface WorldRoom {
@@ -97,14 +90,14 @@ function buildFloor(world: World, rng: Rng, floor: FloorLayout) {
     floor.rooms.map((r) => [r.id, [...roomDoors(floor, r.id), ...crossFloorDoors(world.floors, floor.floorIndex, r)]]),
   );
   const archetypes = assignArchetypes(
-    floor.rooms.map((r) => ({ id: r.id, kind: r.kind, doors: doorsOf.get(r.id)!.map((d) => d.side) })),
+    floor.rooms.map((r) => ({ id: r.id, kind: r.kind, doors: doorsOf.get(r.id)!.map((d) => d.side), shape: r.shape })),
     floor.floorIndex,
     rng.fork('archetypes'),
   );
   for (const floorRoom of floor.rooms) {
     const doors = doorsOf.get(floorRoom.id)!;
     const layout = generateRoom(
-      { id: floorRoom.id, kind: floorRoom.kind, doors, archetype: archetypes.get(floorRoom.id) },
+      { id: floorRoom.id, kind: floorRoom.kind, doors, archetype: archetypes.get(floorRoom.id), shape: floorRoom.shape },
       floor.floorIndex,
       rng.fork(`room ${floorRoom.id}`),
     );
@@ -166,7 +159,8 @@ function openChest(world: World, roomId: string, chest: WorldPickup) {
     for (let dy = -r; dy <= r; dy++) {
       for (let dx = -r; dx <= r; dx++) {
         const c = { x: chest.cell.x + dx, y: chest.cell.y + dy };
-        if (layout.tiles[c.y]?.[c.x] === 'floor' && !occupied.has(`${c.x},${c.y}`)) {
+        const tile = layout.tiles[c.y]?.[c.x];
+        if (tile && isWalkable(tile) && !occupied.has(`${c.x},${c.y}`)) {
           around.push(c);
           occupied.add(`${c.x},${c.y}`);
         }
@@ -181,25 +175,66 @@ function openChest(world: World, roomId: string, chest: WorldPickup) {
   chest.contents = undefined;
 }
 
+/** A champion died on `cell`: its extra pickup lands there, in plain sight. */
+export function dropChampionLoot(world: World, roomId: string, drop: ChampionDrop, cell: Cell) {
+  const list = world.pickups.get(roomId) ?? [];
+  list.push({ id: world.nextPickupId++, ...drop, cell, visible: true });
+  world.pickups.set(roomId, list);
+}
+
 export type TileHitResult = 'none' | 'damaged' | 'broken';
 
 /**
- * A player shot hit a terrain tile. Rocks break into floor after `ROCK_HITS` hits; the room's
- * tiles are the world's, so a broken rock stays broken for the rest of the run.
+ * A player shot hit a terrain tile. Breakable tiles turn into floor after their `hitsToBreak`; the
+ * room's tiles are the world's, so a broken rock stays broken for the rest of the run.
  */
 export function hitTile(world: World, roomId: string, cell: Cell): TileHitResult {
   const tiles = world.rooms.get(roomId)?.layout.tiles;
   const tile = tiles?.[cell.y]?.[cell.x];
-  if (!tiles || !tile || !isBreakable(tile)) return 'none';
+  const toBreak = tile && hitsToBreak(tile);
+  if (!tiles || !toBreak) return 'none';
   const key = `${roomId}|${cell.x},${cell.y}`;
   const hits = (world.tileHits.get(key) ?? 0) + 1;
-  if (hits < ROCK_HITS) {
+  if (hits < toBreak) {
     world.tileHits.set(key, hits);
     return 'damaged';
   }
   world.tileHits.delete(key);
   tiles[cell.y][cell.x] = 'floor';
   return 'broken';
+}
+
+/** A charging boar ran into `cell`: a breakable tile (rock) there turns into floor at once, for good. */
+export function smashRock(world: World, roomId: string, cell: Cell): boolean {
+  const tiles = world.rooms.get(roomId)?.layout.tiles;
+  const tile = tiles?.[cell.y]?.[cell.x];
+  if (!tiles || !tile || !hitsToBreak(tile)) return false;
+  tiles[cell.y][cell.x] = 'floor';
+  world.tileHits.delete(`${roomId}|${cell.x},${cell.y}`);
+  return true;
+}
+
+/**
+ * A seed pod landed on `cell` and sprouts `tile` there. Only floor can sprout; like a broken
+ * rock, the change is the world's and lasts for the rest of the run. True if it sprouted.
+ */
+export function sproutTile(world: World, roomId: string, cell: Cell, tile: 'rock' | 'thorn'): boolean {
+  const tiles = world.rooms.get(roomId)?.layout.tiles;
+  if (tiles?.[cell.y]?.[cell.x] !== 'floor') return false;
+  tiles[cell.y][cell.x] = tile;
+  world.tileHits.delete(`${roomId}|${cell.x},${cell.y}`);
+  return true;
+}
+
+/**
+ * A player shot hit `cell`: a glowshroom there bursts (its stun cloud is `stunBurst`) and is
+ * floor from then on, for the rest of the run. True if one burst.
+ */
+export function burstGlowshroom(world: World, roomId: string, cell: Cell): boolean {
+  const tiles = world.rooms.get(roomId)?.layout.tiles;
+  if (tiles?.[cell.y]?.[cell.x] !== 'glowshroom') return false;
+  tiles[cell.y][cell.x] = 'floor';
+  return true;
 }
 
 /** Spends a bomb if the player has one; true if one was placed. */
@@ -221,7 +256,7 @@ export function detonateBomb(world: World, roomId: string, cell: Cell): Cell[] {
   for (let y = cell.y - reach; y <= cell.y + reach; y++) {
     for (let x = cell.x - reach; x <= cell.x + reach; x++) {
       const tile = tiles[y]?.[x];
-      if (!tile || !isBlastable(tile) || Math.hypot(x - cell.x, y - cell.y) > BOMB_RADIUS) continue;
+      if (!tile || !bombDestructible(tile) || Math.hypot(x - cell.x, y - cell.y) > BOMB_RADIUS) continue;
       tiles[y][x] = 'floor';
       world.tileHits.delete(`${roomId}|${x},${y}`);
       destroyed.push({ x, y });

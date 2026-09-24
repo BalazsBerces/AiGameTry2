@@ -1,6 +1,6 @@
 import type Phaser from 'phaser';
 import type { Cell } from '../../core/floorGenerator';
-import type { Goblin, PackMember } from '../../core/forestCast';
+import type { PackDecision, PackMember } from '../../core/forestCast';
 import type { Door, Tile } from '../../core/roomGenerator';
 import type { Stunnable } from '../../core/stun';
 import { COLORS, TUNING } from '../config';
@@ -67,7 +67,7 @@ export interface Enemy extends Stunnable {
    * Goblins decide as a pack (core/forestCast `updateGoblinPack`): each frame the scene gathers
    * every goblin's `member()` and hands each its new state through `follow` before updating it.
    */
-  pack?: { member(ctx: EnemyContext): PackMember; follow(goblin: Goblin): void };
+  pack?: { member(ctx: EnemyContext): PackMember; follow(decision: PackDecision): void };
 }
 
 /** Stat multipliers for a champion, or none for a regular enemy. */

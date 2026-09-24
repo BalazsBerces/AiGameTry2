@@ -33,7 +33,8 @@ export const TUNING = {
   /** Multipliers for a room's champion: size, hit points, and movement (or firing) speed. */
   champion: { scale: 1.35, hp: 2, speed: 1.15 },
   /** Faster than a zombie; runs off to regroup when hurt (core/forestCast). */
-  goblin: { hp: 3, speed: 130, retreatSpeed: 110, size: 24 },
+  /** `healRate`: share of its max HP a goblin gets back per second while its partner heals it (placeholder). */
+  goblin: { hp: 3, speed: 130, retreatSpeed: 110, size: 24, healRate: 0.45 },
   /** Fires a 3-shot fan (core/forestCast). */
   seedSpitter: { hp: 4, radius: 17, fireDelayMs: 2000, shotSpeed: 200 },
   /** Slow stalker; `lungeSpeed` while lunging (range and timing live in core/ghoul). */
@@ -130,6 +131,8 @@ export const COLORS = {
   goblinEdge: 0x4a3a1c,
   /** A hurt goblin keeping away from the player (placeholder). */
   goblinHurt: 0xdde6a8,
+  /** The link between a healing goblin pair, and the healer's pulse (placeholder). */
+  goblinHeal: 0x7cf07c,
   seedSpitter: 0xc0584a,
   seedSpitterEdge: 0xf0d27a,
   ghoul: 0x9aa89c,

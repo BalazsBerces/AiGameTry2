@@ -544,7 +544,7 @@ export const PICKUPS = {
   lockedChestContents: { min: 2, max: 3 },
   lockedChestPassiveChance: 0.35,
   /** Chance one of a chest's items is swapped for a stat-up (locked: only when it holds no passive). */
-  statUpChance: { chest: 0.2, lockedChest: 0.45 },
+  statUpChance: { chest: 0.3, lockedChest: 0.65 },
 };
 
 /** Chance a normal room with enemies makes one of them a champion; a placeholder for playtest tuning. */

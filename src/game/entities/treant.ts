@@ -18,6 +18,26 @@ import type { Cell } from '../../core/floorGenerator';
 import { COLORS, TUNING } from '../config';
 import { singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
 
+/** How the last stand's roots look; placeholders for playtest tuning. Distances in tiles. */
+const RING_LOOK = {
+  /** Circles of roots round the Treant, from just outside its body, this far apart (and this far apart round each circle). */
+  firstRadius: 1.3,
+  spacing: 0.8,
+  /** Root clusters drawn at this share of the root eruption's size. */
+  scale: 0.8,
+  growMs: 140,
+  sinkMs: 160,
+  /** The ground marks drawn while the ring is still a warning. */
+  warnSize: 20,
+};
+
+/** Rises past 1 and settles back: a root popping up out of the ground. */
+function easeOutBack(p: number) {
+  const c1 = 1.70158;
+  const c3 = c1 + 1;
+  return 1 + c3 * (p - 1) ** 3 + c1 * (p - 1) ** 2;
+}
+
 /**
  * Floor 1 boss. It walks slowly at the player, stopping to send fans of roots erupting along the
  * ground toward them; those take turns with volleys of seed pods lobbed around them (thrown on
@@ -128,9 +148,57 @@ export function createTreant(scene: Phaser.Scene, x: number, y: number, _cell: C
     }
   };
 
+  /** One root cluster of the last stand, fixed in the ground; the gaps sweep over it. */
+  interface RingRoot {
+    x: number;
+    y: number;
+    /** Its angle from the Treant, in radians. */
+    angle: number;
+    up: boolean;
+    /** When it last burst up or started sinking. */
+    since: number;
+    sway: number;
+  }
+  let ringRoots: RingRoot[] | undefined;
+
+  /** Roots planted in circles round the Treant, `spacing` tiles apart, on open ground only. */
+  const plantRingRoots = (ctx: EnemyContext, ring: BranchRing): RingRoot[] => {
+    const roots: RingRoot[] = [];
+    const reach = Math.hypot(ctx.tiles[0].length, ctx.tiles.length);
+    for (let r = RING_LOOK.firstRadius; r < reach; r += RING_LOOK.spacing) {
+      const n = Math.max(6, Math.round((2 * Math.PI * r) / RING_LOOK.spacing));
+      const offset = (rng.next() * 2 * Math.PI) / n;
+      for (let i = 0; i < n; i++) {
+        const angle = offset + (i * 2 * Math.PI) / n;
+        const at = { x: ring.centre.x + Math.cos(angle) * r, y: ring.centre.y + Math.sin(angle) * r };
+        if (!ctx.isWalkable({ x: Math.floor(at.x), y: Math.floor(at.y) })) continue;
+        roots.push({ ...toWorld(ctx, at), angle, up: false, since: -Infinity, sway: rng.next() * 2 * Math.PI });
+      }
+    }
+    return roots;
+  };
+
+  /** The root eruption's three spikes, `grow` of the way up (overshooting a little as they pop). */
+  const drawRootCluster = (px: number, py: number, grow: number, lean: number) => {
+    const s = RING_LOOK.scale;
+    branches.fillStyle(COLORS.root, 1);
+    for (const dx of [-12, 0, 12]) {
+      const bx = px + dx * s;
+      branches.fillTriangle(bx - 7 * s, py + 16 * s, bx + 7 * s, py + 16 * s, bx + lean, py + 16 * s - 34 * s * grow);
+    }
+  };
+
+  const drawRootWarning = (px: number, py: number, alpha: number) => {
+    const half = RING_LOOK.warnSize / 2;
+    branches.fillStyle(COLORS.rootTelegraph, alpha).fillRect(px - half, py - half, half * 2, half * 2);
+    branches.lineStyle(2, COLORS.rootTelegraph, Math.min(1, alpha * 2.5)).strokeRect(px - half, py - half, half * 2, half * 2);
+  };
+
   /**
-   * The last stand's branches: dark cover over the whole room but for the gaps, their edges lined
-   * with thick branches. Only an outline while it is a warning. Clipped to the room's floor.
+   * The last stand drawn in the root eruption's own roots, packed in circles round the Treant.
+   * While it is a warning, the ground outside the gaps is marked as roots mark it before they
+   * burst; then roots burst up wherever the gaps are not, sinking as a gap's front edge reaches
+   * them and bursting up again behind it. Clipped to the room's floor.
    */
   const drawRing = (ctx: EnemyContext, ring: BranchRing) => {
     branches.clear();
@@ -140,31 +208,29 @@ export function createTreant(scene: Phaser.Scene, x: number, y: number, _cell: C
       ringMask = scene.make.graphics({}).fillRect(corner.x - t / 2, corner.y - t / 2, ctx.tiles[0].length * t, ctx.tiles.length * t);
       branches.setMask(ringMask.createGeometryMask());
     }
-    const { x: cx, y: cy } = toWorld(ctx, ring.centre);
-    const reach = Math.hypot(ctx.tiles[0].length, ctx.tiles.length) * TUNING.tile;
+    ringRoots ??= plantRingRoots(ctx, ring);
     const half = (RING.gapDeg / 2) * (Math.PI / 180);
     const gaps = ringGaps(ring);
-    const warning = ringWarning(ring, ctx.time);
-    const warn = Math.min(1, (ctx.time - ring.start) / RING.warnMs);
-    gaps.forEach((gap, i) => {
-      const from = gap + half;
-      const to = (gaps[i + 1] ?? gaps[0] + 2 * Math.PI) - half;
-      if (warning) {
-        branches.fillStyle(COLORS.sweepTelegraph, 0.08 + 0.2 * warn).slice(cx, cy, reach, from, to).fillPath();
-      } else {
-        branches.fillStyle(COLORS.ringCover, 0.55).slice(cx, cy, reach, from, to).fillPath();
-        // A few boughs across the cover, turning with it.
-        for (let k = 1; k < 4; k++) {
-          const a = from + ((to - from) * k) / 4;
-          branches.lineStyle(4, COLORS.treantBark, 0.6).lineBetween(cx, cy, cx + Math.cos(a) * reach, cy + Math.sin(a) * reach);
-        }
+    const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
+    const outside = (a: number) => gaps.every((g) => Math.abs(wrap(a - g)) > half);
+    const now = ctx.time;
+
+    if (ringWarning(ring, now)) {
+      const warn = Math.min(1, (now - ring.start) / RING.warnMs);
+      for (const root of ringRoots) if (outside(root.angle)) drawRootWarning(root.x, root.y, 0.12 + 0.25 * warn);
+      return;
+    }
+    for (const root of ringRoots) {
+      const up = outside(root.angle);
+      if (up !== root.up) [root.up, root.since] = [up, now];
+      const t = now - root.since;
+      if (up) {
+        const grow = easeOutBack(Math.min(1, t / RING_LOOK.growMs));
+        drawRootCluster(root.x, root.y, grow, Math.sin(now / 350 + root.sway) * 3);
+      } else if (t < RING_LOOK.sinkMs) {
+        drawRootCluster(root.x, root.y, 1 - t / RING_LOOK.sinkMs, 0);
       }
-      for (const edge of [from, to]) {
-        branches
-          .lineStyle(warning ? 2 : 8, warning ? COLORS.sweepTelegraph : COLORS.treantBark, warning ? 0.8 : 1)
-          .lineBetween(cx, cy, cx + Math.cos(edge) * reach, cy + Math.sin(edge) * reach);
-      }
-    });
+    }
   };
 
   /** Up out of the ground on `cell`: whoever stands there is hurt and shoved clear. */

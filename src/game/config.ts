@@ -168,8 +168,6 @@ export const COLORS = {
   podShadow: 0x1a1208,
   sweepTelegraph: 0xd8b25a,
   sweep: 0x6a8a3a,
-  /** The last stand's branch cover, dark over the floor. */
-  ringCover: 0x1e2a12,
   glowCloud: 0x8af0b8,
   bat: 0x4a3a5c,
   batWing: 0x1c1424,

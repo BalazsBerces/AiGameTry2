@@ -258,7 +258,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   create(data: { seed?: number }) {
-    const urlSeed = firstBoot ? Number(new URLSearchParams(location.search).get('seed') ?? NaN) : NaN;
+    const params = new URLSearchParams(firstBoot ? location.search : '');
+    const urlSeed = Number(params.get('seed') ?? NaN);
+    // Playtesting: `?boss` (or `?boss=2`, `?boss=3`) starts at that floor's boss room door.
+    const urlBoss = params.has('boss') ? Number(params.get('boss') || 1) : undefined;
     firstBoot = false;
     const seed = data.seed ?? (Number.isFinite(urlSeed) ? urlSeed : Math.floor(Math.random() * 2 ** 31));
     this.world = createWorld(seed);
@@ -362,6 +365,14 @@ export class GameScene extends Phaser.Scene {
     this.showRoomsAround(start);
     this.followInside(start);
     this.scene.launch('hud');
+
+    const boss = [...this.world.rooms.values()].find((r) => r.floorRoom.kind === 'boss' && r.floorIndex === (urlBoss ?? 0) - 1);
+    if (boss) {
+      const door = boss.layout.doors[0];
+      const at = tileCenter(boss, door.cell.x, door.cell.y);
+      this.player.body.reset(at.x, at.y);
+      this.enterRoom(boss, this.time.now);
+    }
   }
 
   update(time: number, delta: number) {

@@ -66,6 +66,7 @@ import { burstGlowshroom } from '../core/world';
 import type { Stunnable } from '../core/stun';
 import { createBat } from './entities/bat';
 import { softPush } from '../core/softPush';
+import { updateGoblinPack } from '../core/forestCast';
 
 type Keys = Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
 type PhysicsArc = Phaser.GameObjects.Arc & { body: Phaser.Physics.Arcade.Body };
@@ -680,6 +681,10 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     const ctx = this.enemyContext(time);
+    // Goblins decide together first (core/forestCast), then each moves as it was told.
+    const goblins = this.enemies.filter((e) => e.pack);
+    const decided = updateGoblinPack(goblins.map((e) => e.pack!.member()), time);
+    goblins.forEach((e, i) => e.pack!.follow(decided[i]));
     for (const e of this.enemies) {
       // The shared stun (core/stun): a stunned enemy of any kind stands still and does nothing.
       if (isStunned(e, time)) for (const p of e.parts) p.body.setVelocity(0, 0);

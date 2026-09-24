@@ -6,7 +6,8 @@ import { stepDownhill } from './grid';
  * behaviour is tested without Phaser; the entities in src/game only apply what these return.
  */
 
-export type GoblinMode = 'chase' | 'retreat';
+/** `hide`: hurt, keeping away from the player until a partner turns up. */
+export type GoblinMode = 'chase' | 'retreat' | 'hide';
 
 export interface Goblin {
   mode: GoblinMode;
@@ -21,11 +22,27 @@ export const GOBLIN_RETREAT_MS = 2500;
 
 export const createGoblin = (): Goblin => ({ mode: 'chase', retreatUntil: 0, regrouped: false });
 
-/** Starts a retreat when HP drops below half, and ends it once the retreat time is up. */
-export function updateGoblin(g: Goblin, hp: number, maxHp: number, time: number): Goblin {
+/** The last goblin's retreat: starts when HP drops below half, and ends for good once the time is up. */
+function updateGoblin(g: Goblin, hp: number, maxHp: number, time: number): Goblin {
   if (g.mode === 'retreat') return time >= g.retreatUntil ? { ...g, mode: 'chase', regrouped: true } : g;
   if (!g.regrouped && hp < maxHp / 2) return { ...g, mode: 'retreat', retreatUntil: time + GOBLIN_RETREAT_MS };
   return g;
+}
+
+/** One goblin as the pack rules see it. */
+export interface PackMember {
+  hp: number;
+  maxHp: number;
+  goblin: Goblin;
+}
+
+/**
+ * The whole room's goblins decide together, once a frame: each one's new state, in the same order.
+ * A hurt goblin hides while others are alive; the last one left flees once, then fights to the death.
+ */
+export function updateGoblinPack(pack: readonly PackMember[], time: number): Goblin[] {
+  if (pack.length === 1) return [updateGoblin(pack[0].goblin, pack[0].hp, pack[0].maxHp, time)];
+  return pack.map((m) => ({ ...m.goblin, mode: m.hp < m.maxHp / 2 ? 'hide' : 'chase' }));
 }
 
 const NEIGHBORS: readonly Cell[] = [

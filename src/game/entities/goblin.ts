@@ -1,11 +1,11 @@
 import type Phaser from 'phaser';
-import { createGoblin as newGoblinState, goblinStep, updateGoblin } from '../../core/forestCast';
+import { createGoblin as newGoblinState, goblinStep } from '../../core/forestCast';
 import { COLORS, TUNING } from '../config';
 import { championBoost, championColor, markChampion, roundBody, singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
 
 /**
- * Forest walker: rushes the player faster than a zombie, runs off to regroup once below half
- * HP, then comes back (rules in core/forestCast). Drawn as a pointed triangle.
+ * Forest walker: rushes the player faster than a zombie. Hurt below half HP it turns pale and
+ * keeps away; the pack decides when (rules in core/forestCast). Drawn as a pointed triangle.
  */
 export function createGoblin(scene: Phaser.Scene, x: number, y: number, champion = false): Enemy {
   const boost = championBoost(champion);
@@ -13,8 +13,10 @@ export function createGoblin(scene: Phaser.Scene, x: number, y: number, champion
   const maxHp = TUNING.goblin.hp * boost.hp;
   const speed = TUNING.goblin.speed * boost.speed;
   const retreatSpeed = TUNING.goblin.retreatSpeed * boost.speed;
+  const color = championColor(COLORS.goblin, champion);
+  const hurtColor = championColor(COLORS.goblinHurt, champion);
   const sprite = scene.add
-    .triangle(x, y, 0, size, size / 2, 0, size, size, championColor(COLORS.goblin, champion))
+    .triangle(x, y, 0, size, size / 2, 0, size, size, color)
     .setStrokeStyle(2, COLORS.goblinEdge) as unknown as EnemySprite;
   markChampion(sprite, champion);
   scene.physics.add.existing(sprite);
@@ -22,12 +24,13 @@ export function createGoblin(scene: Phaser.Scene, x: number, y: number, champion
   let hp = maxHp;
   let state = newGoblinState();
   const enemy = singlePartEnemy(scene, sprite, maxHp, (ctx: EnemyContext) => {
-    state = updateGoblin(state, hp, maxHp, ctx.time);
+    const chasing = state.mode === 'chase';
+    sprite.setFillStyle(chasing ? color : hurtColor);
     const here = ctx.tileOf(sprite.x, sprite.y);
     const onPlayer = here.x === ctx.playerTile.x && here.y === ctx.playerTile.y;
-    const next = onPlayer && state.mode === 'chase' ? undefined : goblinStep(state, ctx.walkDistance, here);
-    if (!next && state.mode === 'retreat') {
-      // Cornered: hold still and wait out the retreat.
+    const next = onPlayer && chasing ? undefined : goblinStep(state, ctx.walkDistance, here);
+    if (!next && !chasing) {
+      // Cornered: hold still and wait.
       sprite.body.setVelocity(0, 0);
       return;
     }
@@ -35,9 +38,15 @@ export function createGoblin(scene: Phaser.Scene, x: number, y: number, champion
     const dx = target.x - sprite.x;
     const dy = target.y - sprite.y;
     const len = Math.hypot(dx, dy) || 1;
-    const v = state.mode === 'retreat' ? retreatSpeed : speed;
+    const v = chasing ? speed : retreatSpeed;
     sprite.body.setVelocity((dx / len) * v, (dy / len) * v);
   });
+  enemy.pack = {
+    member: () => ({ hp, maxHp, goblin: state }),
+    follow: (goblin) => {
+      state = goblin;
+    },
+  };
   const hit = enemy.hit;
   enemy.hit = (part, damage) => {
     hp -= damage;

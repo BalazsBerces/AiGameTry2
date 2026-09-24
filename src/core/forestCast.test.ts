@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createGoblin, goblinStep, spreadShots, updateGoblin } from './forestCast';
+import { createGoblin, goblinStep, spreadShots, updateGoblinPack } from './forestCast';
 
 /**
  * Distance field of a 5x1 corridor with the player at x=0: the goblin at x=2 steps to x=1 to
@@ -8,39 +8,51 @@ import { createGoblin, goblinStep, spreadShots, updateGoblin } from './forestCas
 const CORRIDOR = [[0, 1, 2, 3, 4]];
 const HERE = { x: 2, y: 0 };
 
-describe('goblin', () => {
-  it('chases the player while at half HP or more', () => {
-    const g = updateGoblin(createGoblin(), 2, 4, 1000);
-    expect(g.mode).toBe('chase');
-    expect(goblinStep(g, CORRIDOR, HERE)).toEqual({ x: 1, y: 0 });
+describe('goblin step', () => {
+  const hiding = { ...createGoblin(), mode: 'hide' as const };
+
+  it('heads down the walk field to chase and up it to get away', () => {
+    expect(goblinStep(createGoblin(), CORRIDOR, HERE)).toEqual({ x: 1, y: 0 });
+    expect(goblinStep(hiding, CORRIDOR, HERE)).toEqual({ x: 3, y: 0 });
   });
 
-  it('runs away from the player once below half HP', () => {
-    const g = updateGoblin(createGoblin(), 1, 4, 1000);
+  it('holds its ground when cornered while getting away', () => {
+    expect(goblinStep(hiding, CORRIDOR, { x: 4, y: 0 })).toBeUndefined();
+  });
+
+  it('never gets away onto a cell it cannot walk to', () => {
+    expect(goblinStep(hiding, [[0, 1, 2, Infinity]], HERE)).toBeUndefined();
+  });
+});
+
+describe('goblin pack', () => {
+  /** A goblin of 4 max HP with `hp` left, in its starting state. */
+  const at = (hp: number) => ({ hp, maxHp: 4, goblin: createGoblin() });
+
+  it('sends every goblin at half HP or more after the player', () => {
+    const pack = updateGoblinPack([at(4), at(2)], 1000);
+    expect(pack.map((g) => g.mode)).toEqual(['chase', 'chase']);
+  });
+
+  it('hides a lone hurt goblin for as long as others are alive', () => {
+    let pack = updateGoblinPack([at(4), at(1)], 1000);
+    expect(pack.map((g) => g.mode)).toEqual(['chase', 'hide']);
+    // Long past the old 2.5s retreat, it is still waiting for a partner.
+    pack = updateGoblinPack([{ ...at(4), goblin: pack[0] }, { ...at(1), goblin: pack[1] }], 60_000);
+    expect(pack.map((g) => g.mode)).toEqual(['chase', 'hide']);
+  });
+
+  it('lets the last goblin alive flee once for 2.5s, then fight to the death', () => {
+    const step = (goblin: ReturnType<typeof createGoblin>, time: number) => updateGoblinPack([{ ...at(1), goblin }], time)[0];
+    let g = step(createGoblin(), 1000);
     expect(g.mode).toBe('retreat');
-    expect(goblinStep(g, CORRIDOR, HERE)).toEqual({ x: 3, y: 0 });
-  });
-
-  it('keeps retreating for a while, then comes back for good', () => {
-    let g = updateGoblin(createGoblin(), 1, 4, 1000);
-    g = updateGoblin(g, 1, 4, 2000);
+    g = step(g, 3400);
     expect(g.mode).toBe('retreat');
-    g = updateGoblin(g, 1, 4, 10_000);
+    g = step(g, 3500);
     expect(g.mode).toBe('chase');
-    expect(goblinStep(g, CORRIDOR, HERE)).toEqual({ x: 1, y: 0 });
-    // Still hurt, but it has already regrouped: it doesn't flee again.
-    g = updateGoblin(g, 1, 4, 20_000);
+    // Still hurt, with nobody to heal it: it never runs again.
+    g = step(g, 20_000);
     expect(g.mode).toBe('chase');
-  });
-
-  it('holds its ground when cornered while retreating', () => {
-    const g = updateGoblin(createGoblin(), 1, 4, 0);
-    expect(goblinStep(g, CORRIDOR, { x: 4, y: 0 })).toBeUndefined();
-  });
-
-  it('never retreats onto a cell it cannot walk to', () => {
-    const g = updateGoblin(createGoblin(), 1, 4, 0);
-    expect(goblinStep(g, [[0, 1, 2, Infinity]], HERE)).toBeUndefined();
   });
 });
 

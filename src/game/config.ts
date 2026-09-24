@@ -128,6 +128,8 @@ export const COLORS = {
   minimapBoss: 0xd8323c,
   goblin: 0xa8c236,
   goblinEdge: 0x4a3a1c,
+  /** A hurt goblin keeping away from the player (placeholder). */
+  goblinHurt: 0xdde6a8,
   seedSpitter: 0xc0584a,
   seedSpitterEdge: 0xf0d27a,
   ghoul: 0x9aa89c,

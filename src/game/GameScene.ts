@@ -202,6 +202,8 @@ export class GameScene extends Phaser.Scene {
   world!: World;
   /** Blocks movement and shots: room walls, obstacles and locked doors. */
   private walls!: Phaser.Physics.Arcade.StaticGroup;
+  /** Every room's drawn terrain, so rooms out of sight can be hidden from the renderer. */
+  private roomObjects!: Map<string, Phaser.GameObjects.GameObject[]>;
   /** Blocks movement only; shots fly over. */
   private holes!: Phaser.Physics.Arcade.StaticGroup;
   /** Blocks movement like holes, and hurts whoever pushes into it. */
@@ -271,7 +273,12 @@ export class GameScene extends Phaser.Scene {
     this.poisoned = new Map();
     this.playerStun = {};
     this.playerStunMark = undefined;
-    for (const room of this.world.rooms.values()) this.drawRoom(room);
+    this.roomObjects = new Map();
+    for (const room of this.world.rooms.values()) {
+      const before = this.children.list.length;
+      this.drawRoom(room);
+      this.roomObjects.set(room.floorRoom.id, this.children.list.slice(before));
+    }
     for (const room of this.world.rooms.values()) this.trackCrushers(room);
 
     const start = this.world.rooms.get(this.world.currentRoomId)!;
@@ -345,6 +352,7 @@ export class GameScene extends Phaser.Scene {
     // The playfield is one map cell; the label strip under it belongs to the HUD.
     this.cameras.main.setViewport(0, 0, CELL_PX_W, CELL_PX_H);
     this.cameras.main.setBackgroundColor(themeForFloor(start.floorIndex).palette.background);
+    this.showRoomsAround(start);
     this.followInside(start);
     this.scene.launch('hud');
   }
@@ -981,6 +989,7 @@ export class GameScene extends Phaser.Scene {
         Phaser.Math.Distance.Between(b.c.x, b.c.y, this.player.x, this.player.y))[0];
     if (entry) this.player.body.reset(entry.c.x, entry.c.y);
 
+    this.showRoomsAround(room);
     this.slideCameraTo(room);
     this.cameras.main.setBackgroundColor(themeForFloor(room.floorIndex).palette.background);
 
@@ -1058,6 +1067,19 @@ export class GameScene extends Phaser.Scene {
       .setStroke('#000000', 4)
       .setDepth(DARK_DEPTH + 3);
     this.tweens.add({ targets: text, y: text.y - 40, alpha: 0, delay: 900, duration: 900, onComplete: () => text.destroy() });
+  }
+
+  /**
+   * Renders only the room and its neighbours (the ones the camera slides through or peeks into)
+   * and hides every other room's terrain. The whole run is drawn up front, and Phaser draws
+   * everything visible every frame, on screen or not.
+   */
+  private showRoomsAround(room: WorldRoom) {
+    const shown = new Set([room.floorRoom.id, ...room.neighbors]);
+    for (const [id, objects] of this.roomObjects) {
+      const visible = shown.has(id);
+      for (const o of objects) (o as unknown as Phaser.GameObjects.Components.Visible).setVisible(visible);
+    }
   }
 
   /** Camera tracks the player, clamped to the room: fixed in 1x1 rooms, scrolling in wide, tall and boss rooms. */
@@ -1233,6 +1255,7 @@ export class GameScene extends Phaser.Scene {
       this.walls.add(shape);
       this.terrain.set(`${roomId}|${cell.x},${cell.y}`, shape);
     }
+    this.roomObjects.get(roomId)?.push(shape);
     shape.setScale(0.2);
     this.tweens.add({ targets: shape, scale: 1, duration: 180, ease: 'Back.easeOut' });
     return true;

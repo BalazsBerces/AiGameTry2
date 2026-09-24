@@ -5,8 +5,9 @@ import { createRng } from './rng';
 
 describe('passive pool', () => {
   it('never offers a passive the player already owns', () => {
+    const allButFireRate = Object.fromEntries(PASSIVE_POOL.filter((p) => p !== 'fireRate').map((p, i) => [p, (i % 2) + 1]));
     for (let seed = 0; seed < 50; seed++) {
-      expect(offerPassive({ homing: 1, sword: 2 }, createRng(seed))).toBe('fireRate');
+      expect(offerPassive(allButFireRate, createRng(seed))).toBe('fireRate');
     }
   });
 

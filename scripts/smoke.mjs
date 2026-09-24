@@ -704,6 +704,89 @@ if (scenario === 'end-race') {
   console.log('final boss dies, then player dies (expect YOU WIN):', await race(['win', 'die']));
 }
 
+if (scenario === 'shot-passives') {
+  // In the (empty) start room: frozen zombies above the player, shots fired straight up.
+  const T = (x, y) => ({ x: (x + 1.5) * 48, y: (y + 1.5) * 48 });
+  const setup = (passives, zombies, extra = '') =>
+    page.evaluate(`(() => { const s = ${scene()};
+      for (const e of s.enemies) for (const p of e.parts) p.destroy();
+      s.enemies = [];
+      s.shots.clear(true, true);
+      s.world.player.passives = ${JSON.stringify(passives)};
+      s.player.body.reset(${T(6, 5).x}, ${T(6, 5).y});
+      s.invincibleUntil = Infinity;
+      const room = s.world.rooms.get('0,0');
+      s.spawnEnemies({ ...room, layout: { ...room.layout, enemies: ${JSON.stringify(zombies)}.map((c) => ({ type: 'zombie', cell: c, hp: 50 })) } });
+      s.enemiesWakeAt = Infinity;
+      s.nextShotAt = 0;
+      s.__hits = [];
+      if (!s.__origDamage) s.__origDamage = s.damagePart.bind(s);
+      s.damagePart = (part, dmg) => { s.__hits.push([s.enemies.findIndex((e) => e.parts.includes(part)), Math.round(dmg * 100) / 100]); return s.__origDamage(part, dmg); };
+      ${extra}
+    })()`);
+  const tap = async (key = 'ArrowUp') => {
+    await page.keyboard.down(key);
+    await page.waitForTimeout(40);
+    await page.keyboard.up(key);
+  };
+  const shots = () => page.evaluate(`${scene()}.shots.getChildren().length`);
+  const hits = () => page.evaluate(`${scene()}.__hits`);
+
+  await setup({ triple: 1 }, []);
+  await tap();
+  console.log('triple shot, shots in flight (expect 3):', await shots());
+  await setup({ triple: 2 }, []);
+  await tap();
+  console.log('upgraded triple shot (expect 5):', await shots());
+  await shot('02-triple');
+
+  await setup({}, [{ x: 6, y: 2 }, { x: 6, y: 0 }]);
+  await tap();
+  await page.waitForTimeout(700);
+  console.log('plain shot through two zombies in a line, hits [enemy, dmg] (expect only enemy 0):', JSON.stringify(await hits()));
+  await setup({ pierce: 1 }, [{ x: 6, y: 2 }, { x: 6, y: 0 }]);
+  await tap();
+  await page.waitForTimeout(700);
+  console.log('piercing shot (expect enemy 0 then 1, once each):', JSON.stringify(await hits()));
+
+  await setup({ ricochet: 1 }, []);
+  await tap();
+  await page.waitForTimeout(900);
+  console.log('ricochet shot 0.9s after firing up at the wall (expect alive, heading down):',
+    await page.evaluate(`${scene()}.shots.getChildren().map((o) => Math.round(o.body.velocity.y))`));
+
+  const stone = `const t = s.world.rooms.get('0,0').layout.tiles; t[3][6] = 'obstacle';
+    const r = s.add.rectangle(${T(6, 3).x}, ${T(6, 3).y}, 44, 44, 0x6c6a78).setData({ roomId: '0,0', tile: { x: 6, y: 3 } });
+    s.walls.add(r); s.__stone = r;`;
+  const clearStone = `s.world.rooms.get('0,0').layout.tiles[3][6] = 'floor'; s.__stone?.destroy();`;
+  await setup({}, [{ x: 6, y: 0 }], stone);
+  await tap();
+  await page.waitForTimeout(700);
+  console.log('plain shot at a zombie behind stone (expect no hits):', JSON.stringify(await hits()));
+  await page.evaluate(`(() => { const s = ${scene()}; ${clearStone} })()`);
+  await setup({ spectral: 1 }, [{ x: 6, y: 0 }], stone);
+  await tap();
+  await page.waitForTimeout(150);
+  await shot('03-spectral');
+  await page.waitForTimeout(550);
+  console.log('spectral shot through the stone (expect enemy 0 hit):', JSON.stringify(await hits()));
+  await page.evaluate(`(() => { const s = ${scene()}; ${clearStone} })()`);
+
+  await setup({ boomerang: 2, pierce: 1 }, [{ x: 6, y: 3 }]);
+  await tap();
+  await page.waitForTimeout(1600);
+  console.log('upgraded boomerang + piercing through one zombie (expect two hits, the second doubled):', JSON.stringify(await hits()),
+    'shots left (expect 0, caught):', await shots());
+
+  await setup({ sword: 1, triple: 1 }, []);
+  await tap();
+  await page.waitForTimeout(30);
+  console.log('sword + triple: blade waves (expect 3):', await shots());
+  await shot('04-blade-waves');
+  await page.waitForTimeout(400);
+  console.log('blade waves after their life (expect 0):', await shots());
+}
+
 if (scenario === 'boss-upgrade') {
   // With homing at level 1, kill the floor 1 boss: homing should go up to level 2, with a message and a HUD ring.
   const id = await page.evaluate(`[...${scene()}.world.rooms.values()].find((r) => r.floorIndex === 0 && r.floorRoom.kind === 'boss').floorRoom.id`);

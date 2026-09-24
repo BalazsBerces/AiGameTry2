@@ -23,16 +23,80 @@ describe('resolveWeapon', () => {
     expect(resolveWeapon({ sword: 1 })).toMatchObject({ mode: 'sword', fireDelayMs: 450, damage: 3, homing: false, swordArcDeg: 90 });
   });
 
-  it('homing has no effect on the sword', () => {
-    expect(resolveWeapon({ sword: 1, homing: 1 })).toMatchObject({ mode: 'sword', fireDelayMs: 450, damage: 3, homing: false });
+  it('homing leaves the swing itself alone, but its blade wave homes', () => {
+    expect(resolveWeapon({ sword: 1, homing: 1 })).toMatchObject({ mode: 'sword', fireDelayMs: 450, damage: 3, homing: true, bladeWave: true });
   });
 
   it('fire rate speeds up and weakens sword swings', () => {
     expect(resolveWeapon({ sword: 1, fireRate: 1 })).toMatchObject({ mode: 'sword', fireDelayMs: 180, damage: 1.5, homing: false });
   });
 
-  it('all three passives together: fast, weakened sword without homing', () => {
-    expect(resolveWeapon({ homing: 1, sword: 1, fireRate: 1 })).toMatchObject({ mode: 'sword', fireDelayMs: 180, damage: 1.5, homing: false });
+  it('all three passives together: fast, weakened sword throwing homing blade waves', () => {
+    expect(resolveWeapon({ homing: 1, sword: 1, fireRate: 1 })).toMatchObject({ mode: 'sword', fireDelayMs: 180, damage: 1.5, homing: true, bladeWave: true });
+  });
+});
+
+describe('resolveWeapon shot passives', () => {
+  it('plain shots fly alone, stop at what they hit, and never come back', () => {
+    expect(resolveWeapon({})).toMatchObject({
+      shots: 1,
+      piercesEnemies: false,
+      piercesTerrain: false,
+      bounces: 0,
+      spectral: false,
+      passesShields: false,
+      boomerang: undefined,
+      bladeWave: false,
+    });
+  });
+
+  it('triple shot fires three in a spread, five once upgraded, each a little weaker', () => {
+    const one = resolveWeapon({ triple: 1 });
+    expect(one.shots).toBe(3);
+    expect(one.spreadDeg).toBeGreaterThan(0);
+    expect(one.damage).toBeLessThan(1);
+    expect(one.damage).toBeGreaterThan(0.5);
+    expect(resolveWeapon({ triple: 2 })).toMatchObject({ shots: 5, damage: one.damage });
+  });
+
+  it('piercing passes through enemies, and through rock too once upgraded', () => {
+    expect(resolveWeapon({ pierce: 1 })).toMatchObject({ piercesEnemies: true, piercesTerrain: false });
+    expect(resolveWeapon({ pierce: 2 })).toMatchObject({ piercesEnemies: true, piercesTerrain: true });
+  });
+
+  it('ricochet bounces twice, four times once upgraded', () => {
+    expect(resolveWeapon({ ricochet: 1 }).bounces).toBe(2);
+    expect(resolveWeapon({ ricochet: 2 }).bounces).toBe(4);
+  });
+
+  it('spectral flies through stone, and past shields too once upgraded', () => {
+    expect(resolveWeapon({ spectral: 1 })).toMatchObject({ spectral: true, passesShields: false });
+    expect(resolveWeapon({ spectral: 2 })).toMatchObject({ spectral: true, passesShields: true });
+  });
+
+  it('boomerang comes back, faster and twice as hard on the way back once upgraded', () => {
+    const one = resolveWeapon({ boomerang: 1 }).boomerang!;
+    const two = resolveWeapon({ boomerang: 2 }).boomerang!;
+    expect(one.outMs).toBeGreaterThan(0);
+    expect(one.returnDamageFactor).toBe(1);
+    expect(two.returnDamageFactor).toBe(2);
+    expect(two.returnSpeedFactor).toBeGreaterThan(one.returnSpeedFactor);
+  });
+
+  it('the sword throws a blade wave with any shot passive, and never without one', () => {
+    for (const p of ['homing', 'triple', 'pierce', 'ricochet', 'spectral', 'boomerang'] as const) {
+      expect(resolveWeapon({ sword: 1, [p]: 1 }).bladeWave, p).toBe(true);
+    }
+    expect(resolveWeapon({ sword: 1 }).bladeWave).toBe(false);
+    expect(resolveWeapon({ sword: 1, fireRate: 1 }).bladeWave).toBe(false);
+    expect(resolveWeapon({ triple: 1 }).bladeWave).toBe(false);
+  });
+
+  it('stacks everything at once, whatever the order', () => {
+    const all = { triple: 2, pierce: 1, ricochet: 1, spectral: 1, boomerang: 1, homing: 1, fireRate: 1 } as const;
+    const reversed = Object.fromEntries(Object.entries(all).reverse());
+    expect(resolveWeapon(reversed)).toEqual(resolveWeapon(all));
+    expect(resolveWeapon(all)).toMatchObject({ shots: 5, piercesEnemies: true, bounces: 2, spectral: true, homing: true });
   });
 });
 

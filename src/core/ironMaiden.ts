@@ -1,4 +1,4 @@
-import { fan, ring, spiral } from './bulletPatterns';
+import { beats, fan, ring, spiral } from './bulletPatterns';
 import type { Cell } from './floorGenerator';
 import type { Tile } from './roomGenerator';
 import type { Rng } from './rng';
@@ -99,28 +99,20 @@ export const canHurtMaiden = (maiden: IronMaiden) => maiden.phase === 'open';
 const NEXT: Record<MaidenPhase, MaidenPhase> = { walk: 'telegraph', telegraph: 'open', open: 'walk' };
 const LASTS: Record<MaidenPhase, number> = { walk: IRON_MAIDEN.walkMs, telegraph: IRON_MAIDEN.telegraphMs, open: IRON_MAIDEN.openMs };
 
-/** Times `start + first + k * every` (k = 0, 1, ...) that fall in (from, to]. */
-function ticks(start: number, first: number, every: number, from: number, to: number): number[] {
-  const out: number[] = [];
-  const k0 = Math.max(0, Math.ceil((from - start - first) / every));
-  for (let t = start + first + k0 * every; t <= to; t += every) if (t > from) out.push(t);
-  return out;
-}
-
 /** The attacks a phase makes between `from` (exclusive) and `to` (inclusive), both inside it. */
 function attacksDuring(phase: MaidenPhase, start: number, from: number, to: number, input: MaidenInput): MaidenAttack[] {
   const I = IRON_MAIDEN;
   // Ticks landing exactly on the phase's end belong to the next phase.
   const end = Math.min(to, start + LASTS[phase] - 1e-6);
   if (phase === 'walk') {
-    const stomps = ticks(start, I.stompEveryMs, I.stompEveryMs, from, end).map((): MaidenAttack => ({ kind: 'stomp', angles: ring(I.stompBullets) }));
+    const stomps = beats(start, I.stompEveryMs, I.stompEveryMs, from, end).map((): MaidenAttack => ({ kind: 'stomp', angles: ring(I.stompBullets) }));
     const chains = input.phaseTwo
-      ? ticks(start, I.chainEveryMs, I.chainEveryMs, from, end).map((t): MaidenAttack => ({ kind: 'chain', angles: spiral(I.chainArms, t, I.chainSpinDegPerSec) }))
+      ? beats(start, I.chainEveryMs, I.chainEveryMs, from, end).map((t): MaidenAttack => ({ kind: 'chain', angles: spiral(I.chainArms, t, I.chainSpinDegPerSec) }))
       : [];
     return [...stomps, ...chains];
   }
   if (phase === 'open') {
-    return ticks(start, 0, I.volleyEveryMs, from, end).map(
+    return beats(start, 0, I.volleyEveryMs, from, end).map(
       (): MaidenAttack => ({ kind: 'volley', angles: fan(input.aim, I.volleyBullets, I.volleyWidth) }),
     );
   }

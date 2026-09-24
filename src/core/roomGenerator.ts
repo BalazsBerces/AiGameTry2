@@ -7,6 +7,7 @@ import type { Rng } from './rng';
 import { themeForFloor } from './themes';
 import { isWalkable } from './tiles';
 import type { Crusher } from './crusher';
+import { candleCells } from './candleWitch';
 
 export const ROOM_WIDTH = 13;
 export const ROOM_HEIGHT = 7;
@@ -124,6 +125,7 @@ export type EnemyType =
   | 'worm'
   | 'wormBoss'
   | 'ironMaiden'
+  | 'candleWitch'
   | 'treantBoss'
   | 'goblin'
   | 'seedSpitter'
@@ -142,6 +144,8 @@ export interface EnemySpawn {
   cell: Cell;
   /** A worm's body behind the head, in order. */
   tail?: Cell[];
+  /** Fixed cells the enemy works from: the Candle Witch's candles. */
+  anchors?: Cell[];
   /** Tougher and always drops `drop` (from the normal room-clear pool) when killed. */
   champion?: { drop: ChampionDrop };
   /** Hit points overriding the type's default: a floor's tougher variant (the dungeon's zombies). */
@@ -246,7 +250,7 @@ function placeLabyrinth(tiles: Tile[][], rng: Rng, keepClear: (c: Cell) => boole
 
 type TerrainStrategy = (tiles: Tile[][], rng: Rng, keepClear: (c: Cell) => boolean) => void;
 
-export type BossType = 'wormBoss' | 'ironMaiden' | 'treantBoss';
+export type BossType = 'wormBoss' | 'ironMaiden' | 'candleWitch' | 'treantBoss';
 
 /** The floor's boss, from its theme's pool; `rng` should be the run's, so a seed always meets the same boss. */
 export const bossForFloor = (floorIndex: number, rng: Rng): BossType => rng.pick(themeForFloor(floorIndex).bosses);
@@ -254,6 +258,8 @@ export const bossForFloor = (floorIndex: number, rng: Rng): BossType => rng.pick
 const BOSS_ARENAS: Record<BossType, TerrainStrategy> = {
   wormBoss: placeLabyrinth,
   ironMaiden: placePillars,
+  // The witch's crypt stays open: her candles and their patterns fill it.
+  candleWitch: () => {},
   treantBoss: placeCaveMouth,
 };
 
@@ -420,6 +426,10 @@ export function generateRoom(spec: RoomSpec, floorIndex: number, rng: Rng): Room
       (a, b) => Math.hypot(a.x - opposite.x, a.y - opposite.y) - Math.hypot(b.x - opposite.x, b.y - opposite.y),
     )[0];
     enemies.push({ type: 'ironMaiden', cell });
+  }
+  if (boss === 'candleWitch') {
+    const middle = { x: Math.floor((width - 1) / 2), y: Math.floor((height - 1) / 2) };
+    enemies.push({ type: 'candleWitch', cell: middle, anchors: candleCells(width, height) });
   }
   if (boss === 'treantBoss') {
     // The Treant roots itself across the clearing from the entrance, on open ground it can fill.

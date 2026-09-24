@@ -111,7 +111,7 @@ const THEMES: readonly FloorTheme[] = [
       crystal: { name: 'polished mirror', shape: 'block', color: 0x9aa8c8, stroke: 0xf0f0ff, inset: 4 },
       glowshroom: { name: 'grave mould', shape: 'round', color: 0x8ab070, stroke: 0xd0f0a0, inset: 10 },
     },
-    bosses: ['ironMaiden'],
+    bosses: ['ironMaiden', 'candleWitch'],
     walker: 'zombie',
     turret: 'gargoyle',
     walkerHp: 5,

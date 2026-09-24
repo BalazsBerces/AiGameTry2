@@ -3,7 +3,7 @@ import { DIRECTIONS, STEP, type Cell, type Direction, type RoomKind } from '../c
 import { distanceField, lineOfSight } from '../core/grid';
 import type { ChampionDrop, EnemySpawn, EnemyType, Tile } from '../core/roomGenerator';
 import { themeForFloor, type Palette, type TileLook } from '../core/themes';
-import { roomThemeById, type DecorKind } from '../core/roomThemes';
+import { roomLooks, roomThemeById, type DecorKind } from '../core/roomThemes';
 import { blocksShots, blocksSight, hurtsOnTouch, isWalkable } from '../core/tiles';
 import { crusherWakes, settleCrusher, slideCrusher, type Crusher } from '../core/crusher';
 import { launchVelocity, resolveWeapon, type Weapon } from '../core/weaponModel';
@@ -1057,7 +1057,8 @@ export class GameScene extends Phaser.Scene {
     const b = roomBlock(room);
     const { width, height } = room.layout;
     const corridors = new Set(room.layout.doors.flatMap((d) => doorCorridor(room, d)).map((c) => `${c.x},${c.y}`));
-    const { palette, looks } = themeForFloor(room.floorIndex);
+    const { palette } = themeForFloor(room.floorIndex);
+    const looks = roomLooks(room.floorIndex, room.layout.theme ?? '');
 
     this.add.rectangle(b.x, b.y, b.w, b.h, palette.wall).setOrigin(0);
     const floor = tileCenter(room, 0, 0);
@@ -1182,7 +1183,7 @@ export class GameScene extends Phaser.Scene {
       return false;
     }
     if (!sproutTile(this.world, roomId, cell, tile)) return false;
-    const shape = drawTile(this, c.x, c.y, themeForFloor(room.floorIndex).looks[tile]);
+    const shape = drawTile(this, c.x, c.y, roomLooks(room.floorIndex, room.layout.theme ?? '')[tile]);
     if (!blocksShots(tile)) {
       this.thorns.add(shape);
     } else {

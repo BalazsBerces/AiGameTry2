@@ -118,8 +118,9 @@ const PICKUP_SHAPES: Record<WorldPickup['type'], (scene: Phaser.Scene, x: number
   chest: (s, x, y) => s.add.rectangle(x, y, 34, 26, COLORS.chest),
   lockedChest: (s, x, y) => s.add.rectangle(x, y, 34, 26, COLORS.lockedChest).setStrokeStyle(3, COLORS.key),
   openChest: (s, x, y) => s.add.rectangle(x, y, 34, 26, COLORS.openChest),
-  // An upward arrowhead: a stat going up.
+  // Upward arrowheads: a stat going up.
   damageUp: (s, x, y) => s.add.triangle(x, y, 0, 18, 10, 0, 20, 18, COLORS.damageUp).setStrokeStyle(2, 0xffffff),
+  rateUp: (s, x, y) => s.add.triangle(x, y, 0, 18, 10, 0, 20, 18, COLORS.rateUp).setStrokeStyle(2, 0xffffff),
 };
 
 const FLOOR_COLOR: Record<RoomKind, (p: Palette) => number> = {
@@ -1069,6 +1070,7 @@ export class GameScene extends Phaser.Scene {
     if (result === 'none') return;
     if (result === 'opened') this.itemLockoutUntil = this.time.now + TUNING.chestLockoutMs;
     if (result === 'damageUp') this.announce('Damage up', COLORS.damageUp);
+    if (result === 'rateUp') this.announce('Fire rate up', COLORS.rateUp);
     this.showPickups();
   }
 

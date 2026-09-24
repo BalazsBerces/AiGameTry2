@@ -387,7 +387,20 @@ describe('shownPickups', () => {
 
 describe('stat-ups', () => {
   it('starts a run with none', () => {
-    expect(createWorld(1).player.statUps).toEqual({ damage: 0 });
+    expect(createWorld(1).player.statUps).toEqual({ damage: 0, rate: 0 });
+  });
+
+  it('counts fire rate ups separately from damage ups', () => {
+    const world = createWorld(1);
+    const id = firstNormalRoom(world).floorRoom.id;
+    world.pickups.set(id, [
+      { id: 1, type: 'rateUp', cell: { x: 2, y: 2 } },
+      { id: 2, type: 'damageUp', cell: { x: 3, y: 2 } },
+    ]);
+    expect(touchPickup(world, id, 1)).toBe('rateUp');
+    expect(touchPickup(world, id, 2)).toBe('damageUp');
+    expect(world.player.statUps).toEqual({ damage: 1, rate: 1 });
+    expect(world.pickups.get(id)).toEqual([]);
   });
 
   it('counts each damage up picked up and removes it', () => {
@@ -399,7 +412,7 @@ describe('stat-ups', () => {
     ]);
     expect(touchPickup(world, id, 1)).toBe('damageUp');
     expect(touchPickup(world, id, 2)).toBe('damageUp');
-    expect(world.player.statUps).toEqual({ damage: 2 });
+    expect(world.player.statUps).toEqual({ damage: 2, rate: 0 });
     expect(world.pickups.get(id)).toEqual([]);
   });
 

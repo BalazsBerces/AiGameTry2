@@ -118,11 +118,14 @@ export interface RoomLayout {
   regions?: Region[];
 }
 
-export type PickupType = 'heart' | 'key' | 'bomb' | 'chest' | 'lockedChest' | 'passive' | 'damageUp';
+/** Stackable stat-ups a chest can hold instead of one of its items. */
+export type StatUpType = 'damageUp' | 'rateUp';
+
+export type PickupType = 'heart' | 'key' | 'bomb' | 'chest' | 'lockedChest' | 'passive' | StatUpType;
 
 /** Something a chest releases. */
 /** A passive with no `passive` yet is decided when it comes out (core/world). */
-export type ChestItem = { type: 'heart' } | { type: 'key' } | { type: 'bomb' } | { type: 'damageUp' } | { type: 'passive'; passive?: Passive };
+export type ChestItem = { type: 'heart' } | { type: 'key' } | { type: 'bomb' } | { type: StatUpType } | { type: 'passive'; passive?: Passive };
 
 export interface PickupSpawn {
   type: PickupType;
@@ -586,7 +589,7 @@ function rollChestContents(type: 'chest' | 'lockedChest', rng: Rng): ChestItem[]
   if (type === 'lockedChest' && rng.next() < PICKUPS.lockedChestPassiveChance) return [{ type: 'passive' }];
   const range = type === 'chest' ? PICKUPS.chestContents : PICKUPS.lockedChestContents;
   const items: ChestItem[] = Array.from({ length: rng.int(range.min, range.max) }, () => ({ type: rng.pick(['heart', 'key', 'bomb'] as const) }));
-  if (rng.next() < PICKUPS.statUpChance[type]) items[rng.int(0, items.length - 1)] = { type: 'damageUp' };
+  if (rng.next() < PICKUPS.statUpChance[type]) items[rng.int(0, items.length - 1)] = { type: rng.pick(['damageUp', 'rateUp'] as const) };
   return items;
 }
 

@@ -33,6 +33,7 @@ export type PassiveLevels = Partial<Record<Passive, PassiveLevel>>;
 /** Stackable stat-ups from chests: how many of each the player has collected. */
 export interface StatUps {
   damage?: number;
+  rate?: number;
 }
 
 export interface Weapon {
@@ -81,6 +82,9 @@ export const WEAPON = {
   swordDamage: 3,
   /** Added to base damage (shots or sword) per damage up, before any passive multipliers. */
   damageUpStep: 0.5,
+  /** Multiplies the delay between attacks per fire rate up, after the fire-rate passive; never below `minFireDelayMs`. */
+  rateUpDelayFactor: 0.85,
+  minFireDelayMs: 100,
   swordArcDeg: { 1: 90, 2: 140 },
   homingTurnRate: { 1: 5, 2: 8.5 },
   /** Fire-rate passive: multiplies the delay between attacks and their damage (shots and sword). */
@@ -105,7 +109,12 @@ export function resolveWeapon(passives: PassiveLevels, statUps: StatUps = {}): W
   const bladeWave = !!sword && SHOT_MODIFIERS.some((p) => passives[p]);
   return {
     mode: sword ? 'sword' : 'shots',
-    fireDelayMs: (sword ? WEAPON.swordDelayMs : WEAPON.shotDelayMs) * (fast ? WEAPON.fireRateDelayFactor : 1),
+    fireDelayMs: Math.max(
+      WEAPON.minFireDelayMs,
+      (sword ? WEAPON.swordDelayMs : WEAPON.shotDelayMs) *
+        (fast ? WEAPON.fireRateDelayFactor : 1) *
+        WEAPON.rateUpDelayFactor ** (statUps.rate ?? 0),
+    ),
     damage:
       ((sword ? WEAPON.swordDamage : WEAPON.shotDamage) + (statUps.damage ?? 0) * WEAPON.damageUpStep) *
       (fast ? WEAPON.fireRateDamageFactor[fast] : 1) *

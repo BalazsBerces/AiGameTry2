@@ -37,6 +37,11 @@ describe('resolveWeapon', () => {
 });
 
 describe('resolveWeapon stat-ups', () => {
+  it('changes nothing with none collected', () => {
+    const all = { homing: 1, fireRate: 2, triple: 1, dash: 2, chain: 1 } as const;
+    expect(resolveWeapon(all, { damage: 0, rate: 0 })).toEqual(resolveWeapon(all));
+  });
+
   it('each damage up adds half a point to plain shots', () => {
     expect(resolveWeapon({}, { damage: 1 })).toMatchObject({ fireDelayMs: 330, damage: 1.5 });
     expect(resolveWeapon({}, { damage: 3 })).toMatchObject({ fireDelayMs: 330, damage: 2.5 });
@@ -49,6 +54,17 @@ describe('resolveWeapon stat-ups', () => {
   it('damage ups add to the base before fire rate and triple shot scale it', () => {
     expect(resolveWeapon({ fireRate: 1 }, { damage: 1 }).damage).toBe(0.75);
     expect(resolveWeapon({ triple: 1 }, { damage: 2 }).damage).toBe(1.5);
+  });
+
+  it('each fire rate up shortens the delay between attacks by 15%, shots and sword alike', () => {
+    expect(resolveWeapon({}, { rate: 1 })).toMatchObject({ fireDelayMs: 280.5, damage: 1 });
+    expect(resolveWeapon({ sword: 1 }, { rate: 1 })).toMatchObject({ fireDelayMs: 382.5, damage: 3 });
+    expect(resolveWeapon({ fireRate: 1 }, { rate: 1 }).fireDelayMs).toBeCloseTo(112.2);
+  });
+
+  it('never attacks faster than every 100ms, however many rate ups', () => {
+    expect(resolveWeapon({ fireRate: 1 }, { rate: 3 }).fireDelayMs).toBe(100);
+    expect(resolveWeapon({}, { rate: 20 }).fireDelayMs).toBe(100);
   });
 
   it('blade waves and chain lightning grow with it; orbitals and the dash do not', () => {

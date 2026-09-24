@@ -126,7 +126,7 @@ function buildFloor(world: World, rng: Rng, floor: FloorLayout) {
   }
 }
 
-export type PickupResult = 'none' | 'healed' | 'key' | 'bomb' | 'opened' | 'passive' | 'damageUp';
+export type PickupResult = 'none' | 'healed' | 'key' | 'bomb' | 'opened' | 'passive' | 'damageUp' | 'rateUp';
 
 /** The player touched a pickup. Applies its effect and updates the room's pickups. */
 export function touchPickup(world: World, roomId: string, pickupId: number): PickupResult {
@@ -153,6 +153,10 @@ export function touchPickup(world: World, roomId: string, pickupId: number): Pic
       player.statUps.damage++;
       remove();
       return 'damageUp';
+    case 'rateUp':
+      player.statUps.rate++;
+      remove();
+      return 'rateUp';
     case 'lockedChest':
       if (player.keys === 0) return 'none';
       player.keys--;
@@ -385,7 +389,7 @@ export function createWorld(seed: number): World {
     currentRoomId: floors[0].startRoomId,
     cleared: new Set(),
     visited: new Set([floors[0].startRoomId]),
-    player: { health: STARTING_HEARTS * 2, maxHealth: STARTING_HEARTS * 2, keys: 0, bombs: STARTING_BOMBS, passives: {}, statUps: { damage: 0 } },
+    player: { health: STARTING_HEARTS * 2, maxHealth: STARTING_HEARTS * 2, keys: 0, bombs: STARTING_BOMBS, passives: {}, statUps: { damage: 0, rate: 0 } },
     pickups: new Map(),
     nextPickupId: 1,
     tileHits: new Map(),

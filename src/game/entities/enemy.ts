@@ -36,19 +36,15 @@ export interface EnemyContext {
   /** The current room's doors (attacks that reshape terrain keep their approaches clear). */
   doors: Door[];
   /**
-   * A seed pod comes down on `cell`: it sprouts `tile` there for good (the world's tiles change),
-   * or, if the player is standing on it, bursts on them instead. True if it sprouted.
+   * A seed pod (or a rock the worm boss shook loose) comes down on `cell`: it sprouts `tile`
+   * there for good (the world's tiles change), or, if the player is standing on it, bursts on
+   * them instead. True if it sprouted.
    */
   landSeedPod(cell: Cell, tile: 'rock' | 'thorn'): boolean;
   /** The Treant walked into one of its own sprouts: it is floor again, for good. */
   crushSprout(cell: Cell): void;
   /** Moves the player straight away from `from` until they are `distance` px from it (if nearer). */
   pushPlayerOut(from: { x: number; y: number }, distance: number): void;
-  /**
-   * Shakes the screen for `ms` (`intensity` as a fraction of the view). Asking again while a
-   * shake runs doesn't stack or restart it, so several enemies can ask every frame.
-   */
-  shakeCamera(ms: number, intensity: number): void;
   /** Brings a new enemy into the fight (the worm boss's eggs, and what hatches from them). */
   spawnEnemy(enemy: Enemy): void;
   /** Takes an enemy out of the fight without killing it (an egg that hatched, a brood outliving its boss). */

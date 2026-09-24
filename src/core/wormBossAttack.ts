@@ -8,6 +8,8 @@ import type { Rng } from './rng';
 export const WORM_BOSS = {
   /** Shorter split pieces only crawl. */
   minAttackLength: 4,
+  /** Until this share of its hit points is gone, hits drain one shared pool and no segment breaks. */
+  sharedHpShare: 0.2,
   /** After it bursts out, this long before it may dive into a wall again. */
   burrowCooldownMs: 4000,
   /** From the last segment going under to bursting back out. */
@@ -16,9 +18,14 @@ export const WORM_BOSS = {
   exitWarningMs: 1000,
   /** How long bursting out hurts along the lane. */
   burstMs: 350,
-  /** While a piece is underground the screen shakes lightly: asked for this long, every frame, at this strength. */
-  rumbleMs: 120,
-  rumbleIntensity: 0.003,
+  /**
+   * Rocks shaken loose while a piece is underground, on one cooldown shared by every piece: this
+   * many, within this many tiles of the player, each marked by its shadow for `rockShadowMs`.
+   */
+  rockfallCooldownMs: 6000,
+  rockfallCount: 3,
+  rockfallRadius: 3,
+  rockShadowMs: 1000,
   /** How many cells in front of the exit are marked and hurt as it bursts out. */
   laneLength: 3,
   /** The spit wave runs down the body one segment per this long. */
@@ -29,6 +36,15 @@ export const WORM_BOSS = {
 
 /** Whether a piece of the worm boss this many segments long still burrows and spits. */
 export const canAttack = (length: number) => length >= WORM_BOSS.minAttackLength;
+
+/** The shared pool a fresh worm boss with `maxHp` hit points starts with. */
+export const sharedPool = (maxHp: number) => maxHp * WORM_BOSS.sharedHpShare;
+
+/** A hit while the shared pool lasts: it drains the pool, and the segment hit breaks once it is empty. */
+export function absorbHit(pool: number, damage: number): { pool: number; breaks: boolean } {
+  const left = Math.max(0, pool - damage);
+  return { pool: left, breaks: left === 0 };
+}
 
 /** Phase two: the whole worm, all its pieces together, is down to half its hit points. */
 export const inPhaseTwo = (hp: number, maxHp: number) => hp <= maxHp / 2;
@@ -134,4 +150,29 @@ export function burrowAt(plan: BurrowExit, elapsedMs: number): BurrowState {
   if (elapsedMs < undergroundMs) return { phase: 'warning', marked: plan.lane, hurting: [], crack: plan.exit };
   if (elapsedMs < undergroundMs + burstMs) return { phase: 'bursting', marked: [], hurting: plan.lane };
   return { phase: 'over', marked: [], hurting: [] };
+}
+
+/**
+ * Where rocks fall: one on the player and the rest on open floor around them, never on `avoid`
+ * (the worm's own cells) or on a door's cell.
+ */
+export function planRockfall(tiles: Tile[][], player: Cell, avoid: Cell[], doors: Door[], rng: Rng): Cell[] {
+  const same = (a: Cell) => (b: Cell) => a.x === b.x && a.y === b.y;
+  const open = (c: Cell) => tiles[c.y]?.[c.x] === 'floor' && !avoid.some(same(c)) && !doors.some((d) => same(c)(d.cell));
+  const { rockfallRadius: r, rockfallCount } = WORM_BOSS;
+  const around: Cell[] = [];
+  for (let dy = -r; dy <= r; dy++) {
+    for (let dx = -r; dx <= r; dx++) {
+      const c = { x: player.x + dx, y: player.y + dy };
+      if ((dx || dy) && open(c)) around.push(c);
+    }
+  }
+  const cells = open(player) ? [player] : [];
+  while (cells.length < rockfallCount && around.length) cells.push(around.splice(rng.int(0, around.length - 1), 1)[0]);
+  return cells;
+}
+
+/** A falling rock `elapsedMs` after it was shaken loose: its shadow grows (0 to 1) until it lands. */
+export function rockfallAt(elapsedMs: number): { shadow: number; landed: boolean } {
+  return { shadow: Math.min(1, elapsedMs / WORM_BOSS.rockShadowMs), landed: elapsedMs >= WORM_BOSS.rockShadowMs };
 }

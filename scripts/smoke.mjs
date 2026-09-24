@@ -239,7 +239,6 @@ if (scenario === 'worm-boss') {
       pieces: s.enemies.map((e) => e.parts.length),
       hidden: s.enemies.map((e) => e.parts.filter((p) => !p.visible).length),
       enemyShots: s.enemyShots.getChildren().length,
-      shaking: s.cameras.main.shakeEffect.isRunning,
     }; })()`);
   const rocksAtStart = await rocks();
   console.log('rocks at start', rocksAtStart, await status());
@@ -262,7 +261,11 @@ if (scenario === 'worm-boss') {
       for (let i = 0; i < ${times} && p; i++) s.damagePart(p, 1); })()`);
   // Segments inside the wall can't be hit: wait for the whole worm to be out.
   for (let i = 0; i < 40 && (await status()).hidden.some((n) => n > 0); i++) await page.waitForTimeout(250);
-  for (const part of [9, 4]) await hitPart(0, part, 3);
+  // The first hits only drain its shared hit points; the one that empties them breaks the segment.
+  await hitPart(0, 9, 9);
+  console.log('shared pool drained, nothing broken yet', JSON.stringify(await status()));
+  await hitPart(0, 9, 1);
+  await hitPart(0, 4, 3);
   console.log('after splitting', JSON.stringify(await status()));
   // Down to half its hit points: kill segments just behind the heads, wherever they are out of the wall.
   for (let killed = 2; killed < 11; ) {

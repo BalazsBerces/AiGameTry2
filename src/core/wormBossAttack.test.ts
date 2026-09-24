@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { STEP, type Cell, type Direction } from './floorGenerator';
 import type { Tile } from './roomGenerator';
 import { createRng } from './rng';
-import { burrowAt, canAttack, diveCell, inPhaseTwo, planExit, spitWave, WORM_BOSS } from './wormBossAttack';
+import { absorbHit, burrowAt, planRockfall, rockfallAt, sharedPool, canAttack, diveCell, inPhaseTwo, planExit, spitWave, WORM_BOSS } from './wormBossAttack';
 import { createWorm } from './wormChain';
 
 /** ASCII fixture: `.` floor, `#` stone, `r` rock. */
@@ -204,6 +204,59 @@ describe('worm boss spit wave', () => {
   it('uses the heading for segments still bunched up in the exit hole', () => {
     const wave = spitWave([{ x: 4, y: 4 }, { x: 4, y: 4 }, { x: 4, y: 4 }], 'down');
     for (const s of wave) expect(s.angles.map(deg).sort((a, b) => a - b)).toEqual([0, 180]);
+  });
+});
+
+describe('worm boss falling rocks', () => {
+  const tiles = grid(['..........', '..#.......', '....r.....', '..........', '..........', '..........']);
+  const player = { x: 4, y: 3 };
+  const chebyshev = (a: Cell, b: Cell) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+
+  it('drops a few rocks on open floor around the player, one right on them', () => {
+    for (let seed = 0; seed < 40; seed++) {
+      const cells = planRockfall(tiles, player, [], [], createRng(seed));
+      expect(cells.length, `seed ${seed}`).toBe(WORM_BOSS.rockfallCount);
+      expect(new Set(cells.map(key)).size, `seed ${seed}`).toBe(cells.length);
+      expect(cells.map(key), `seed ${seed}`).toContain(key(player));
+      for (const c of cells) {
+        expect(tiles[c.y][c.x], `seed ${seed}`).toBe('floor');
+        expect(chebyshev(c, player), `seed ${seed}`).toBeLessThanOrEqual(WORM_BOSS.rockfallRadius);
+      }
+    }
+  });
+
+  it('never drops a rock on the worm, or in front of a door', () => {
+    const worm = [{ x: 3, y: 3 }, { x: 5, y: 3 }, { x: 4, y: 4 }, { x: 4, y: 2 }];
+    const door = { side: 'down' as const, cell: { x: 5, y: 5 } };
+    for (let seed = 0; seed < 40; seed++) {
+      const cells = planRockfall(tiles, { x: 4, y: 4 }, worm, [door], createRng(seed)).map(key);
+      for (const c of [...worm, door.cell]) expect(cells, `seed ${seed}`).not.toContain(key(c));
+    }
+  });
+
+  it('grows its shadow while it falls, then lands', () => {
+    const { rockShadowMs } = WORM_BOSS;
+    const early = rockfallAt(rockShadowMs * 0.25);
+    const late = rockfallAt(rockShadowMs * 0.75);
+    expect(early.landed).toBe(false);
+    expect(late.landed).toBe(false);
+    expect(late.shadow).toBeGreaterThan(early.shadow);
+    expect(rockfallAt(rockShadowMs).landed).toBe(true);
+  });
+});
+
+describe('worm boss shared hit points', () => {
+  it('holds a fifth of all the worm hit points before any segment can break', () => {
+    expect(sharedPool(50)).toBe(10);
+  });
+
+  it('soaks up hits, anywhere, without breaking a segment', () => {
+    expect(absorbHit(10, 3)).toEqual({ pool: 7, breaks: false });
+  });
+
+  it('breaks the segment that takes the hit that empties it', () => {
+    expect(absorbHit(2, 3)).toEqual({ pool: 0, breaks: true });
+    expect(absorbHit(3, 3)).toEqual({ pool: 0, breaks: true });
   });
 });
 

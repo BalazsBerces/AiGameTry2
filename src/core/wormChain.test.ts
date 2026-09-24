@@ -112,14 +112,24 @@ describe('killBossSegment', () => {
       'left',
     );
 
-  it('cuts the whole boss into two halves of equal length, wherever the first kill lands', () => {
-    for (let index = 0; index < 20; index++) {
+  it('cuts the whole boss into two halves of equal length when the first kill lands in its middle', () => {
+    for (let index = 1; index < 19; index++) {
       const pieces = killBossSegment(boss(), index, false);
       expect(pieces, `index ${index}`).toHaveLength(2);
       const [a, b] = pieces.map((p) => p.worm.segments.length);
       expect(a + b, `index ${index}`).toBe(19);
       expect(Math.abs(a - b), `index ${index}`).toBeLessThanOrEqual(1);
     }
+  });
+
+  it('never splits over a killed head or tail, only shortens, and can still split later', () => {
+    for (const index of [0, 19]) {
+      const pieces = killBossSegment(boss(), index, false);
+      expect(pieces, `index ${index}`).toHaveLength(1);
+      expect(pieces[0].worm.segments, `index ${index}`).toHaveLength(19);
+    }
+    const [shortened] = killBossSegment(boss(), 0, false);
+    expect(killBossSegment(shortened.worm, 9, false)).toHaveLength(2);
   });
 
   it('closes up over the kill: the segments behind move up a cell, telling where each piece came from', () => {
@@ -145,7 +155,7 @@ describe('killBossSegment', () => {
   });
 
   it('leaves the second half facing along its own body, after the first', () => {
-    const [, back] = killBossSegment(boss(), 0, false);
+    const [, back] = killBossSegment(boss(), 5, false);
     // Its head, segment 10 of what is left, lies at (0,2) with the body running right of it.
     expect(back.worm.segments[0]).toEqual({ x: 0, y: 2 });
     expect(back.worm.heading).toBe('left');

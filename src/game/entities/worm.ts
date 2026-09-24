@@ -3,7 +3,19 @@ import { DIRECTIONS, STEP, type Cell, type Direction } from '../../core/floorGen
 import { createRng, type Rng } from '../../core/rng';
 import { createWorm, killBossSegment, killSegment, nextStepDue, stepWorm, type Worm, type WormPiece } from '../../core/wormChain';
 import { broodTick, eggStage, WORM_BROOD } from '../../core/wormBrood';
-import { burrowAt, diveCell, inPhaseTwo, planExit, spitWave, WORM_BOSS, type BurrowExit } from '../../core/wormBossAttack';
+import {
+  absorbHit,
+  burrowAt,
+  diveCell,
+  inPhaseTwo,
+  planExit,
+  planRockfall,
+  rockfallAt,
+  sharedPool,
+  spitWave,
+  WORM_BOSS,
+  type BurrowExit,
+} from '../../core/wormBossAttack';
 import { COLORS, TUNING } from '../config';
 import { championBoost, championColor, flash, singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
 
@@ -55,9 +67,16 @@ interface WormBossShared {
   maxHp: number;
   hp: number;
   pieces: number;
+  /** Shared hit points left before any segment can break (core/wormBossAttack `absorbHit`). */
+  pool: number;
   /** Once it has split in two, a kill only shortens a piece. */
   split: boolean;
   hazards: { plan: BurrowExit; start: number }[];
+  /** Rocks falling (each landing as a rock tile), and when the next fall may start. */
+  rocks: { cells: Cell[]; start: number }[];
+  nextRockfallAt: number;
+  /** Where each piece's body lies, so rocks never land on it. */
+  bodies: Map<WormState, Cell[]>;
   /** Lane marks and bursts, redrawn every frame. */
   ground: Phaser.GameObjects.Graphics;
   /** Hole-and-rubble decals, each drawn once. */
@@ -114,9 +133,20 @@ function tickHazards(ctx: EnemyContext, shared: WormBossShared) {
     if (now.hurting.some((c) => sameCell(c, ctx.playerTile))) ctx.hurtPlayer();
     return now.phase !== 'over';
   });
-  // Something is moving under the arena: one light rumble, however many pieces are down there.
-  const underground = shared.hazards.some((h) => ['rumbling', 'warning'].includes(burrowAt(h.plan, ctx.time - h.start).phase));
-  if (underground) ctx.shakeCamera(WORM_BOSS.rumbleMs, WORM_BOSS.rumbleIntensity);
+  const onWorm = (c: Cell) => [...shared.bodies.values()].some((body) => body.some((b) => sameCell(b, c)));
+  shared.rocks = shared.rocks.filter((fall) => {
+    const { shadow, landed } = rockfallAt(ctx.time - fall.start);
+    if (landed) {
+      // It lands as a rock tile, or on the player; one that lands on the worm shatters.
+      for (const c of fall.cells) if (!onWorm(c)) ctx.landSeedPod(c, 'rock');
+      return false;
+    }
+    for (const c of fall.cells) {
+      const p = ctx.tileCenter(c);
+      g.fillStyle(0x000000, 0.15 + 0.35 * shadow).fillEllipse(p.x, p.y + t * 0.1, t * (0.3 + 0.5 * shadow), t * (0.18 + 0.3 * shadow));
+    }
+    return true;
+  });
 }
 
 /** Jagged cracks spreading from the middle of the wall tile at `at`. */
@@ -125,6 +155,14 @@ function drawCrack(g: Phaser.GameObjects.Graphics, at: { x: number; y: number },
   for (const branch of [[[0, 0], [-0.12, -0.18], [-0.05, -0.3], [-0.2, -0.42]], [[0, 0], [0.16, 0.05], [0.26, -0.1], [0.42, -0.04]], [[0, 0], [-0.04, 0.2], [-0.2, 0.3], [-0.16, 0.44]]]) {
     g.strokePoints(branch.map(([dx, dy]) => ({ x: at.x + dx * t, y: at.y + dy * t })));
   }
+}
+
+/** Its going under shakes rocks loose over the player, if the shared rockfall cooldown is up. */
+function shakeRocksLoose(ctx: EnemyContext, shared: WormBossShared, plan: BurrowExit) {
+  if (ctx.time < shared.nextRockfallAt) return;
+  shared.nextRockfallAt = ctx.time + WORM_BOSS.rockfallCooldownMs;
+  const avoid = [...[...shared.bodies.values()].flat(), ...plan.lane];
+  shared.rocks.push({ cells: planRockfall(ctx.tiles, ctx.playerTile, avoid, ctx.doors, shared.rng), start: ctx.time });
 }
 
 /** A dark hole in the wall at `wall`, with rubble on the floor in front of it (`inward` points into the room). */
@@ -223,6 +261,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
       b.burrow = { plan: planExit(ctx.tiles, ctx.doors, b.shared.holeCells, b.shared.rng), start: ctx.time };
       b.shared.hazards.push(b.burrow);
       b.diving = undefined;
+      shakeRocksLoose(ctx, b.shared, b.burrow.plan);
       return;
     }
     const e = b.emerging;
@@ -243,6 +282,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
     parts: state.parts,
     collidesWithTerrain: false,
     update(ctx: EnemyContext) {
+      state.boss?.shared.bodies.set(state, state.worm.segments);
       if (state.boss && updateBoss(ctx, state.boss)) return;
       if (ctx.time < state.nextStepAt) return;
       const phaseTwo = state.boss && inPhaseTwo(state.boss.shared.hp, state.boss.shared.maxHp);
@@ -280,17 +320,31 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
       if (index < 0) return [enemy];
       // Inside the wall it can't be touched, not even by a bomb.
       if (!part.body.enable) return [enemy];
-      if (state.boss) state.boss.shared.hp -= Math.min(damage, state.hp[index]);
-      state.hp[index] -= damage;
-      if (state.hp[index] > 0) {
-        flash(scene, part);
-        return [enemy];
+      const boss = state.boss;
+      if (boss && boss.shared.pool > 0) {
+        // Its shared hit points soak up the first hits; the one that empties them breaks this segment.
+        const { pool, breaks } = absorbHit(boss.shared.pool, damage);
+        boss.shared.hp -= boss.shared.pool - pool;
+        boss.shared.pool = pool;
+        if (!breaks) {
+          flash(scene, part);
+          return [enemy];
+        }
+        boss.shared.hp -= state.hp[index];
+        state.hp[index] = 0;
+      } else {
+        if (boss) boss.shared.hp -= Math.min(damage, state.hp[index]);
+        state.hp[index] -= damage;
+        if (state.hp[index] > 0) {
+          flash(scene, part);
+          return [enemy];
+        }
       }
       part.destroy();
-      const boss = state.boss;
       const pieces = boss ? killBossSegment(state.worm, index, boss.shared.split) : splitAt(state.worm, index);
       if (boss) {
-        boss.shared.split = true;
+        boss.shared.bodies.delete(state);
+        if (pieces.length === 2) boss.shared.split = true;
         boss.shared.pieces += pieces.length - 1;
         if (boss.shared.pieces === 0) {
           boss.shared.ground.destroy();
@@ -402,8 +456,12 @@ export function spawnWorm(
         maxHp: cells.length * style.segmentHp,
         hp: cells.length * style.segmentHp,
         pieces: 1,
+        pool: sharedPool(cells.length * style.segmentHp),
         split: false,
         hazards: [],
+        rocks: [],
+        nextRockfallAt: 0,
+        bodies: new Map(),
         ground: scene.add.graphics().setDepth(1),
         holes,
         holeCells: [],

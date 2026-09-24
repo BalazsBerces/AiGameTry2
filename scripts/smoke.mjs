@@ -681,7 +681,28 @@ if (scenario === 'immovable') {
     return { before, after, moved: Math.round(Math.hypot(after[0] - before[0], after[1] - before[1])) };
   };
   console.log('turret pushed by zombies (moved should be 0):', await pushTest(`{ type: 'turret', cell: { x: 6, y: 4 } }`));
-  console.log('treant pushed by zombies (moved should be 0):', await pushTest(`{ type: 'treantBoss', cell: { x: 5, y: 3 } }`));
+}
+
+if (scenario === 'treant') {
+  // Enters floor 1's boss room and watches the Treant walk at the player, stopping for its roots.
+  const id = await page.evaluate(`[...${scene()}.world.rooms.values()].find((r) => r.floorIndex === 0 && r.floorRoom.kind === 'boss').floorRoom.id`);
+  await page.evaluate(`(() => { const s = ${scene()};
+    for (const e of s.enemies) for (const p of e.parts) p.destroy();
+    s.enemies = [];
+    s.invincibleUntil = Infinity;
+    const room = s.world.rooms.get('${id}');
+    const door = room.layout.doors[0];
+    s.player.body.reset(room.floorRoom.cell.x * 720 + (door.cell.x + 1.5) * 48, room.floorRoom.cell.y * 432 + (door.cell.y + 1.5) * 48);
+    s.enterRoom(room, s.time.now);
+  })()`);
+  const treant = () =>
+    page.evaluate(`(() => { const s = ${scene()}; const p = s.enemies[0]?.parts[0]; const pl = s.player;
+      return p && { at: [Math.round(p.x), Math.round(p.y)], player: [Math.round(pl.x), Math.round(pl.y)], moving: Math.round(Math.hypot(p.body.velocity.x, p.body.velocity.y)) }; })()`);
+  for (let i = 0; i < 16; i++) {
+    await page.waitForTimeout(500);
+    console.log(`t=${(i + 1) * 0.5}s`, JSON.stringify(await treant()));
+    if ([1, 5, 11, 15].includes(i)) await shot(`treant-${i}`);
+  }
 }
 
 if (scenario === 'end-race') {

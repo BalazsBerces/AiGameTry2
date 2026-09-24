@@ -47,8 +47,8 @@ export const TUNING = {
   gargoyle: { hp: 5, size: 34, shotSpeed: 250 },
   /** Touching a thorn bush: half a heart to the player; walker damage and i-frames are placeholders. */
   thorn: { playerDamage: 1, walkerDamage: 1, walkerInvincibleMs: 600 },
-  /** `restMs`: pause between attacks. Root and seed-pod timing itself lives in core/treantAttack. */
-  treant: { radius: 46, hp: 70, restMs: 700 },
+  /** `walkSpeed` in px/s. Its rhythm lives in core/treant, root, seed-pod and sweep timing in core/treantAttack. */
+  treant: { radius: 46, hp: 70, walkSpeed: 35 },
   hive: { radius: 40, hp: 60, spiralDelayMs: 150, spiralStep: 0.32, shotSpeed: 170, summonEveryMs: 5000, maxSummoned: 3 },
   /** A woken crusher shudders for `windupMs`, then slides `msPerTile` per tile; it can wake again `cooldownMs` after settling. */
   crusher: { windupMs: 220, msPerTile: 60, cooldownMs: 800, enemyDamage: 8, playerDamage: 2 },

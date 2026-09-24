@@ -36,6 +36,30 @@ describe('resolveWeapon', () => {
   });
 });
 
+describe('resolveWeapon utility passives', () => {
+  it('has no orbitals and no dash without them', () => {
+    expect(resolveWeapon({})).toMatchObject({ orbitals: 0, dash: undefined });
+  });
+
+  it('orbital circles one orb round the player, two once upgraded', () => {
+    expect(resolveWeapon({ orbital: 1 }).orbitals).toBe(1);
+    expect(resolveWeapon({ orbital: 2 }).orbitals).toBe(2);
+  });
+
+  it('dash cools down quicker and hurts what it passes through once upgraded', () => {
+    const one = resolveWeapon({ dash: 1 }).dash!;
+    const two = resolveWeapon({ dash: 2 }).dash!;
+    expect(one.damage).toBe(0);
+    expect(two.damage).toBeGreaterThan(0);
+    expect(two.cooldownMs).toBeLessThan(one.cooldownMs);
+    expect(two.distanceTiles).toBe(one.distanceTiles);
+  });
+
+  it('works alongside the sword too', () => {
+    expect(resolveWeapon({ sword: 1, orbital: 1, dash: 1 })).toMatchObject({ mode: 'sword', orbitals: 1, dash: expect.any(Object), bladeWave: false });
+  });
+});
+
 describe('resolveWeapon on-hit passives', () => {
   it('has no on-hit effects without them', () => {
     expect(resolveWeapon({})).toMatchObject({ poison: undefined, chain: undefined, freeze: undefined });

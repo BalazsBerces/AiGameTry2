@@ -845,6 +845,75 @@ if (scenario === 'onhit-passives') {
   console.log('sword + poison: a 3 hit, then poison ticks (expect 3 then 0.3s):', JSON.stringify(await hits()));
 }
 
+if (scenario === 'utility-passives') {
+  // In the (empty) start room.
+  const T = (x, y) => ({ x: (x + 1.5) * 48, y: (y + 1.5) * 48 });
+  const setup = (passives, enemies, wake = false) =>
+    page.evaluate(`(() => { const s = ${scene()};
+      for (const e of s.enemies) for (const p of e.parts) p.destroy();
+      s.enemies = [];
+      s.enemyShots.clear(true, true);
+      s.world.player.passives = ${JSON.stringify(passives)};
+      s.player.body.reset(${T(2, 3).x}, ${T(2, 3).y});
+      s.invincibleUntil = 0;
+      s.world.player.health = 6;
+      const room = s.world.rooms.get('0,0');
+      s.spawnEnemies({ ...room, layout: { ...room.layout, enemies: ${JSON.stringify(enemies)} } });
+      s.enemiesWakeAt = ${wake ? 0 : 'Infinity'};
+      s.dash = undefined;
+      s.__hits = [];
+      if (!s.__origDamage) s.__origDamage = s.damagePart.bind(s);
+      s.damagePart = (part, dmg) => { s.__hits.push([s.enemies.findIndex((e) => e.parts.includes(part)), Math.round(dmg * 100) / 100]); return s.__origDamage(part, dmg); };
+    })()`);
+  const orbs = () => page.evaluate(`${scene()}.orbs.getChildren().map((o) => [Math.round(o.x - ${scene()}.player.x), Math.round(o.y - ${scene()}.player.y)])`);
+  const x = () => page.evaluate(`Math.round(${scene()}.player.x)`);
+
+  await setup({ orbital: 1 }, []);
+  await page.waitForTimeout(200);
+  const a = await orbs();
+  await page.waitForTimeout(250);
+  console.log('one orb, offsets from the player 250ms apart (expect ~46 away, moving):', JSON.stringify(a), JSON.stringify(await orbs()));
+  await setup({ orbital: 2 }, []);
+  await page.waitForTimeout(100);
+  console.log('upgraded: two orbs opposite each other:', JSON.stringify(await orbs()));
+  await setup({ orbital: 2 }, [{ type: 'zombie', cell: { x: 3, y: 3 }, hp: 50 }]);
+  await page.waitForTimeout(1200);
+  console.log('orbs nicking a frozen zombie beside the player for 1.2s (expect several 0.8 hits):', JSON.stringify(await page.evaluate(`${scene()}.__hits`)));
+  await setup({ orbital: 1 }, [{ type: 'turret', cell: { x: 2, y: 0 } }], true);
+  await page.waitForTimeout(3500);
+  await shot('02-orbital');
+  console.log('health after 3.5s under a turret with an orb (6 = every shot soaked, some lost is fine):', await page.evaluate(`${scene()}.world.player.health`));
+  await setup({}, []);
+
+  await setup({ dash: 1 }, []);
+  const before = await x();
+  await page.keyboard.down('d');
+  await page.waitForTimeout(50);
+  await page.keyboard.press('Space');
+  await page.waitForTimeout(200);
+  const dashed = await x();
+  await page.keyboard.up('d');
+  console.log(`dash right: moved ${dashed - before}px in 250ms (plain walking would be ~55)`);
+  await page.keyboard.down('d');
+  await page.keyboard.press('Space');
+  await page.waitForTimeout(150);
+  await page.keyboard.up('d');
+  console.log('second dash straight away is on cooldown (expect a walk, ~33px more):', (await x()) - dashed);
+  await setup({ dash: 1 }, []);
+  await page.keyboard.press('Shift');
+  await page.waitForTimeout(200);
+  console.log('dash while standing still does nothing (expect 0):', (await x()) - before);
+
+  await setup({ dash: 2 }, [{ type: 'zombie', cell: { x: 4, y: 3 }, hp: 50 }]);
+  await page.keyboard.down('d');
+  await page.waitForTimeout(30);
+  await page.keyboard.press('Space');
+  await page.waitForTimeout(250);
+  await page.keyboard.up('d');
+  console.log('upgraded dash through a zombie: hits (expect one 2), health (expect 6):', JSON.stringify(await page.evaluate(`${scene()}.__hits`)),
+    await page.evaluate(`${scene()}.world.player.health`));
+}
+
 if (scenario === 'boss-upgrade') {
   // With homing at level 1, kill the floor 1 boss: homing should go up to level 2, with a message and a HUD ring.
   const id = await page.evaluate(`[...${scene()}.world.rooms.values()].find((r) => r.floorIndex === 0 && r.floorRoom.kind === 'boss').floorRoom.id`);

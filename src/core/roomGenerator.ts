@@ -130,6 +130,8 @@ export const PASSIVE_POOL: readonly Passive[] = [
   'poison',
   'chain',
   'freeze',
+  'orbital',
+  'dash',
 ];
 
 export type EnemyType =

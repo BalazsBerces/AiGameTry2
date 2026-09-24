@@ -6,7 +6,8 @@ import { themeForFloor, type Palette, type TileLook } from '../core/themes';
 import { blocksShots, blocksSight, hurtsOnTouch, isWalkable } from '../core/tiles';
 import { crusherWakes, settleCrusher, slideCrusher, type Crusher } from '../core/crusher';
 import { launchVelocity, resolveWeapon, type Weapon } from '../core/weaponModel';
-import { fan } from '../core/bulletPatterns';
+import { fan, ring } from '../core/bulletPatterns';
+import { isDashing, tryDash, type Dash } from '../core/dash';
 import {
   boomerangLeg,
   createHitLog,
@@ -181,6 +182,11 @@ export class GameScene extends Phaser.Scene {
   private poisoned = new Map<Enemy, Poison>();
   /** Rolls for the Freeze passive. */
   private hitRng = createRng(Math.floor(Math.random() * 2 ** 31));
+  /** The Orbital passive's orbs. */
+  private orbs!: Phaser.Physics.Arcade.Group;
+  /** The player's current or last dash, and the enemies an upgraded one has already hurt. */
+  private dash?: Dash;
+  private dashHits = new Set<Enemy>();
   /** The player's share of the stun (a glowshroom cloud): no moving or shooting until it wears off. */
   private playerStun: Stunnable = {};
   private playerStunMark?: Shape;
@@ -248,9 +254,7 @@ export class GameScene extends Phaser.Scene {
     this.flyers = this.physics.add.group();
     this.physics.add.collider(this.flyers, this.walls);
     this.physics.add.overlap(this.shots, this.enemyParts, (shot, part) => this.hitEnemy(shot, part as EnemySprite));
-    this.physics.add.overlap(this.player, this.enemyParts, (_, part) => {
-      if (!this.enemies.find((e) => e.parts.includes(part as EnemySprite))?.harmless?.(part as EnemySprite)) this.hurtPlayer();
-    });
+    this.physics.add.overlap(this.player, this.enemyParts, (_, part) => this.touchEnemy(part as EnemySprite));
     // An event rather than JustDown polling, so a tap shorter than a frame still counts.
     kb.addKey('E').on('down', () => this.dropBomb());
 
@@ -266,6 +270,13 @@ export class GameScene extends Phaser.Scene {
       shot.destroy();
       this.hurtPlayer();
     });
+
+    // The Orbital passive's orbs: they soak up enemy shots and nick what they touch.
+    this.orbs = this.physics.add.group();
+    this.physics.add.overlap(this.orbs, this.enemyShots, (_o, shot) => shot.destroy());
+    this.physics.add.overlap(this.orbs, this.enemyParts, (_o, part) => this.orbHits(part as EnemySprite));
+    this.dash = undefined;
+    for (const key of ['SPACE', 'SHIFT']) kb.addKey(key).on('down', () => this.requestDash());
 
     this.pickupGroup = this.physics.add.group();
     this.physics.add.overlap(this.player, this.pickupGroup, (_p, sprite) =>
@@ -288,9 +299,14 @@ export class GameScene extends Phaser.Scene {
     // The shared stun (core/stun) holds the player too: no moving, no shooting.
     const stunned = isStunned(this.playerStun, time);
     if (stunned) dir.set(0, 0);
+    if (isDashing(this.dash, time)) {
+      const speed = this.dash!.speedTilesPerSec * TUNING.tile;
+      dir.set(this.dash!.dir.x * speed, this.dash!.dir.y * speed);
+    }
     this.player.body.setVelocity(dir.x, dir.y);
     this.player.setAlpha(time < this.invincibleUntil && Math.floor(time / 80) % 2 === 0 ? 0.3 : 1);
     this.updatePlayerStunMark(time, stunned);
+    this.circleOrbs(time);
 
     if (!stunned) this.tryShoot(time);
     this.steerHomingShots(time, delta);
@@ -299,6 +315,65 @@ export class GameScene extends Phaser.Scene {
     this.updateEnemies(time);
     this.updateCrushers(time);
     this.followPlayerAcrossRooms(time);
+  }
+
+  /** Keeps one orb per Orbital level circling the player, evenly spaced. */
+  private circleOrbs(time: number) {
+    const count = resolveWeapon(this.world.player.passives).orbitals;
+    const { radius, size, degPerSec } = TUNING.orbital;
+    // A copy: destroying an orb takes it out of the group's own list.
+    const orbs = [...this.orbs.getChildren()] as Phaser.GameObjects.Arc[];
+    while (orbs.length > count) orbs.pop()!.destroy();
+    while (orbs.length < count) {
+      const orb = this.add.circle(this.player.x, this.player.y, size, COLORS.passive.orbital).setStrokeStyle(2, 0xffffff).setDepth(DEPTH.player);
+      this.orbs.add(orb);
+      (orb.body as Phaser.Physics.Arcade.Body).setCircle(size);
+      orbs.push(orb);
+    }
+    ring(count, (((time / 1000) * degPerSec) * Math.PI) / 180).forEach((a, i) => {
+      (orbs[i].body as Phaser.Physics.Arcade.Body).reset(this.player.x + Math.cos(a) * radius, this.player.y + Math.sin(a) * radius);
+    });
+  }
+
+  /** An orb touches an enemy part: a small hit, at most so often per part. */
+  private orbHits(part: EnemySprite) {
+    const now = this.time.now;
+    if (!part.active || now < ((part.getData('orbSafeUntil') as number | undefined) ?? 0)) return;
+    part.setData('orbSafeUntil', now + TUNING.orbital.hitEveryMs);
+    this.damagePart(part, TUNING.orbital.damage);
+  }
+
+  /** Space or Shift: dash the way the player is moving, if they have the passive and it has cooled down. */
+  private requestDash() {
+    const rules = resolveWeapon(this.world.player.passives).dash;
+    const now = this.time.now;
+    if (!rules || this.runOver || isStunned(this.playerStun, now)) return;
+    const moving = {
+      x: (this.move.right.isDown ? 1 : 0) - (this.move.left.isDown ? 1 : 0),
+      y: (this.move.down.isDown ? 1 : 0) - (this.move.up.isDown ? 1 : 0),
+    };
+    const before = this.dash;
+    this.dash = tryDash(this.dash, now, moving, rules);
+    if (!this.dash || this.dash === before) return;
+    this.invincibleUntil = Math.max(this.invincibleUntil, this.dash.until);
+    this.dashHits.clear();
+    const trail = this.add.rectangle(this.player.x, this.player.y, TUNING.playerSize, TUNING.playerSize, COLORS.passive.dash, 0.5);
+    this.tweens.add({ targets: trail, alpha: 0, duration: 260, onComplete: () => trail.destroy() });
+  }
+
+  /** The player touches an enemy part: hurts them, unless they are dashing through it (an upgraded dash hurts it instead). */
+  private touchEnemy(part: EnemySprite) {
+    const enemy = this.enemies.find((e) => e.parts.includes(part));
+    if (enemy?.harmless?.(part)) return;
+    const dash = resolveWeapon(this.world.player.passives).dash;
+    if (enemy && dash?.damage && isDashing(this.dash, this.time.now)) {
+      if (!this.dashHits.has(enemy)) {
+        this.dashHits.add(enemy);
+        this.damagePart(part, dash.damage);
+      }
+      return;
+    }
+    this.hurtPlayer();
   }
 
   private get currentRoom(): WorldRoom {

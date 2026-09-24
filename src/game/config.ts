@@ -12,6 +12,8 @@ export const TUNING = {
   sword: { range: 78, showMs: 110 },
   /** The sword's blade wave (with a shot passive): its size, how long it lives, and its share of a swing's damage. */
   bladeWave: { radius: 11, lifeMs: 280, damageShare: 1 / 3 },
+  /** Orbital orbs: how far out and how fast they circle, and what they do to an enemy part they touch (at most every `hitEveryMs`). */
+  orbital: { radius: 46, size: 9, degPerSec: 210, damage: 0.8, hitEveryMs: 350 },
   invincibleMs: 1000,
   enemyWakeMs: 500,
   /** After a chest opens, items can't be picked up for this long. */
@@ -75,6 +77,8 @@ export const PASSIVE_NAMES: Record<Passive, string> = {
   poison: 'Poison',
   chain: 'Chain lightning',
   freeze: 'Freeze',
+  orbital: 'Orbital',
+  dash: 'Dash',
 };
 
 /** Floor, wall, door and terrain colours come from each floor's theme (core/themes). */
@@ -110,6 +114,8 @@ export const COLORS = {
     poison: 0x7ad84a,
     chain: 0xfff27a,
     freeze: 0x9ae4ff,
+    orbital: 0xe8e8f8,
+    dash: 0x5ae0c8,
   } as Record<Passive, number>,
   heartEmpty: 0x3a1c20,
   text: '#e8d7b0',

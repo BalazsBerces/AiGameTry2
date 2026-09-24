@@ -1,5 +1,6 @@
 import { STEP, type Direction } from './floorGenerator';
 import type { PoisonRules } from './onHit';
+import type { DashRules } from './dash';
 
 export interface Vec {
   x: number;
@@ -17,7 +18,9 @@ export type Passive =
   | 'boomerang'
   | 'poison'
   | 'chain'
-  | 'freeze';
+  | 'freeze'
+  | 'orbital'
+  | 'dash';
 
 /** Passives that shape a projectile's flight: with the sword, any of them makes it throw a blade wave. */
 const SHOT_MODIFIERS: readonly Passive[] = ['homing', 'triple', 'pierce', 'ricochet', 'spectral', 'boomerang'];
@@ -59,6 +62,10 @@ export interface Weapon {
   chain?: { jumps: number; range: number; damageFactor: number };
   /** Each hit stuns its target for `stunMs` with this chance. */
   freeze?: { chance: number; stunMs: number };
+  /** Orbs circling the player, blocking enemy shots and hurting what they touch. */
+  orbitals: number;
+  /** The dash (core/dash); `damage` to each enemy it passes through, if any. */
+  dash?: DashRules & { damage: number };
 }
 
 /** Weapon numbers; placeholders for playtest tuning. Level-2 values are indexed by level. */
@@ -81,6 +88,8 @@ export const WEAPON = {
   } as Record<PassiveLevel, PoisonRules>,
   chain: { jumps: { 1: 1, 2: 3 }, range: 3.5, damageFactor: 0.5 },
   freeze: { chance: { 1: 0.15, 2: 0.3 }, stunMs: 1200 },
+  orbitals: { 1: 1, 2: 2 },
+  dash: { distanceTiles: 2.6, durationMs: 150, cooldownMs: { 1: 900, 2: 550 }, damage: { 1: 0, 2: 2 } },
 };
 
 /** Everything the player's passives, at their levels, make of their attack. Pickup order never matters. */
@@ -116,6 +125,15 @@ export function resolveWeapon(passives: PassiveLevels): Weapon {
     poison: passives.poison ? WEAPON.poison[passives.poison] : undefined,
     chain: passives.chain ? { jumps: WEAPON.chain.jumps[passives.chain], range: WEAPON.chain.range, damageFactor: WEAPON.chain.damageFactor } : undefined,
     freeze: passives.freeze ? { chance: WEAPON.freeze.chance[passives.freeze], stunMs: WEAPON.freeze.stunMs } : undefined,
+    orbitals: passives.orbital ? WEAPON.orbitals[passives.orbital] : 0,
+    dash: passives.dash
+      ? {
+          distanceTiles: WEAPON.dash.distanceTiles,
+          durationMs: WEAPON.dash.durationMs,
+          cooldownMs: WEAPON.dash.cooldownMs[passives.dash],
+          damage: WEAPON.dash.damage[passives.dash],
+        }
+      : undefined,
   };
 }
 

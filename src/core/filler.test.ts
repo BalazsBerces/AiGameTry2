@@ -66,6 +66,8 @@ function smallRooms(): Case[] {
       const doors = placeDoors(doorSides.length ? [...doorSides] : ['left'], 13, 7);
       if (!a.fits(doors.map((d) => d.side))) continue;
       const b = a.build({ width: 13, height: 7, doors, rng: createRng(seed) });
+      // Only rolls the generator would keep: it rerolls the rest.
+      if (validateRoom({ ...b, doors }, b.symmetry).length) continue;
       cases.push({ room: { ...b, doors }, symmetry: b.symmetry, protect: [], theme: a.theme!, size: 'small', where: `${a.id} seed ${seed}` });
     }
   }

@@ -23,10 +23,18 @@ export type ViolationRule =
   | 'spawn-off-floor'
   | 'asymmetric'
   | 'crusher-lane'
-  | 'thorn-cap';
+  | 'thorn-cap'
+  | 'cramped';
 
 /** Most thorn tiles a room may hold per 1x1 map cell it covers, so damaging terrain stays rare. */
 export const THORNS_PER_CELL = 4;
+
+/**
+ * Least share of a room the player must be able to walk in when flyers are about: they cross
+ * ponds and pits the player can't, so a room of mostly water leaves nowhere to dodge. With
+ * walkers closing in on foot as well, the player needs more.
+ */
+export const PLAY_SPACE = { flyers: 0.6, flyersAndWalkers: 0.65 };
 
 export interface Violation {
   rule: ViolationRule;
@@ -94,6 +102,12 @@ export function validateRoom(room: RoomToValidate, symmetry: Symmetry): Violatio
   if (!isSymmetric(tiles, symmetry)) violations.push({ rule: 'asymmetric' });
   for (const c of room.crushers ?? []) if (!crusherLaneHolds(room, c)) violations.push({ rule: 'crusher-lane', cell: c.cell });
   if (countTiles(tiles, 'thorn') > THORNS_PER_CELL * mapCells(tiles)) violations.push({ rule: 'thorn-cap' });
+  const classes = new Set(room.enemies.map((e) => ENEMY_CLASS[e.type]));
+  if (classes.has('flyer')) {
+    const needed = classes.has('walker') ? PLAY_SPACE.flyersAndWalkers : PLAY_SPACE.flyers;
+    const area = tiles.flat().length - countTiles(tiles, 'wall');
+    if (reachable.size < needed * area) violations.push({ rule: 'cramped' });
+  }
   return violations;
 }
 

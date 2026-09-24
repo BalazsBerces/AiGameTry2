@@ -830,16 +830,11 @@ const knightGuard: Archetype = {
   },
 };
 
-/** One wasp swarm, the role a single spawn fills: 3-4 wasps packed into the 2x2 block from `corner`. */
-const swarm = (corner: Cell, rng: Rng): Cell[] =>
-  shuffled([corner, { x: corner.x + 1, y: corner.y }, { x: corner.x, y: corner.y + 1 }, { x: corner.x + 1, y: corner.y + 1 }], rng)
-    .slice(0, rng.int(3, 4));
-
 /**
- * Floor 1, the wasp nest: swarms hang out of reach beyond a pond, either on twin islands either
- * side of the middle or in pockets cut off in the corners. Nobody walks to them, but they fly
- * straight over the water, so the fight is thinning a buzzing swarm as it comes. Sometimes a
- * pair of goblins holds the middle too. Nothing touches a door approach, so it fits every door set.
+ * Floor 1, the wasp nest: one swarm of 3-4 wasps hangs on a reed island in a pond in the middle
+ * of the room. Nobody walks out to it, but the wasps fly straight over the water, so the fight is
+ * thinning a buzzing swarm as it comes; sometimes a pair of goblins prowls the banks too. The pond
+ * stays small, so the player keeps most of the room to dodge in, and it clears every door approach.
  */
 const waspNest: Archetype = {
   id: 'waspNest',
@@ -850,20 +845,20 @@ const waspNest: Archetype = {
   build({ width, height, rng }) {
     const axes: MirrorAxis[] = ['vertical', 'horizontal'];
     const canvas = new Canvas(width, height, axes);
-    // Painted in the top-left quarter and mirrored; `nest` is the top-left of a swarm's 2x2 block.
-    const islands = rng.next() < 0.5;
-    const nest = islands ? { x: 3, y: rng.pick([2, 3]) } : { x: rng.pick([0, 1]), y: 0 };
-    const pond = islands
-      ? [{ x: 2, y: 1 }, { x: 3, y: 1 }, { x: 4, y: 1 }, { x: 5, y: 1 }, { x: 2, y: 2 }, { x: 5, y: 2 }, { x: 2, y: 3 }, { x: 5, y: 3 }]
-      : [{ x: 3, y: 0 }, { x: 3, y: 1 }, { x: 0, y: 2 }, { x: 1, y: 2 }, { x: 2, y: 2 }, { x: 3, y: 2 }];
-    canvas.paint(pond, 'hole');
-    // One nest, or two across the room from each other (their images through the centre).
-    const flip = rng.next() < 0.5;
-    const across = (c: Cell): Cell => ({ x: width - 1 - c.x, y: height - 1 - c.y });
-    const mirrorX = (c: Cell): Cell => ({ x: width - 1 - c.x, y: c.y });
-    const first = swarm(nest, rng).map((c) => (flip ? mirrorX(c) : c));
-    const wasps = rng.next() < 0.5 ? first : [...first, ...swarm(nest, rng).map((c) => across(flip ? mirrorX(c) : c))];
-    const guards = rng.next() < 0.5 ? walkersOf(0, canvas.images({ x: 6, y: 2 })) : [];
+    // The island is the middle row from `from` to the centre column; the pond rings it (painted as a quarter).
+    const from = rng.pick([4, 5]);
+    const island = Array.from({ length: 7 - from }, (_, i) => ({ x: from + i, y: 3 }));
+    canvas.paint([...Array.from({ length: 8 - from }, (_, i) => ({ x: from - 1 + i, y: 2 })), { x: from - 1, y: 3 }], 'hole');
+    // Sometimes a stand of reeds on each bank.
+    if (rng.next() < 0.5) canvas.paint([{ x: 1, y: 1 }], 'obstacle');
+    // The swarm packs together along the island.
+    const shore = island.flatMap((c) => canvas.images(c)).sort((a, b) => a.x - b.x);
+    const size = Math.min(shore.length, rng.int(3, 4));
+    const start = rng.int(0, shore.length - size);
+    const wasps = shore.slice(start, start + size);
+    // A goblin pair on opposite banks, or none.
+    const banks = canvas.images({ x: 3, y: 1 });
+    const guards = rng.next() < 0.5 ? walkersOf(0, [banks[0], banks[banks.length - 1]]) : [];
     return {
       tiles: canvas.tiles,
       enemies: [...wasps.map((cell): EnemySpawn => ({ type: 'wasp', cell })), ...guards],

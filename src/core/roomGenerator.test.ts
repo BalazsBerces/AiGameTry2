@@ -1100,7 +1100,7 @@ describe('Wasp Nest (floor 1)', () => {
     return groups;
   };
 
-  it('builds valid rooms around swarms of 3-4 wasps, for every door set', () => {
+  it('builds valid rooms around one swarm of 3-4 wasps, for every door set', () => {
     const layouts = new Set<string>();
     for (const doors of EVERY_DOOR_SET) {
       for (let seed = 0; seed < 30; seed++) {
@@ -1108,7 +1108,7 @@ describe('Wasp Nest (floor 1)', () => {
         const where = `seed ${seed} doors ${doors}`;
         expect(r.archetype, where).toBe('waspNest');
         const groups = swarms(r);
-        expect(groups.length, where).toBeGreaterThan(0);
+        expect(groups.length, where).toBe(1);
         for (const g of groups) {
           expect(g.length, where).toBeGreaterThanOrEqual(3);
           expect(g.length, where).toBeLessThanOrEqual(4);

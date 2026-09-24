@@ -359,6 +359,42 @@ describe('validateRoom flyers', () => {
     expect(rulesBesidesCap(r)).toEqual([]);
   });
 
+  // 32 of 91 tiles are pond: the player can reach 59, just under two thirds of the room.
+  const MARSH = (row3: string) => `
+    .............
+    oooooo.oooooo
+    oo.........oo
+    ${row3}
+    oo.........oo
+    oooooo.oooooo
+    .............
+  `;
+
+  it('accepts flyers alone with a bit under two thirds of the room to fight in', () => {
+    expect(rules(room(MARSH('...W.........')))).toEqual([]);
+  });
+
+  it('rejects flyers and walkers together in that room: the player needs more space to dodge both', () => {
+    expect(rules(room(MARSH('...W.....Z...')))).toEqual(['cramped']);
+  });
+
+  it('leaves rooms without flyers to the other rules, however little floor they have', () => {
+    expect(rules(room(MARSH('.........Z...')))).toEqual([]);
+  });
+
+  it('rejects flyers with barely more than half the room to fight in', () => {
+    const r = room(`
+      .............
+      oooooo.oooooo
+      oooo.....oooo
+      ...W.........
+      oooo.....oooo
+      oooooo.oooooo
+      .............
+    `);
+    expect(rules(r)).toEqual(['cramped']);
+  });
+
   it('accepts a bat roosting beyond a chasm, since it flies over it', () => {
     const r = room(BEYOND_POND('.'));
     r.enemies.push({ type: 'bat', cell: { x: 6, y: 3 } });

@@ -104,7 +104,8 @@ export interface RoomLayout {
 export type PickupType = 'heart' | 'key' | 'bomb' | 'chest' | 'lockedChest' | 'passive';
 
 /** Something a chest releases. */
-export type ChestItem = { type: 'heart' } | { type: 'key' } | { type: 'bomb' } | { type: 'passive'; passive: Passive };
+/** A passive with no `passive` yet is decided when it comes out (core/world). */
+export type ChestItem = { type: 'heart' } | { type: 'key' } | { type: 'bomb' } | { type: 'passive'; passive?: Passive };
 
 export interface PickupSpawn {
   type: PickupType;
@@ -493,9 +494,8 @@ function rollPickup(cell: Cell, rng: Rng): PickupSpawn {
 }
 
 function rollChestContents(type: 'chest' | 'lockedChest', rng: Rng): ChestItem[] {
-  if (type === 'lockedChest' && rng.next() < PICKUPS.lockedChestPassiveChance) {
-    return [{ type: 'passive', passive: rng.pick(PASSIVE_POOL) }];
-  }
+  // Which passive is decided when the chest is opened (core/world), against what the player owns by then.
+  if (type === 'lockedChest' && rng.next() < PICKUPS.lockedChestPassiveChance) return [{ type: 'passive' }];
   const range = type === 'chest' ? PICKUPS.chestContents : PICKUPS.lockedChestContents;
   return Array.from({ length: rng.int(range.min, range.max) }, () => ({ type: rng.pick(['heart', 'key', 'bomb'] as const) }));
 }

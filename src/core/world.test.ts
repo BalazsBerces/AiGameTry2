@@ -1,8 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { validateRoom } from './roomValidator';
-import { burstGlowshroom, createWorld, detonateBomb, hitTile, placeBomb, shownPickups, smashRock, sproutTile, touchPickup, type WorldRoom } from './world';
+import {
+  burstGlowshroom,
+  createWorld,
+  detonateBomb,
+  enterRoom,
+  hitTile,
+  placeBomb,
+  shownPickups,
+  smashRock,
+  sproutTile,
+  touchPickup,
+  upgradeAfterBoss,
+  type WorldRoom,
+} from './world';
 import { archetypeById, supportsShape } from './archetypes';
-import { CELL_TILES, roomPadding } from './roomGenerator';
+import { CELL_TILES, PASSIVE_POOL, roomPadding } from './roomGenerator';
 
 const firstNormalRoom = (world: ReturnType<typeof createWorld>) =>
   [...world.rooms.values()].find((r) => r.floorRoom.kind === 'normal')!;
@@ -241,6 +254,75 @@ describe('shownPickups', () => {
     world.rooms.get(id)!.layout.tiles.forEach((row) => row.fill('floor'));
     expect(touchPickup(world, id, 1)).toBe('opened');
     expect(shownPickups(world, id).map((p) => p.type).sort()).toEqual(['heart', 'key', 'openChest']);
+  });
+});
+
+describe('passives', () => {
+  const itemRoomOf = (world: ReturnType<typeof createWorld>) => [...world.rooms.values()].find((r) => r.floorRoom.kind === 'item')!.floorRoom.id;
+  const passiveIn = (world: ReturnType<typeof createWorld>, id: string) => world.pickups.get(id)!.find((p) => p.type === 'passive');
+
+  it('leaves the item room’s passive undecided until the player walks in', () => {
+    const world = createWorld(3);
+    expect(passiveIn(world, itemRoomOf(world))!.passive).toBeUndefined();
+  });
+
+  it('offers a passive the player doesn’t own when they walk into the item room', () => {
+    for (let seed = 0; seed < 20; seed++) {
+      const world = createWorld(seed);
+      world.player.passives = { homing: 1, sword: 2 };
+      const id = itemRoomOf(world);
+      enterRoom(world, id);
+      expect(passiveIn(world, id)!.passive, `seed ${seed}`).toBe('fireRate');
+    }
+  });
+
+  it('offers the same passive again on the same seed', () => {
+    const offered = (seed: number) => {
+      const world = createWorld(seed);
+      enterRoom(world, itemRoomOf(world));
+      return passiveIn(world, itemRoomOf(world))!.passive;
+    };
+    for (const seed of [1, 2, 3]) expect(offered(seed)).toBe(offered(seed));
+  });
+
+  it('puts a heart in the item room instead once the player owns every passive', () => {
+    const world = createWorld(4);
+    world.player.passives = Object.fromEntries(PASSIVE_POOL.map((p) => [p, 1]));
+    const id = itemRoomOf(world);
+    enterRoom(world, id);
+    expect(world.pickups.get(id)!.map((p) => p.type)).toEqual(['heart']);
+  });
+
+  it('decides a chest’s passive when it is opened, never one the player owns', () => {
+    const world = createWorld(1);
+    const id = firstNormalRoom(world).floorRoom.id;
+    world.rooms.get(id)!.layout.tiles.forEach((row) => row.fill('floor'));
+    world.player.passives = { sword: 1, fireRate: 1 };
+    world.pickups.set(id, [{ id: 1, type: 'chest', cell: { x: 6, y: 3 }, contents: [{ type: 'passive' }] }]);
+    touchPickup(world, id, 1);
+    expect(world.pickups.get(id)!.find((p) => p.type === 'passive')!.passive).toBe('homing');
+  });
+
+  it('gives a picked-up passive at level 1', () => {
+    const world = createWorld(1);
+    const id = firstNormalRoom(world).floorRoom.id;
+    world.pickups.set(id, [{ id: 5, type: 'passive', passive: 'homing', cell: { x: 2, y: 2 } }]);
+    expect(touchPickup(world, id, 5)).toBe('passive');
+    expect(world.player.passives).toEqual({ homing: 1 });
+  });
+
+  it('upgrades one level-1 passive to level 2 when a boss dies, and says which', () => {
+    const world = createWorld(1);
+    world.player.passives = { homing: 2, sword: 1 };
+    expect(upgradeAfterBoss(world, 'boss-room')).toBe('sword');
+    expect(world.player.passives).toEqual({ homing: 2, sword: 2 });
+  });
+
+  it('upgrades nothing when a boss dies and no passive is left at level 1', () => {
+    const world = createWorld(1);
+    world.player.passives = { homing: 2 };
+    expect(upgradeAfterBoss(world, 'boss-room')).toBeUndefined();
+    expect(world.player.passives).toEqual({ homing: 2 });
   });
 });
 

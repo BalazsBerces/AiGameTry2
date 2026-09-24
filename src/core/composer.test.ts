@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { composeRoom, ENCOUNTERS, LAYOUTS } from './composer';
+import { L_SHAPES, missingCell, SHAPE_CELLS } from './floorGenerator';
 import { createRng } from './rng';
-import { placeDoors, type DoorSpec } from './roomGenerator';
+import { outsideRoom, placeDoors, roomSize, type DoorSpec } from './roomGenerator';
 import { validateRoom } from './roomValidator';
 
 const WIDE_SLOTS: DoorSpec[] = [
@@ -17,6 +18,35 @@ const FLOOR_THEMES = [
   ['grotto', 'hollow', 'rift'],
   ['crypt', 'cellblock', 'machineHall'],
 ];
+
+const SIDES = ['up', 'down', 'left', 'right'] as const;
+const STEP = { up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 } } as const;
+const BIG_SHAPES = ['2x1', '1x2', '2x2', ...L_SHAPES] as const;
+type BigShape = (typeof BIG_SHAPES)[number];
+/** Every wall slot a door can take: an outward side of one of the shape's map cells. */
+const slots = (shape: BigShape): DoorSpec[] => {
+  const cells = SHAPE_CELLS[shape];
+  const inShape = (c: { x: number; y: number }) => cells.some((d) => d.x === c.x && d.y === c.y);
+  const box = missingCell(shape);
+  return cells.flatMap((at) =>
+    SIDES.filter((side) => {
+      const n = { x: at.x + STEP[side].x, y: at.y + STEP[side].y };
+      // An L's inner sides face its missing cell: wall, not a way out.
+      return !inShape(n) && !(box && n.x === box.x && n.y === box.y);
+    }).map((side) => ({ side, at })),
+  );
+};
+/** Every non-empty set of the shape's door slots, thinned to about `max`. */
+const doorSets = (shape: BigShape, max = 70) => {
+  const s = slots(shape);
+  const all = Array.from({ length: (1 << s.length) - 1 }, (_, m) => s.filter((_, i) => (m + 1) & (1 << i)));
+  const step = Math.ceil(all.length / max);
+  return all.filter((_, i) => i % step === 0);
+};
+const doorsFor = (shape: BigShape, specs: DoorSpec[]) => {
+  const { width, height } = roomSize('normal', shape);
+  return placeDoors(specs, width, height);
+};
 
 describe('composeRoom for wide rooms', () => {
   it('builds a valid room from one of the wide layouts and one of the encounters', () => {
@@ -92,8 +122,34 @@ describe('composeRoom for wide rooms', () => {
       return rooms.filter((r) => r.encounter === 'ledgeSentries').length / rooms.length;
     };
     // The marsh leans to sentries on the ledges, the grove to prowlers in its corners.
-    expect(share('marsh', 0)).toBeGreaterThan(0.65);
-    expect(share('grove', 0)).toBeLessThan(0.35);
+    expect(share('marsh', 0)).toBeGreaterThan(2 * share('grove', 0));
     expect(share('grove', 0)).toBeGreaterThan(0);
   });
+});
+
+describe('composeRoom for every big shape', () => {
+  it('draws layouts for tall, 2x2 and every L room, and builds every pairing validly for every door set', () => {
+    for (const shape of BIG_SHAPES) {
+      const layouts = LAYOUTS.filter((l) => l.shapes.includes(shape));
+      expect(layouts.length, shape).toBeGreaterThan(0);
+      const outside = outsideRoom(shape, roomSize('normal', shape).width, roomSize('normal', shape).height);
+      for (const [floorIndex, themes] of FLOOR_THEMES.entries()) {
+        for (const layout of layouts) {
+          for (const encounter of ENCOUNTERS) {
+            for (const [i, specs] of doorSets(shape, 20).entries()) {
+              const theme = themes[i % 3];
+              const doors = doorsFor(shape, specs);
+              const where = `${shape} ${theme} ${layout.id} + ${encounter.id} doors ${JSON.stringify(specs)}`;
+              const room = composeRoom({ shape, doors, theme, floorIndex, rng: createRng(i), layout: layout.id, encounter: encounter.id });
+              expect(room, where).toBeDefined();
+              expect(validateRoom({ ...room!, doors }, room!.symmetry), where).toEqual([]);
+              expect(room!.enemies.length, where).toBeGreaterThan(0);
+              // An L's missing cell is wall, and nothing stands in it.
+              room!.tiles.forEach((row, y) => row.forEach((t, x) => expect(t === 'wall', `${where} ${x},${y}`).toBe(outside({ x, y }))));
+            }
+          }
+        }
+      }
+    }
+  }, 60_000);
 });

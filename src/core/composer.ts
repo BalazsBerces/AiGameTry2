@@ -1,7 +1,7 @@
 import { Canvas } from './archetypes';
-import type { Cell, RoomShape } from './floorGenerator';
+import { L_SHAPES, missingCell, type Cell, type RoomShape } from './floorGenerator';
 import type { Rng } from './rng';
-import { roomSize, type Door, type EnemySpawn, type EnemyType, type PickupSpawn, type Tile } from './roomGenerator';
+import { outsideRoom, roomSize, type Door, type EnemySpawn, type EnemyType, type PickupSpawn, type Tile } from './roomGenerator';
 import { roomThemeById, type Role } from './roomThemes';
 import { validateRoom, type MirrorAxis, type Symmetry } from './roomValidator';
 import { themeForFloor } from './themes';
@@ -22,6 +22,8 @@ export interface LayoutContext {
   height: number;
   doors: Door[];
   rng: Rng;
+  /** An L's missing cell is walled off after the draw, taking any spots there with it. */
+  shape: RoomShape;
 }
 
 export interface LayoutDraw {
@@ -111,6 +113,96 @@ const islandHall: Layout = {
   },
 };
 
+/**
+ * The descent, a tall room down three terraces: two drops of pits cross the room, crossed only at
+ * stairs (the gaps), with a landing between them and posts in the corners covering the stairs.
+ * Doors sit on the terraces, clear of the drops.
+ */
+const descent: Layout = {
+  id: 'descent',
+  shapes: ['1x2'],
+  draw({ width, height, rng }) {
+    const axes: MirrorAxis[] = ['vertical', 'horizontal'];
+    const canvas = new Canvas<Role>(width, height, axes);
+    // Drops on rows 4 and 9 (mirror images); stairs in the middle or down both sides.
+    const centreStairs = rng.next() < 0.5;
+    canvas.paint((centreStairs ? [0, 1, 2, 3, 4] : [2, 3, 4, 5, 6]).map((x) => ({ x, y: 4 })), 'pit');
+    if (rng.next() < 0.5) canvas.paint([{ x: rng.int(3, 4), y: 2 }], rng.next() < 0.5 ? 'breakable' : 'cover');
+    const landing = centreStairs ? [{ x: 2, y: 6 }, { x: 3, y: 6 }] : [{ x: 5, y: 6 }, { x: 4, y: 6 }];
+    const spots = [
+      ...mirrored(canvas, [{ x: 0, y: 0 }, { x: 1, y: 0 }], 'perch'),
+      ...mirrored(canvas, landing, 'centre'),
+      ...mirrored(canvas, [{ x: 2, y: 2 }, { x: 5, y: 2 }], 'open'),
+      ...mirrored(canvas, [{ x: 0, y: 6 }, { x: 0, y: 5 }], 'lurk'),
+    ];
+    return { roles: canvas.tiles, spots, symmetry: { axes } };
+  },
+};
+
+/**
+ * The arena, a big room for a set-piece battle: a pit (or a stone dais) fills the middle, pillars
+ * ring it, a ring of open floor round it and posts in the corners. Painted as one quarter
+ * mirrored into all four; the door columns (5, 20) and rows (2, 11) stay clear.
+ */
+const arena: Layout = {
+  id: 'arena',
+  shapes: ['2x2'],
+  draw({ width, height, rng }) {
+    const axes: MirrorAxis[] = ['vertical', 'horizontal'];
+    const canvas = new Canvas<Role>(width, height, axes);
+    // The centre piece, as its top-left quarter around the middle (12..13, 6..7).
+    const centre = rng.pick([
+      [{ x: 11, y: 6 }, { x: 12, y: 6 }, { x: 12, y: 5 }],
+      [{ x: 10, y: 6 }, { x: 11, y: 6 }, { x: 12, y: 6 }, { x: 11, y: 5 }, { x: 12, y: 5 }],
+      [{ x: 12, y: 6 }],
+    ]);
+    canvas.paint(centre, rng.next() < 0.7 ? 'pit' : 'cover');
+    const pillars = rng.pick([[{ x: 7, y: 3 }], [{ x: 6, y: 2 }, { x: 6, y: 4 }], [{ x: 8, y: 2 }], [{ x: 7, y: 3 }, { x: 10, y: 2 }]]);
+    canvas.paint(pillars, rng.next() < 0.5 ? 'breakable' : 'cover');
+    const spots = [
+      ...mirrored(canvas, [{ x: 9, y: 4 }, { x: 4, y: 5 }, { x: 8, y: 5 }, { x: 9, y: 1 }], 'open'),
+      ...mirrored(canvas, [{ x: 1, y: 0 }, { x: 2, y: 1 }, { x: 0, y: 5 }], 'perch'),
+      ...mirrored(canvas, [{ x: 10, y: 4 }, { x: 12, y: 3 }], 'centre'),
+      ...mirrored(canvas, [{ x: 0, y: 0 }, { x: 3, y: 3 }], 'lurk'),
+    ];
+    return { roles: canvas.tiles, spots, symmetry: { axes } };
+  },
+};
+
+/**
+ * The ambush, an L room: blinds of stone or rock stand where the arms meet, lurking spots wait in
+ * each arm's far end, pressed against the missing corner and out of sight of the other arm, and
+ * posts hold the elbow's outer corner. Painted as one quarter mirrored into all four (the missing
+ * one is walled off afterwards), so every orientation of the L is drawn alike. Door columns
+ * (5, 20) and rows (2, 11) stay clear.
+ */
+const ambush: Layout = {
+  id: 'ambush',
+  shapes: L_SHAPES,
+  draw({ width, height, rng, shape }) {
+    const axes: MirrorAxis[] = ['vertical', 'horizontal'];
+    const canvas = new Canvas<Role>(width, height, axes);
+    const blind = rng.pick([
+      [{ x: 10, y: 4 }, { x: 11, y: 4 }, { x: 10, y: 5 }, { x: 11, y: 5 }],
+      [{ x: 10, y: 3 }, { x: 10, y: 4 }, { x: 10, y: 5 }],
+      [{ x: 9, y: 5 }, { x: 10, y: 5 }, { x: 10, y: 4 }],
+    ]);
+    canvas.paint(blind, rng.next() < 0.5 ? 'breakable' : 'cover');
+    // Which quarter each image lands in: the elbow faces the missing cell across the room.
+    const gap = missingCell(shape) ?? { x: 1, y: 1 };
+    const quarter = (c: Cell) => ({ x: c.x < width / 2 ? 0 : 1, y: c.y < height / 2 ? 0 : 1 });
+    const isElbow = (s: Spot) => quarter(s.cell).x !== gap.x && quarter(s.cell).y !== gap.y;
+    const inArmEnd = (s: Spot) => !isElbow(s) && (quarter(s.cell).x !== gap.x || quarter(s.cell).y !== gap.y);
+    const spots = [
+      ...mirrored(canvas, [{ x: 8, y: 5 }, { x: 9, y: 6 }, { x: 7, y: 6 }], 'lurk').filter(inArmEnd),
+      ...mirrored(canvas, [{ x: 2, y: 0 }, { x: 1, y: 5 }], 'perch').filter(isElbow),
+      ...mirrored(canvas, [{ x: 4, y: 4 }, { x: 6, y: 2 }], 'open'),
+      ...mirrored(canvas, [{ x: 12, y: 6 }, { x: 8, y: 3 }], 'centre'),
+    ];
+    return { roles: canvas.tiles, spots, symmetry: { axes } };
+  },
+};
+
 /** The floor's turrets hold the perches while a pack of its walkers holds the middle. */
 const ledgeSentries: Encounter = {
   id: 'ledgeSentries',
@@ -129,11 +221,29 @@ const prowlers: Encounter = {
   ],
 };
 
-export const LAYOUTS: readonly Layout[] = [gauntlet, islandHall];
+/** A set-piece battle: a pack of the floor's walkers roams the open floor while its turrets hold the posts. */
+const siege: Encounter = {
+  id: 'siege',
+  asks: [
+    { tag: 'open', cast: 'walker', count: [2, 5] },
+    { tag: 'perch', cast: 'turret', count: [2, 4] },
+  ],
+};
+
+/** An ambush: walkers wait tucked out of sight, and a turret may watch from a post. */
+const ambushPack: Encounter = {
+  id: 'ambush',
+  asks: [
+    { tag: 'lurk', cast: 'walker', count: [2, 4] },
+    { tag: 'perch', cast: 'turret', count: [0, 1] },
+  ],
+};
+
+export const LAYOUTS: readonly Layout[] = [gauntlet, islandHall, descent, arena, ambush];
 
 /** True if normal rooms of this shape are composed (rather than built from an archetype). */
 export const composes = (shape: RoomShape) => LAYOUTS.some((l) => l.shapes.includes(shape));
-export const ENCOUNTERS: readonly Encounter[] = [ledgeSentries, prowlers];
+export const ENCOUNTERS: readonly Encounter[] = [ledgeSentries, prowlers, siege, ambushPack];
 
 export interface ComposeRequest {
   shape: RoomShape;
@@ -206,8 +316,11 @@ export function composeRoom(req: ComposeRequest): Composition | undefined {
   for (let attempt = 0; attempt < MAX_COMPOSE_ATTEMPTS; attempt++) {
     const layout = rng.pick(layouts);
     const encounter = weightedPick(encounters, (e) => theme.encounterWeights[e.id] ?? 1, rng);
-    const drawn = layout.draw({ width, height, doors: req.doors, rng });
-    const tiles = drawn.roles.map((row) => row.map((r): Tile => (r === 'floor' ? 'floor' : theme.roles[r])));
+    const drawn = layout.draw({ width, height, doors: req.doors, rng, shape: req.shape });
+    const outside = outsideRoom(req.shape, width, height);
+    const tiles = drawn.roles.map((row, y) =>
+      row.map((r, x): Tile => (outside({ x, y }) ? 'wall' : r === 'floor' ? 'floor' : theme.roles[r])),
+    );
     const spots = drawn.spots.filter((s) => tiles[s.cell.y][s.cell.x] === 'floor');
     const enemies = cast(encounter, spots, req.floorIndex, rng);
     if (!enemies) continue;

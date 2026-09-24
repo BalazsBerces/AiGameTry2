@@ -98,19 +98,18 @@ describe('room sub-themes', () => {
     expect(shared / pairs).toBeGreaterThan(0.5);
   });
 
-  it("composes wide rooms to suit their own theme: the fight leans the theme's way", () => {
+  it("composes big rooms to suit their own theme: the fight leans the theme's way", () => {
     const sentryThemes = new Set(['marsh', 'grotto', 'rift', 'cellblock', 'machineHall']);
     const tally = { sentry: [0, 0], prowler: [0, 0] };
     for (let seed = 0; seed < 150; seed++) {
       for (const room of createWorld(seed).rooms.values()) {
-        if (room.floorRoom.shape !== '2x1' || room.floorRoom.kind !== 'normal') continue;
+        if (room.floorRoom.shape === '1x1' || room.floorRoom.kind !== 'normal') continue;
         const lean = tally[sentryThemes.has(room.layout.theme!) ? 'sentry' : 'prowler'];
         lean[0]++;
         if (room.layout.encounter === 'ledgeSentries') lean[1]++;
       }
     }
-    expect(tally.sentry[1] / tally.sentry[0]).toBeGreaterThan(0.6);
-    expect(tally.prowler[1] / tally.prowler[0]).toBeLessThan(0.4);
+    expect(tally.sentry[1] / tally.sentry[0]).toBeGreaterThan(2 * (tally.prowler[1] / tally.prowler[0]));
   });
 
   it('gives the same themes for the same seed', () => {
@@ -300,18 +299,18 @@ describe('createWorld room shapes', () => {
     return { x: room.floorRoom.cell.x * CELL_TILES.w + pad.x + cell.x, y: room.floorRoom.cell.y * CELL_TILES.h + pad.y + cell.y };
   };
 
-  it('sizes every room by its shape, composes wide rooms and builds the other shapes from ideas drawn for them', () => {
+  it('sizes every room by its shape, composes big rooms and builds 1x1 rooms from ideas', () => {
     for (let seed = 0; seed < 40; seed++) {
       const world = createWorld(seed);
       for (const room of world.rooms.values()) {
         const where = `seed ${seed} ${room.floorRoom.id} ${room.floorRoom.shape}`;
         expect([room.layout.width, room.layout.height], where).toEqual(SIZE[room.floorRoom.shape]);
         if (room.floorRoom.kind !== 'normal') continue;
-        if (room.floorRoom.shape === '2x1') {
+        if (room.floorRoom.shape !== '1x1') {
           expect([room.layout.layout, room.layout.encounter].every(Boolean), where).toBe(true);
           continue;
         }
-        expect(supportsShape(archetypeById(room.layout.archetype!)!, room.floorRoom.shape), where).toBe(true);
+        expect(supportsShape(archetypeById(room.layout.archetype!)!, '1x1'), where).toBe(true);
       }
     }
   });

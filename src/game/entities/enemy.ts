@@ -15,6 +15,8 @@ export interface EnemyContext {
   playerTile: Cell;
   /** Distance to the player's tile, per room tile (walkers descend it). */
   walkDistance: number[][];
+  /** The same kind of field toward any tile, worked out once a frame per tile. */
+  walkDistanceTo(tile: Cell): number[][];
   tileOf(x: number, y: number): Cell;
   tileCenter(tile: Cell): { x: number; y: number };
   /** True for in-room floor tiles. */
@@ -65,7 +67,7 @@ export interface Enemy extends Stunnable {
    * Goblins decide as a pack (core/forestCast `updateGoblinPack`): each frame the scene gathers
    * every goblin's `member()` and hands each its new state through `follow` before updating it.
    */
-  pack?: { member(): PackMember; follow(goblin: Goblin): void };
+  pack?: { member(ctx: EnemyContext): PackMember; follow(goblin: Goblin): void };
 }
 
 /** Stat multipliers for a champion, or none for a regular enemy. */

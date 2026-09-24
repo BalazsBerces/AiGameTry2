@@ -1,7 +1,11 @@
 import type Phaser from 'phaser';
 import { createGoblin as newGoblinState, goblinStep } from '../../core/forestCast';
 import { COLORS, TUNING } from '../config';
+import { stepDownhill } from '../../core/grid';
 import { championBoost, championColor, markChampion, roundBody, singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
+
+/** Goblins tell each other apart in the pack rules by this. */
+let nextId = 0;
 
 /**
  * Forest walker: rushes the player faster than a zombie. Hurt below half HP it turns pale and
@@ -23,14 +27,20 @@ export function createGoblin(scene: Phaser.Scene, x: number, y: number, champion
   roundBody(sprite);
   let hp = maxHp;
   let state = newGoblinState();
+  const id = nextId++;
   const enemy = singlePartEnemy(scene, sprite, maxHp, (ctx: EnemyContext) => {
     const chasing = state.mode === 'chase';
     sprite.setFillStyle(chasing ? color : hurtColor);
     const here = ctx.tileOf(sprite.x, sprite.y);
     const onPlayer = here.x === ctx.playerTile.x && here.y === ctx.playerTile.y;
-    const next = onPlayer && chasing ? undefined : goblinStep(state, ctx.walkDistance, here);
+    // A goblin seeking its partner walks down the field toward it; one that has met it stays put.
+    const next =
+      state.mode === 'met' ? undefined
+      : state.mode === 'seek' && state.meetAt ? stepDownhill(ctx.walkDistanceTo(state.meetAt), here)
+      : onPlayer && chasing ? undefined
+      : goblinStep(state, ctx.walkDistance, here);
     if (!next && !chasing) {
-      // Cornered: hold still and wait.
+      // Met its partner, or cornered: hold still.
       sprite.body.setVelocity(0, 0);
       return;
     }
@@ -42,7 +52,7 @@ export function createGoblin(scene: Phaser.Scene, x: number, y: number, champion
     sprite.body.setVelocity((dx / len) * v, (dy / len) * v);
   });
   enemy.pack = {
-    member: () => ({ hp, maxHp, goblin: state }),
+    member: (ctx) => ({ id, hp, maxHp, cell: ctx.tileOf(sprite.x, sprite.y), goblin: state }),
     follow: (goblin) => {
       state = goblin;
     },

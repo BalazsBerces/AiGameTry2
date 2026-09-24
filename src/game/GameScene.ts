@@ -683,7 +683,10 @@ export class GameScene extends Phaser.Scene {
     const ctx = this.enemyContext(time);
     // Goblins decide together first (core/forestCast), then each moves as it was told.
     const goblins = this.enemies.filter((e) => e.pack);
-    const decided = updateGoblinPack(goblins.map((e) => e.pack!.member()), time);
+    const decided = updateGoblinPack(goblins.map((e) => e.pack!.member(ctx)), {
+      time,
+      walkBetween: (a, b) => ctx.walkDistanceTo(b)[a.y]?.[a.x] ?? Infinity,
+    });
     goblins.forEach((e, i) => e.pack!.follow(decided[i]));
     for (const e of this.enemies) {
       // The shared stun (core/stun): a stunned enemy of any kind stands still and does nothing.
@@ -751,12 +754,23 @@ export class GameScene extends Phaser.Scene {
           return `${c.x},${c.y}`;
         }),
     );
+    const fields = new Map<string, number[][]>();
+    const walkDistanceTo = (tile: Cell) => {
+      const key = `${tile.x},${tile.y}`;
+      let field = fields.get(key);
+      if (!field) {
+        field = distanceField(room.layout.tiles, tile, isWalkable, (c) => rooted.has(`${c.x},${c.y}`));
+        fields.set(key, field);
+      }
+      return field;
+    };
     return {
       time,
       player: this.player,
       roomCenter: { x: (first.x + last.x) / 2, y: (first.y + last.y) / 2 },
       playerTile,
-      walkDistance: distanceField(room.layout.tiles, playerTile, isWalkable, (c) => rooted.has(`${c.x},${c.y}`)),
+      walkDistance: walkDistanceTo(playerTile),
+      walkDistanceTo,
       tileOf,
       tileCenter: (tile: Cell) => tileCenter(room, tile.x, tile.y),
       isWalkable: (cell: Cell) => {

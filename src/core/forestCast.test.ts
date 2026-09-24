@@ -26,24 +26,49 @@ describe('goblin step', () => {
 });
 
 describe('goblin pack', () => {
-  /** A goblin of 4 max HP with `hp` left, in its starting state. */
-  const at = (hp: number) => ({ hp, maxHp: 4, goblin: createGoblin() });
+  type Member = Parameters<typeof updateGoblinPack>[0][number];
+  /** Goblin `id` of 4 max HP with `hp` left at `cell`, in its starting state. */
+  const at = (id: number, hp: number, cell = { x: id * 3, y: 0 }): Member => ({ id, hp, maxHp: 4, cell, goblin: createGoblin() });
+  /** Open floor: walking between two cells takes their grid distance. */
+  const walkBetween = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+  const decide = (pack: Member[], time = 1000) => updateGoblinPack(pack, { time, walkBetween });
+  /** The same goblins a frame later, carrying the states just decided. */
+  const carry = (pack: Member[], decided: ReturnType<typeof decide>) => pack.map((m, i) => ({ ...m, goblin: decided[i] }));
 
   it('sends every goblin at half HP or more after the player', () => {
-    const pack = updateGoblinPack([at(4), at(2)], 1000);
-    expect(pack.map((g) => g.mode)).toEqual(['chase', 'chase']);
+    expect(decide([at(1, 4), at(2, 2)]).map((g) => g.mode)).toEqual(['chase', 'chase']);
   });
 
   it('hides a lone hurt goblin for as long as others are alive', () => {
-    let pack = updateGoblinPack([at(4), at(1)], 1000);
-    expect(pack.map((g) => g.mode)).toEqual(['chase', 'hide']);
+    const pack = [at(1, 4), at(2, 1)];
+    const first = decide(pack);
+    expect(first.map((g) => g.mode)).toEqual(['chase', 'hide']);
     // Long past the old 2.5s retreat, it is still waiting for a partner.
-    pack = updateGoblinPack([{ ...at(4), goblin: pack[0] }, { ...at(1), goblin: pack[1] }], 60_000);
-    expect(pack.map((g) => g.mode)).toEqual(['chase', 'hide']);
+    expect(decide(carry(pack, first), 60_000).map((g) => g.mode)).toEqual(['chase', 'hide']);
+  });
+
+  it('pairs two hurt goblins up and sends each to where the other is', () => {
+    const [a, b] = decide([at(1, 1, { x: 0, y: 0 }), at(2, 1, { x: 6, y: 2 }), at(3, 4)]);
+    expect(a).toMatchObject({ mode: 'seek', partner: 2, meetAt: { x: 6, y: 2 } });
+    expect(b).toMatchObject({ mode: 'seek', partner: 1, meetAt: { x: 0, y: 0 } });
+  });
+
+  it('pairs the two closest when three are hurt, and the third keeps hiding', () => {
+    // 2 and 3 are two steps apart; 1 is eight or more steps from either.
+    const decided = decide([at(1, 1, { x: 0, y: 0 }), at(2, 1, { x: 10, y: 0 }), at(3, 1, { x: 8, y: 0 })]);
+    expect(decided.map((g) => [g.mode, g.partner])).toEqual([['hide', undefined], ['seek', 3], ['seek', 2]]);
+  });
+
+  it('counts a pair as met once they stand on the same or neighbouring tiles', () => {
+    const modes = (b: { x: number; y: number }) => decide([at(1, 1, { x: 4, y: 2 }), at(2, 1, b)]).map((g) => [g.mode, g.partner]);
+    expect(modes({ x: 5, y: 2 })).toEqual([['met', 2], ['met', 1]]);
+    expect(modes({ x: 4, y: 2 })).toEqual([['met', 2], ['met', 1]]);
+    // Diagonal is still a step apart on foot.
+    expect(modes({ x: 5, y: 3 })).toEqual([['seek', 2], ['seek', 1]]);
   });
 
   it('lets the last goblin alive flee once for 2.5s, then fight to the death', () => {
-    const step = (goblin: ReturnType<typeof createGoblin>, time: number) => updateGoblinPack([{ ...at(1), goblin }], time)[0];
+    const step = (goblin: ReturnType<typeof createGoblin>, time: number) => decide([{ ...at(1, 1), goblin }], time)[0];
     let g = step(createGoblin(), 1000);
     expect(g.mode).toBe('retreat');
     g = step(g, 3400);

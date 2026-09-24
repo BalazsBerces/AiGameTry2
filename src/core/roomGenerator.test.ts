@@ -124,18 +124,21 @@ describe('generateRoom worm boss arena (floor 2)', () => {
       createRng(seed),
     );
 
-  it('is a labyrinth that differs per seed', () => {
+  it('is a labyrinth of breakable rock that differs per seed', () => {
     const arenas = Array.from({ length: 30 }, (_, seed) => arena(seed));
-    for (const a of arenas) expect(count(a, 'obstacle')).toBeGreaterThan(26 * 14 * 0.15);
+    for (const a of arenas) {
+      expect(count(a, 'rock')).toBeGreaterThan(26 * 14 * 0.15);
+      expect(count(a, 'obstacle')).toBe(0);
+    }
     expect(new Set(arenas.map((a) => JSON.stringify(a.tiles))).size).toBe(30);
   });
 
-  it('places exactly one worm boss as a long chain on valid cells away from the doors', () => {
+  it('places exactly one worm boss, twenty segments long, on valid cells away from the doors', () => {
     for (let seed = 0; seed < 200; seed++) {
       const a = arena(seed);
       expect(a.enemies.map((e) => e.type), `seed ${seed}`).toEqual(['wormBoss']);
       const chain = [a.enemies[0].cell, ...(a.enemies[0].tail ?? [])];
-      expect(chain.length).toBeGreaterThanOrEqual(6);
+      expect(chain.length, `seed ${seed}`).toBe(20);
       expect(new Set(chain.map((c) => `${c.x},${c.y}`)).size).toBe(chain.length);
       chain.forEach((c, i) => {
         expect(a.tiles[c.y][c.x], `seed ${seed}`).toBe('floor');

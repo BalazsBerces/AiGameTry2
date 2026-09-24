@@ -59,7 +59,7 @@ const ENEMY_FACTORIES: Record<EnemyType, (scene: Phaser.Scene, spawn: EnemySpawn
   zombie: (scene, s, at) => createZombie(scene, at(s.cell).x, at(s.cell).y, !!s.champion, s.hp),
   turret: (scene, s, at) => createTurret(scene, at(s.cell).x, at(s.cell).y, !!s.champion),
   worm: (scene, s, at) => spawnWorm(scene, [s.cell, ...(s.tail ?? [])], at, s.champion ? championWorm(REGULAR_WORM) : REGULAR_WORM),
-  wormBoss: (scene, s, at) => spawnWorm(scene, [s.cell, ...(s.tail ?? [])], at, BOSS_WORM),
+  wormBoss: (scene, s, at) => spawnWorm(scene, [s.cell, ...(s.tail ?? [])], at, BOSS_WORM, true),
   shadowBoss: (scene, s, at) => createShadow(scene, at(s.cell).x, at(s.cell).y),
   goblin: (scene, s, at) => createGoblin(scene, at(s.cell).x, at(s.cell).y, !!s.champion),
   seedSpitter: (scene, s, at) => createSeedSpitter(scene, at(s.cell).x, at(s.cell).y, !!s.champion),

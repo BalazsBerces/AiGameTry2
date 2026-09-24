@@ -124,14 +124,39 @@ describe('addFiller', () => {
     expect(lone / cases.length).toBeLessThan(0.4);
   });
 
+  it('dresses the walls round an L room’s missing corner, and the elbow, like any other wall', () => {
+    const L = bigRooms().filter((c) => c.where.startsWith('L-'));
+    let nearGap = 0;
+    let fill_ = 0;
+    for (const c of L) {
+      const { tiles } = fill(c);
+      const wallAt = (x: number, y: number) => c.room.tiles[y]?.[x] === 'wall';
+      for (const p of added(c.room.tiles, tiles)) {
+        fill_++;
+        const around = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]];
+        if (around.some(([dx, dy]) => wallAt(p.x + dx, p.y + dy))) nearGap++;
+      }
+    }
+    // Two inner walls and the elbow: a fair share of an L's dressing sits along them.
+    expect(nearGap / L.length).toBeGreaterThanOrEqual(4);
+    // As densely dressed, for its floor, as a full 2x2 room.
+    const perFloor = (cases: Case[]) =>
+      cases.reduce((n, c) => n + added(c.room.tiles, fill(c).tiles).length, 0) /
+      cases.reduce((n, c) => n + c.room.tiles.flat().filter((t) => t !== 'wall').length, 0);
+    expect(perFloor(L)).toBeGreaterThanOrEqual(0.9 * perFloor(bigRooms().filter((c) => c.where.startsWith('2x2'))));
+    expect(fill_).toBeGreaterThan(0);
+  });
+
   it('dresses big rooms generously and 1x1 rooms lightly', () => {
     const amounts = (cases: Case[]) => cases.map((c) => added(c.room.tiles, fill(c).tiles).length);
-    const big = amounts(bigRooms());
+    const bigCases = bigRooms();
+    const big = amounts(bigCases);
     const small = amounts(smallRooms());
     const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
     expect(Math.min(...big)).toBeGreaterThanOrEqual(6);
     expect(mean(big)).toBeGreaterThanOrEqual(12);
-    expect(Math.max(...big)).toBeLessThanOrEqual(40);
+    // Never more than a quarter of a big room's floor, however big the room.
+    bigCases.forEach((c, i) => expect(big[i], c.where).toBeLessThanOrEqual(0.25 * c.room.tiles.flat().filter((t) => t !== 'wall').length));
     expect(mean(small)).toBeGreaterThanOrEqual(2);
     expect(mean(small)).toBeLessThanOrEqual(10);
     expect(Math.max(...small)).toBeLessThanOrEqual(14);

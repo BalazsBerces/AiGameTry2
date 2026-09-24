@@ -1,17 +1,22 @@
 import type Phaser from 'phaser';
 import { createGoblin as newGoblinState, goblinStep, updateGoblin } from '../../core/forestCast';
 import { COLORS, TUNING } from '../config';
-import { singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
+import { championBoost, championColor, markChampion, singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
 
 /**
  * Forest walker: rushes the player faster than a zombie, runs off to regroup once below half
  * HP, then comes back (rules in core/forestCast). Drawn as a pointed triangle.
  */
-export function createGoblin(scene: Phaser.Scene, x: number, y: number): Enemy {
-  const { size, hp: maxHp, speed, retreatSpeed } = TUNING.goblin;
+export function createGoblin(scene: Phaser.Scene, x: number, y: number, champion = false): Enemy {
+  const boost = championBoost(champion);
+  const size = TUNING.goblin.size * boost.scale;
+  const maxHp = TUNING.goblin.hp * boost.hp;
+  const speed = TUNING.goblin.speed * boost.speed;
+  const retreatSpeed = TUNING.goblin.retreatSpeed * boost.speed;
   const sprite = scene.add
-    .triangle(x, y, 0, size, size / 2, 0, size, size, COLORS.goblin)
+    .triangle(x, y, 0, size, size / 2, 0, size, size, championColor(COLORS.goblin, champion))
     .setStrokeStyle(2, COLORS.goblinEdge) as unknown as EnemySprite;
+  markChampion(sprite, champion);
   scene.physics.add.existing(sprite);
   let hp = maxHp;
   let state = newGoblinState();

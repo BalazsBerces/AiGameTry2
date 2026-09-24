@@ -1,15 +1,19 @@
 import type Phaser from 'phaser';
 import { createGargoyle as createGargoyleRules, updateGargoyle } from '../../core/gargoyle';
 import { COLORS, TUNING } from '../config';
-import { singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
+import { championBoost, championColor, singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
 
 /**
  * Stationary stone diamond, dormant (dull, eyes dark) until the player comes within range;
  * then it lights up and fires aimed bursts on the schedule in core/gargoyle.
  */
-export function createGargoyle(scene: Phaser.Scene, x: number, y: number): Enemy {
-  const { size, hp, shotSpeed } = TUNING.gargoyle;
-  const sprite = scene.add.rectangle(x, y, size, size, COLORS.gargoyle) as unknown as EnemySprite;
+export function createGargoyle(scene: Phaser.Scene, x: number, y: number, champion = false): Enemy {
+  const { shotSpeed } = TUNING.gargoyle;
+  // Its outline is its eyes (lit once awake), so a champion shows only by size and tint.
+  const boost = championBoost(champion);
+  const size = TUNING.gargoyle.size * boost.scale;
+  const hp = TUNING.gargoyle.hp * boost.hp;
+  const sprite = scene.add.rectangle(x, y, size, size, championColor(COLORS.gargoyle, champion)) as unknown as EnemySprite;
   sprite.setAngle(45).setStrokeStyle(2, COLORS.gargoyleEyes, 0);
   scene.physics.add.existing(sprite);
   sprite.body.setImmovable(true);

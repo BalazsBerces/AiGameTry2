@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { validateRoom } from './roomValidator';
-import { createWorld, detonateBomb, hitTile, placeBomb, shownPickups, smashRock, sproutTile, touchPickup, type WorldRoom } from './world';
+import { burstGlowshroom, createWorld, detonateBomb, hitTile, placeBomb, shownPickups, smashRock, sproutTile, touchPickup, type WorldRoom } from './world';
 import { archetypeById, supportsShape } from './archetypes';
 import { CELL_TILES, roomPadding } from './roomGenerator';
 
@@ -88,6 +88,39 @@ describe('sproutTile', () => {
     expect(sproutTile(world, room.floorRoom.id, { x: -1, y: 3 }, 'rock')).toBe(false);
     expect(room.layout.tiles[3][6]).toBe('hole');
     expect(room.layout.tiles[3][7]).toBe('obstacle');
+  });
+});
+
+describe('burstGlowshroom', () => {
+  it('pops a glowshroom on the first shot, leaving floor for the rest of the run', () => {
+    const world = createWorld(1);
+    const room = firstNormalRoom(world);
+    room.layout.tiles[3][6] = 'glowshroom';
+    expect(burstGlowshroom(world, room.floorRoom.id, { x: 6, y: 3 })).toBe(true);
+    expect(world.rooms.get(room.floorRoom.id)!.layout.tiles[3][6]).toBe('floor');
+    expect(burstGlowshroom(world, room.floorRoom.id, { x: 6, y: 3 })).toBe(false);
+  });
+
+  it('leaves every other tile alone', () => {
+    const world = createWorld(1);
+    const room = firstNormalRoom(world);
+    const tiles = room.layout.tiles;
+    tiles[1][1] = 'rock';
+    tiles[1][2] = 'obstacle';
+    tiles[1][3] = 'crystal';
+    tiles[1][4] = 'floor';
+    for (const x of [1, 2, 3, 4]) expect(burstGlowshroom(world, room.floorRoom.id, { x, y: 1 })).toBe(false);
+    expect(tiles[1].slice(1, 5)).toEqual(['rock', 'obstacle', 'crystal', 'floor']);
+    expect(burstGlowshroom(world, room.floorRoom.id, { x: -1, y: 1 })).toBe(false);
+  });
+
+  it('is not cracked by shots nor smashed by a charge like a rock', () => {
+    const world = createWorld(1);
+    const room = firstNormalRoom(world);
+    room.layout.tiles[3][6] = 'glowshroom';
+    expect(hitTile(world, room.floorRoom.id, { x: 6, y: 3 })).toBe('none');
+    expect(smashRock(world, room.floorRoom.id, { x: 6, y: 3 })).toBe(false);
+    expect(room.layout.tiles[3][6]).toBe('glowshroom');
   });
 });
 

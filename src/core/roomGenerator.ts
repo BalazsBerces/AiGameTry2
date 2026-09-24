@@ -20,7 +20,7 @@ export const CELL_TILES = { w: ROOM_WIDTH + 2, h: ROOM_HEIGHT + 2 };
  * bush that hurts whoever walks into it; `crusher` is a block that slides when it sees the
  * player. Behaviour lives in `TILES`.
  */
-export type Tile = 'floor' | 'obstacle' | 'rock' | 'hole' | 'thorn' | 'crusher' | 'crystal';
+export type Tile = 'floor' | 'obstacle' | 'rock' | 'hole' | 'thorn' | 'crusher' | 'crystal' | 'glowshroom';
 
 export interface DoorSpec {
   side: Direction;

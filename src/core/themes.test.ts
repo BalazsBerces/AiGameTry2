@@ -47,4 +47,9 @@ describe('floor themes', () => {
     expect(themeForFloor(1).looks.crystal.name).toBe('crystal cluster');
     expect(new Set([0, 1, 2].map((f) => themeForFloor(f).looks.crystal.name)).size).toBe(3);
   });
+
+  it('gives glowshroom a look of its own on every floor, a glowshroom in the caves', () => {
+    expect(themeForFloor(1).looks.glowshroom.name).toBe('glowshroom');
+    expect(new Set([0, 1, 2].map((f) => themeForFloor(f).looks.glowshroom.name)).size).toBe(3);
+  });
 });

@@ -954,6 +954,42 @@ const boarRun: Archetype = {
   },
 };
 
+/**
+ * Floor 2, the glowshroom cave: glowshrooms, mirrored into all four quarters, stand where the
+ * cave's enemies start or have to pass, so a well-timed shot bursts one over them and stuns
+ * them (an opening), as long as the player keeps out of the cloud themselves. Either a crystal
+ * turret sits in a ring of glowshrooms in the middle, or ghouls wait beside caps in the lanes.
+ * The caps stand alone or in short bars that wall nothing off and keep clear of the middle row
+ * and column, so it fits every door set.
+ */
+const glowshroomCave: Archetype = {
+  id: 'glowshroomCave',
+  floor: 1,
+  kind: 'normal',
+  fits: fitsAll,
+  build({ width, height, rng }) {
+    const axes: MirrorAxis[] = ['vertical', 'horizontal'];
+    const canvas = new Canvas(width, height, axes);
+    // A top-left quarter of glowshrooms, and a ghoul's spot beside one (mirrored to the others).
+    const layout = rng.pick([
+      // Ring: caps round a crystal turret in the middle, ghouls roaming the corners.
+      { shrooms: [{ x: 5, y: 2 }], ghoul: { x: 2, y: 1 }, ringed: true },
+      // Bars: a short bar of caps in each quarter, a ghoul waiting at its foot.
+      { shrooms: [{ x: 3, y: 1 }, { x: 3, y: 2 }], ghoul: { x: 4, y: 2 }, ringed: false },
+      // Patches: two caps either side of the ghoul's lane.
+      { shrooms: [{ x: 2, y: 2 }, { x: 4, y: 1 }], ghoul: { x: 3, y: 1 }, ringed: false },
+    ]);
+    canvas.paint(layout.shrooms, 'glowshroom');
+    // Sometimes a stalagmite in each corner too.
+    if (rng.next() < 0.5) canvas.paint([{ x: 0, y: 0 }], 'obstacle');
+    const posts = canvas.images(layout.ghoul);
+    // Ghouls in every quarter, or just a diagonal pair; a ringed turret sometimes holds the middle alone.
+    const ghouls = layout.ringed && rng.next() < 0.4 ? [] : rng.next() < 0.5 ? posts : [posts[0], posts[posts.length - 1]];
+    const turrets = layout.ringed ? turretsOf(1, [{ x: (width - 1) / 2, y: (height - 1) / 2 }]) : [];
+    return { tiles: canvas.tiles, enemies: [...turrets, ...walkersOf(1, ghouls)], pickups: [], symmetry: { axes } };
+  },
+};
+
 function shuffled<T>(items: readonly T[], rng: Rng): T[] {
   const out = [...items];
   for (let i = out.length - 1; i > 0; i--) {
@@ -992,6 +1028,7 @@ export const ARCHETYPES: readonly Archetype[] = [
   waspNest,
   boarRun,
   hauntedHall,
+  glowshroomCave,
 ];
 
 export const archetypeById = (id: string) => ARCHETYPES.find((a) => a.id === id);

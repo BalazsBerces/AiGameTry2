@@ -1071,6 +1071,62 @@ const glowshroomCave: Archetype = {
   },
 };
 
+/**
+ * Floor 2, the bat roost: chasms mirrored into every quarter, and bats roosting on their brinks
+ * (islands in the middle of a chasm, ledges along a rift, or corner pockets cut off by the drop).
+ * They flutter out over the dark and swoop across it at the player, who has to fight them from
+ * the edge. Sometimes ghouls wander the floor between. Chasms stay clear of the door approaches,
+ * so it fits every door set.
+ */
+const batRoost: Archetype = {
+  id: 'batRoost',
+  floor: 1,
+  kind: 'normal',
+  fits: fitsAll,
+  build({ width, height, rng }) {
+    const axes: MirrorAxis[] = ['vertical', 'horizontal'];
+    const canvas = new Canvas(width, height, axes);
+    // A top-left quarter of chasm, the bats' roosts on its brink, and a ghoul's spot on open floor.
+    const layout = rng.pick([
+      // Islands: a pillar of rock rising out of a chasm on either side of the middle.
+      {
+        chasm: [{ x: 3, y: 1 }, { x: 4, y: 1 }, { x: 5, y: 1 }, { x: 3, y: 2 }, { x: 5, y: 2 }, { x: 3, y: 3 }, { x: 5, y: 3 }],
+        roosts: [{ x: 4, y: 2 }, { x: 4, y: 3 }],
+        ghoul: { x: 1, y: 1 },
+        sinkhole: false,
+      },
+      // Rifts: two deep drops either side of a bridge down the middle.
+      {
+        chasm: [{ x: 3, y: 2 }, { x: 4, y: 2 }, { x: 5, y: 2 }, { x: 3, y: 3 }, { x: 4, y: 3 }, { x: 5, y: 3 }],
+        roosts: [{ x: 4, y: 1 }, { x: 2, y: 3 }],
+        ghoul: { x: 1, y: 0 },
+        sinkhole: false,
+      },
+      // Pockets: the corners cut off by the drop.
+      {
+        chasm: [{ x: 2, y: 0 }, { x: 2, y: 1 }, { x: 0, y: 2 }, { x: 1, y: 2 }, { x: 2, y: 2 }],
+        roosts: [{ x: 1, y: 1 }, { x: 1, y: 0 }],
+        ghoul: { x: 4, y: 3 },
+        sinkhole: true,
+      },
+    ]);
+    canvas.paint(layout.chasm, 'hole');
+    // Some layouts sometimes open a sinkhole in the middle too.
+    if (layout.sinkhole && rng.next() < 0.5) canvas.paint([{ x: 5, y: 3 }, { x: 6, y: 3 }], 'hole');
+    const roosts = canvas.images(rng.pick(layout.roosts));
+    // Every roost taken, or (when there are four) just a diagonal pair.
+    const bats = roosts.length > 2 && rng.next() < 0.5 ? [roosts[0], roosts[roosts.length - 1]] : roosts;
+    const spots = canvas.images(layout.ghoul);
+    const ghouls = rng.next() < 0.4 ? [spots[0], spots[spots.length - 1]] : [];
+    return {
+      tiles: canvas.tiles,
+      enemies: [...bats.map((cell): EnemySpawn => ({ type: 'bat', cell })), ...walkersOf(1, ghouls)],
+      pickups: [],
+      symmetry: { axes },
+    };
+  },
+};
+
 function shuffled<T>(items: readonly T[], rng: Rng): T[] {
   const out = [...items];
   for (let i = out.length - 1; i > 0; i--) {
@@ -1112,6 +1168,7 @@ export const ARCHETYPES: readonly Archetype[] = [
   ...[0, 1, 2].map(arena),
   ...[0, 1, 2].map(ambush),
   glowshroomCave,
+  batRoost,
 ];
 
 export const archetypeById = (id: string) => ARCHETYPES.find((a) => a.id === id);

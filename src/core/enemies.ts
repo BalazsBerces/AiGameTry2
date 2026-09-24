@@ -26,4 +26,6 @@ export const ENEMY_CLASS: Record<EnemyType, EnemyClass> = {
   boar: 'walker',
   /** Drifts through walls, rocks and pits: it always comes out to be shot. */
   ghost: 'phasing',
+  /** Flutters over chasms and swoops at the player, so it only has to be shootable. */
+  bat: 'flyer',
 };

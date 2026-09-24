@@ -39,6 +39,11 @@ describe('floor themes', () => {
     for (const f of [0, 1]) expect(themeForFloor(f).newEnemies ?? []).not.toContain('ghost');
   });
 
+  it('debuts the bat in the caves and nowhere else', () => {
+    expect(themeForFloor(1).newEnemies).toContain('bat');
+    for (const f of [0, 2]) expect(themeForFloor(f).newEnemies ?? []).not.toContain('bat');
+  });
+
   it('shows a thorn as a thorn bush in the forest', () => {
     expect(themeForFloor(0).looks.thorn.name).toBe('thorn bush');
   });

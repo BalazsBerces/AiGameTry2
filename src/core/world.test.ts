@@ -286,7 +286,7 @@ describe('forest cast', () => {
 });
 
 describe('the caves cast', () => {
-  it('fills floor 2 rooms with ghouls, crystal turrets and worms only', () => {
+  it('fills floor 2 rooms with ghouls, crystal turrets, worms and bats only', () => {
     const types = new Set<string>();
     for (let seed = 0; seed < 40; seed++) {
       for (const room of createWorld(seed).rooms.values()) {
@@ -294,7 +294,7 @@ describe('the caves cast', () => {
         for (const e of room.layout.enemies) types.add(e.type);
       }
     }
-    expect([...types].sort()).toEqual(['crystalTurret', 'ghoul', 'worm']);
+    expect([...types].sort()).toEqual(['bat', 'crystalTurret', 'ghoul', 'worm']);
   });
 });
 

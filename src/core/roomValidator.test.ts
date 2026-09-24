@@ -331,6 +331,12 @@ describe('validateRoom flyers', () => {
     expect(rules(r)).toEqual([]);
   });
 
+  it('accepts a bat roosting beyond a chasm, since it flies over it', () => {
+    const r = room(BEYOND_POND('.'));
+    r.enemies.push({ type: 'bat', cell: { x: 6, y: 3 } });
+    expect(rules(r)).toEqual([]);
+  });
+
   it('rejects a flyer shut in by stone, with no line of fire to it', () => {
     const r = room(`
       .............

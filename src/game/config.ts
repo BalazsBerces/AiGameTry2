@@ -54,6 +54,8 @@ export const TUNING = {
   ghost: { hp: 4, radius: 15, speed: 60 },
   /** How long a burst glowshroom's cloud lingers on screen; its reach and stun live in core/glowshroom. */
   glowCloud: { showMs: 450 },
+  /** Small and frail; its flutter, telegraph and swoop (in tiles) live in core/bat. */
+  bat: { hp: 2, width: 26, height: 12 },
 };
 
 /** Floor, wall, door and terrain colours come from each floor's theme (core/themes). */
@@ -120,4 +122,7 @@ export const COLORS = {
   sweepTelegraph: 0xd8b25a,
   sweep: 0x6a8a3a,
   glowCloud: 0x8af0b8,
+  bat: 0x4a3a5c,
+  batWing: 0x1c1424,
+  batTelegraph: 0xe05a7a,
 };

@@ -53,6 +53,27 @@ describe('floor themes', () => {
     expect(new Set([0, 1, 2].map((f) => themeForFloor(f).looks.crystal.name)).size).toBe(3);
   });
 
+  it('colours the caves earthy brown: red over green over blue in the room and its stone', () => {
+    const brown = (c: number) => {
+      const [r, g, b] = [(c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff];
+      return r > g && g > b;
+    };
+    const caves = themeForFloor(1);
+    for (const part of ['background', 'floor', 'itemFloor', 'bossFloor', 'wall'] as const) {
+      expect(brown(caves.palette[part]), part).toBe(true);
+    }
+    for (const tile of ['obstacle', 'rock', 'crusher'] as const) expect(brown(caves.looks[tile].color), tile).toBe(true);
+  });
+
+  it('keeps the caves crystals cyan and glowshrooms green against the brown', () => {
+    expect(themeForFloor(1).looks.crystal.color).toBe(0x7fd4e0);
+    expect(themeForFloor(1).looks.glowshroom.color).toBe(0x6ae0a0);
+  });
+
+  it("keeps the caves' brown boss floor apart from the forest's", () => {
+    expect(themeForFloor(1).palette.bossFloor).not.toBe(themeForFloor(0).palette.bossFloor);
+  });
+
   it('gives glowshroom a look of its own on every floor, a glowshroom in the caves', () => {
     expect(themeForFloor(1).looks.glowshroom.name).toBe('glowshroom');
     expect(new Set([0, 1, 2].map((f) => themeForFloor(f).looks.glowshroom.name)).size).toBe(3);

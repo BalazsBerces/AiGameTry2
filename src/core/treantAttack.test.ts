@@ -4,6 +4,7 @@ import type { Tile } from './roomGenerator';
 import {
   branchSweepHits,
   branchSweepPhase,
+  burstSpot,
   inSweepRange,
   planBranchSweep,
   planRootEruption,
@@ -270,5 +271,24 @@ describe('branch sweep', () => {
     const sweep = planBranchSweep(treant, around(2, 0));
     expect(branchSweepHits(sweep, sweep.telegraphMs + 1, around(1.2, sweep.halfArc * 0.8))).toBe(true);
     expect(branchSweepHits(sweep, sweep.telegraphMs + 1, around(1.2, -sweep.halfArc * 0.8))).toBe(true);
+  });
+});
+
+describe('burstSpot', () => {
+  it('comes up in the middle of the room when there is open ground for it', () => {
+    expect(burstSpot(open(7, 7))).toEqual({ x: 3, y: 3 });
+  });
+
+  it('comes up at the nearest open spot when the middle is blocked', () => {
+    const tiles = grid(['.......', '.......', '.......', '...#...', '.......', '.......', '.......']);
+    const spot = burstSpot(tiles)!;
+    expect(dist(spot, { x: 3, y: 3 })).toBe(2);
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) expect(tiles[spot.y + dy]?.[spot.x + dx]).toBe('floor');
+  });
+
+  it('needs the whole 3x3 around it open, within the room', () => {
+    const spot = burstSpot(grid(['#####', '#...#', '#...#', '#...#', '#####']));
+    expect(spot).toEqual({ x: 2, y: 2 });
+    expect(burstSpot(grid(['....', '.#..', '....', '....']))).toBeUndefined();
   });
 });

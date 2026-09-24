@@ -42,6 +42,8 @@ export interface EnemyContext {
   landSeedPod(cell: Cell, tile: 'rock' | 'thorn'): boolean;
   /** The Treant walked into one of its own sprouts: it is floor again, for good. */
   crushSprout(cell: Cell): void;
+  /** Moves the player straight away from `from` until they are `distance` px from it (if nearer). */
+  pushPlayerOut(from: { x: number; y: number }, distance: number): void;
 }
 
 /**

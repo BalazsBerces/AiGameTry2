@@ -3,6 +3,7 @@ import type { Rng } from './rng';
 import type { Door, Tile } from './roomGenerator';
 import {
   branchSweepPhase,
+  burstSpot,
   inSweepRange,
   planBranchSweep,
   planRootEruption,
@@ -24,7 +25,16 @@ export const TREANT = {
    * just past where its body (about a tile in radius) comes up against a tile.
    */
   crushReach: 1.6,
+  /** At or under this share of its hit points it makes its last stand... */
+  lastStandAt: 0.25,
+  /** ...sinking into the ground for this long... */
+  sinkMs: 800,
+  /** ...then its burst spot is marked for this long before it comes up there. */
+  markMs: 700,
 };
+
+/** `regular` walks and attacks; the rest is its last stand, which it never leaves. */
+export type TreantPhase = 'regular' | 'sinking' | 'marked' | 'lastStand';
 
 export type TreantAttack =
   | { kind: 'roots'; plan: RootEruption; start: number }
@@ -35,8 +45,14 @@ export type TreantAttack =
  * player, standing still for its root eruptions but not while its seed pods fly; the two take turns.
  * Whenever the player comes close it also sweeps its branches, standing still for that too. It
  * remembers where its pods came down and crushes those sprouts, and only those, as it walks into them.
+ * Down to a quarter of its hit points, it drops everything and sinks, its sprouts crumbling, and
+ * bursts up in the middle of the room for its last stand; it can't be hurt while underground.
  */
 export interface Treant {
+  phase: TreantPhase;
+  phaseStart: number;
+  /** Where it comes up for its last stand, once marked. */
+  burstAt?: Cell;
   attack?: TreantAttack;
   nextAttackAt: number;
   throwSeedsNext: boolean;
@@ -59,7 +75,13 @@ export interface TreantInput {
 }
 
 /** One-off things for the scene to carry out. */
-export type TreantEvent = { kind: 'podsLand'; pods: SeedPod[] } | { kind: 'crush'; cell: Cell };
+export type TreantEvent =
+  | { kind: 'podsLand'; pods: SeedPod[] }
+  | { kind: 'crush'; cell: Cell }
+  /** Every sprout of its own still standing turns back into floor. */
+  | { kind: 'crumble'; cells: Cell[] }
+  /** It comes up out of the ground on `cell` for its last stand. */
+  | { kind: 'burst'; cell: Cell };
 
 export interface TreantStep {
   treant: Treant;
@@ -68,11 +90,45 @@ export interface TreantStep {
   events: TreantEvent[];
 }
 
-export const createTreant = (time: number): Treant => ({ nextAttackAt: time, throwSeedsNext: false, nextSweepAt: time, sprouts: [] });
+export const createTreant = (time: number): Treant => ({
+  phase: 'regular',
+  phaseStart: time,
+  nextAttackAt: time,
+  throwSeedsNext: false,
+  nextSweepAt: time,
+  sprouts: [],
+});
+
+/** Underground, between sinking and bursting up, it can't be hurt. */
+export const canHurtTreant = (treant: Treant) => treant.phase !== 'sinking' && treant.phase !== 'marked';
 
 const cellOf = (p: Point): Cell => ({ x: Math.floor(p.x), y: Math.floor(p.y) });
 
 export function updateTreant(treant: Treant, input: TreantInput): TreantStep {
+  if (treant.phase !== 'regular') return lastStand(treant, input);
+  if (input.hp > input.maxHp * TREANT.lastStandAt) return regular(treant, input);
+  // Struck down to a quarter: everything under way stops, and it sinks.
+  const cells = treant.sprouts.filter(({ cell, sprout }) => input.tiles[cell.y]?.[cell.x] === sprout).map((s) => s.cell);
+  return {
+    treant: { ...treant, phase: 'sinking', phaseStart: input.time, attack: undefined, sweep: undefined, sprouts: [] },
+    events: [{ kind: 'crumble', cells }],
+  };
+}
+
+/** Sinking, marked, then up in the middle of the room for good. */
+function lastStand(treant: Treant, input: TreantInput): TreantStep {
+  const since = input.time - treant.phaseStart;
+  if (treant.phase === 'sinking' && since >= TREANT.sinkMs) {
+    const burstAt = burstSpot(input.tiles) ?? cellOf(input.at);
+    return { treant: { ...treant, phase: 'marked', phaseStart: input.time, burstAt }, events: [] };
+  }
+  if (treant.phase === 'marked' && since >= TREANT.markMs) {
+    return { treant: { ...treant, phase: 'lastStand', phaseStart: input.time }, events: [{ kind: 'burst', cell: treant.burstAt! }] };
+  }
+  return { treant, events: [] };
+}
+
+function regular(treant: Treant, input: TreantInput): TreantStep {
   const { time } = input;
   const events: TreantEvent[] = [];
   let { attack, nextAttackAt, throwSeedsNext, sweep, nextSweepAt } = treant;

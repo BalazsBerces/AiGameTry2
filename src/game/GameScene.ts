@@ -801,6 +801,15 @@ export class GameScene extends Phaser.Scene {
       crushSprout: (cell: Cell) => {
         if (clearSprout(this.world, room.floorRoom.id, cell)) this.removeTerrain(room.floorRoom.id, cell);
       },
+      pushPlayerOut: (from, distance) => {
+        const dx = this.player.x - from.x;
+        const dy = this.player.y - from.y;
+        const d = Math.hypot(dx, dy);
+        if (d >= distance) return;
+        // Dead centre: straight down.
+        const [ux, uy] = d > 0 ? [dx / d, dy / d] : [0, 1];
+        this.player.body.reset(from.x + ux * distance, from.y + uy * distance);
+      },
     };
   }
 

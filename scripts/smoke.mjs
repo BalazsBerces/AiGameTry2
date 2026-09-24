@@ -722,6 +722,32 @@ if (scenario === 'treant') {
     console.log('set down beside sprout', JSON.stringify(beside), 'rock+thorn', before, '->', await sprouts());
     await shot('treant-crushed');
   }
+
+  // Strike it down to a quarter with the player standing in the middle of the room: it sinks
+  // (untouchable), its sprouts crumble, it marks the middle and bursts up, shoving the player clear.
+  const mid = await page.evaluate(`(() => { const s = ${scene()}; const room = s.world.rooms.get('${id}');
+    const ox = room.floorRoom.cell.x * 720 + (15 * 2 - room.layout.width) / 2 * 48;
+    const oy = room.floorRoom.cell.y * 432 + (9 * 2 - room.layout.height) / 2 * 48;
+    return { x: ox + room.layout.width / 2 * 48, y: oy + room.layout.height / 2 * 48 }; })()`);
+  await page.evaluate(`(() => { const s = ${scene()};
+    s.player.body.reset(${mid.x}, ${mid.y});
+    s.invincibleUntil = 0; s.world.player.health = 6;
+    s.damagePart(s.enemies[0].parts[0], 53); })()`);
+  const lastStand = () => page.evaluate(`(() => { const s = ${scene()}; const p = s.enemies[0]?.parts[0];
+    return { alive: s.enemies.length, visible: p && Math.round(p.alpha * 100) / 100, bodyOn: p?.body.enable,
+      treantAt: p && [Math.round(p.x), Math.round(p.y)], player: [Math.round(s.player.x), Math.round(s.player.y)], health: s.world.player.health }; })()`);
+  await page.waitForTimeout(300);
+  console.log('sinking', JSON.stringify(await lastStand()), 'rock+thorn', await sprouts());
+  await page.evaluate(`(() => { const s = ${scene()}; s.damagePart(s.enemies[0].parts[0], 30); s.invincibleUntil = 0; })()`);
+  console.log('struck for 30 while sinking (should still be alive)', JSON.stringify(await lastStand()));
+  await page.waitForTimeout(800);
+  await shot('treant-marked');
+  console.log('marked', JSON.stringify(await lastStand()));
+  await page.waitForTimeout(700);
+  await shot('treant-burst');
+  console.log('burst (player shoved clear, half a heart lost)', JSON.stringify(await lastStand()), 'middle', JSON.stringify(mid));
+  await page.waitForTimeout(1500);
+  console.log('standing in its last stand', JSON.stringify(await lastStand()));
 }
 
 if (scenario === 'end-race') {

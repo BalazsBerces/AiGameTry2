@@ -1,6 +1,6 @@
 import type Phaser from 'phaser';
 import { createRng } from '../../core/rng';
-import { createTreant as createTreantBrain, updateTreant, type Treant } from '../../core/treant';
+import { canHurtTreant, createTreant as createTreantBrain, TREANT, updateTreant, type Treant } from '../../core/treant';
 import {
   branchSweepHits,
   branchSweepPhase,
@@ -99,6 +99,39 @@ export function createTreant(scene: Phaser.Scene, x: number, y: number, _cell: C
     }
   };
 
+  /** Sinking `p` of the way (0-1) into the ground: shrinking, fading, and out of reach of shots and touch. */
+  const drawUnderground = (p: number) => {
+    sprite.body.enable = false;
+    const scale = 1 - 0.7 * Math.min(1, p);
+    for (const shape of [sprite, ...decor.map((d) => d.shape)]) shape.setScale(scale).setAlpha(1 - Math.min(1, p));
+  };
+
+  /** A ring of roots marks where it will come up, filling in until it does. */
+  const drawMark = (ctx: EnemyContext, cell: Cell, p: number) => {
+    const c = ctx.tileCenter(cell);
+    ground.fillStyle(COLORS.rootTelegraph, 0.15 + 0.3 * Math.min(1, p)).fillCircle(c.x, c.y, radius);
+    ground.lineStyle(3, COLORS.rootTelegraph, 0.9).strokeCircle(c.x, c.y, radius);
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const [x, y] = [c.x + Math.cos(a) * radius, c.y + Math.sin(a) * radius];
+      ground.fillStyle(COLORS.root, 1).fillTriangle(x - 5, y + 6, x + 5, y + 6, x, y - 10 * Math.min(1, p));
+    }
+  };
+
+  /** Up out of the ground on `cell`: whoever stands there is hurt and shoved clear. */
+  const burst = (ctx: EnemyContext, cell: Cell) => {
+    const c = ctx.tileCenter(cell);
+    sprite.body.enable = true;
+    sprite.body.reset(c.x, c.y);
+    for (const shape of [sprite, ...decor.map((d) => d.shape)]) shape.setScale(1).setAlpha(1);
+    const clear = radius + TUNING.playerSize / 2;
+    if (Math.hypot(ctx.player.x - c.x, ctx.player.y - c.y) < clear) {
+      ctx.hurtPlayer();
+      ctx.pushPlayerOut(c, clear + 4);
+    }
+    scene.tweens.add({ targets: sprite, scale: { from: 1.25, to: 1 }, duration: 220, ease: 'Back.easeOut' });
+  };
+
   const enemy = singlePartEnemy(scene, sprite, hp, (ctx: EnemyContext) => {
     brain ??= createTreantBrain(ctx.time);
     const player = toTiles(ctx, ctx.player);
@@ -116,6 +149,8 @@ export function createTreant(scene: Phaser.Scene, x: number, y: number, _cell: C
     for (const e of step.events) {
       if (e.kind === 'podsLand') for (const pod of e.pods) ctx.landSeedPod(pod.cell, pod.sprout);
       if (e.kind === 'crush') ctx.crushSprout(e.cell);
+      if (e.kind === 'crumble') for (const c of e.cells) ctx.crushSprout(c);
+      if (e.kind === 'burst') burst(ctx, e.cell);
     }
 
     sprite.body.setVelocity((step.walk?.x ?? 0) * walkSpeed, (step.walk?.y ?? 0) * walkSpeed);
@@ -123,6 +158,12 @@ export function createTreant(scene: Phaser.Scene, x: number, y: number, _cell: C
 
     ground.clear();
     pods.clear();
+    if (brain.phase === 'sinking' || brain.phase === 'marked') {
+      branches.clear();
+      drawUnderground(brain.phase === 'sinking' ? (ctx.time - brain.phaseStart) / TREANT.sinkMs : 1);
+      if (brain.phase === 'marked') drawMark(ctx, brain.burstAt!, (ctx.time - brain.phaseStart) / TREANT.markMs);
+      return;
+    }
     const { attack, sweep } = brain;
     if (attack?.kind === 'roots') {
       const { telegraph, hurting } = rootEruptionAt(attack.plan, ctx.time - attack.start);
@@ -140,6 +181,8 @@ export function createTreant(scene: Phaser.Scene, x: number, y: number, _cell: C
   });
   const hit = enemy.hit;
   enemy.hit = (part, damage) => {
+    // Underground, nothing reaches it.
+    if (brain && !canHurtTreant(brain)) return [enemy];
     health -= damage;
     const remaining = hit(part, damage);
     if (!remaining.length) {

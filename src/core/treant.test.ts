@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Tile } from './roomGenerator';
 import { createRng } from './rng';
-import { createTreant, updateTreant, type Treant, type TreantInput } from './treant';
+import { canHurtTreant, createTreant, TREANT, updateTreant, type Treant, type TreantEvent, type TreantInput } from './treant';
 
 const open = (w: number, h: number): Tile[][] => Array.from({ length: h }, () => Array<Tile>(w).fill('floor'));
 
@@ -119,6 +119,77 @@ describe('treant sprouts', () => {
     tiles[pod.cell.y][pod.cell.x] = 'floor';
     const step = updateTreant(treant, input(time + 20, { tiles, at: { x: pod.cell.x - 1, y: pod.cell.y + 0.5 } }));
     expect(step.events.filter((e) => e.kind === 'crush')).toEqual([]);
+  });
+});
+
+describe('treant last stand', () => {
+  const low = 17; // Under 25% of 70.
+
+  it('drops everything and sinks once it falls to a quarter of its hit points, crumbling its sprouts', () => {
+    const tiles = open(26, 14);
+    let t = createTreant(0);
+    let landed: { x: number; y: number }[] = [];
+    let time = 0;
+    for (; time < 5000 && !landed.length; time += 20) {
+      const step = updateTreant(t, input(time, { tiles }));
+      t = step.treant;
+      for (const e of step.events) if (e.kind === 'podsLand') for (const pod of e.pods) (tiles[pod.cell.y][pod.cell.x] = pod.sprout), landed.push(pod.cell);
+    }
+    // Make sure something is under way when it is struck down.
+    t = updateTreant(t, input(time, { tiles, player: { x: 7.5, y: 6.5 } })).treant;
+    expect(t.attack || t.sweep).toBeTruthy();
+
+    const step = updateTreant(t, input(time + 20, { tiles, hp: low }));
+    expect(step.treant.phase).toBe('sinking');
+    expect(step.treant.attack).toBeUndefined();
+    expect(step.treant.sweep).toBeUndefined();
+    expect(step.walk).toBeUndefined();
+    const crumble = step.events.find((e) => e.kind === 'crumble');
+    expect(crumble && crumble.kind === 'crumble' && [...crumble.cells].sort((a, b) => a.x - b.x || a.y - b.y)).toEqual(
+      [...landed].sort((a, b) => a.x - b.x || a.y - b.y),
+    );
+  });
+
+  it('sinks, marks the middle of the room, then bursts up there, untouchable until it does', () => {
+    const { sinkMs, markMs } = TREANT;
+    const frames = Array.from({ length: Math.ceil((sinkMs + markMs + 1000) / 20) }, (_, i) => 1000 + i * 20);
+    let t = createTreant(0);
+    const seen: { time: number; phase: string; hurtable: boolean; burstAt?: unknown; walk?: unknown; events: TreantEvent[] }[] = [];
+    for (const time of frames) {
+      const step = updateTreant(t, input(time, { hp: low }));
+      t = step.treant;
+      seen.push({ time, phase: t.phase, hurtable: canHurtTreant(t), burstAt: t.burstAt, walk: step.walk, events: step.events });
+    }
+    const at = (ms: number) => seen.find((s) => s.time >= 1000 + ms)!;
+    expect(at(0)).toMatchObject({ phase: 'sinking', hurtable: false });
+    expect(at(sinkMs - 40)).toMatchObject({ phase: 'sinking', hurtable: false });
+    expect(at(sinkMs + 40)).toMatchObject({ phase: 'marked', hurtable: false, burstAt: { x: 12, y: 6 } });
+    expect(at(sinkMs + markMs + 40)).toMatchObject({ phase: 'lastStand', hurtable: true });
+    expect(seen.every((s) => s.walk === undefined)).toBe(true);
+
+    const bursts = seen.flatMap((s) => s.events).filter((e) => e.kind === 'burst');
+    expect(bursts).toEqual([{ kind: 'burst', cell: { x: 12, y: 6 } }]);
+    expect(seen.filter((s) => s.phase === 'lastStand').every((s) => !s.events.some((e) => e.kind === 'crumble'))).toBe(true);
+  });
+
+  it('stands its ground in the last stand: no walking, no roots, pods or sweeps', () => {
+    let t = createTreant(0);
+    const steps = [];
+    for (let time = 0; time < 12000; time += 20) {
+      const step = updateTreant(t, input(time, { hp: low, player: { x: 13.5, y: 7.5 } }));
+      t = step.treant;
+      if (t.phase === 'lastStand') steps.push(step);
+    }
+    expect(steps.length).toBeGreaterThan(100);
+    for (const s of steps) {
+      expect(s.walk).toBeUndefined();
+      expect(s.treant.attack).toBeUndefined();
+      expect(s.treant.sweep).toBeUndefined();
+    }
+  });
+
+  it('can be hurt as normal before its last stand', () => {
+    expect(canHurtTreant(createTreant(0))).toBe(true);
   });
 });
 

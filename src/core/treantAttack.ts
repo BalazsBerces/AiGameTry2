@@ -144,6 +144,24 @@ export function planSeedVolley(tiles: Tile[][], doors: Door[], treant: Cell, pla
   return { pods, flightMs: SEEDS.flightMs, durationMs: SEEDS.flightMs + SEEDS.settleMs };
 }
 
+/**
+ * Where the Treant bursts up for its last stand: the cell nearest the room's middle with floor
+ * all round it (the 3x3 its body covers), or undefined if there is no such spot.
+ */
+export function burstSpot(tiles: Tile[][]): Cell | undefined {
+  const middle = { x: (tiles[0].length - 1) / 2, y: (tiles.length - 1) / 2 };
+  const open = (c: Cell) => [-1, 0, 1].every((dy) => [-1, 0, 1].every((dx) => tiles[c.y + dy]?.[c.x + dx] === 'floor'));
+  let best: Cell | undefined;
+  let bestDistance = Infinity;
+  tiles.forEach((row, y) =>
+    row.forEach((_, x) => {
+      const d = Math.hypot(x - middle.x, y - middle.y);
+      if (d < bestDistance && open({ x, y })) [best, bestDistance] = [{ x, y }, d];
+    }),
+  );
+  return best;
+}
+
 /** Branch sweep reach and timing; all numbers are placeholders for playtest tuning. */
 export const SWEEP = {
   /** Reach from the treant's centre, in tiles; the player closer than this provokes a sweep. */

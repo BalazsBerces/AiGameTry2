@@ -23,21 +23,77 @@ const firstNormalRoom = (world: ReturnType<typeof createWorld>) =>
   [...world.rooms.values()].find((r) => r.floorRoom.kind === 'normal')!;
 
 describe('roomLabel', () => {
-  it("names a normal room by its kind and the idea it was built from", () => {
+  it("names a normal room by its kind, sub-theme and the idea it was built from", () => {
     const room = firstNormalRoom(createWorld(1));
-    room.layout.archetype = 'pillarHall';
-    expect(roomLabel(room)).toBe('normal · pillarHall');
+    room.layout.archetype = 'thornMaze';
+    room.layout.theme = 'bramble';
+    expect(roomLabel(room)).toBe('normal · bramble · thornMaze');
   });
 
-  it('names a boss arena by the boss waiting in it', () => {
+  it('names a boss arena by its sub-theme and the boss waiting in it', () => {
     const room = [...createWorld(1).rooms.values()].find((r) => r.floorRoom.kind === 'boss')!;
     room.layout.enemies = [{ type: 'ironMaiden', cell: { x: 6, y: 3 } }];
-    expect(roomLabel(room)).toBe('boss · ironMaiden');
+    room.layout.theme = 'crypt';
+    expect(roomLabel(room)).toBe('boss · crypt · ironMaiden');
   });
 
-  it('names the empty start room by its kind alone', () => {
+  it('names the empty start room by its kind and sub-theme', () => {
     const world = createWorld(1);
-    expect(roomLabel(world.rooms.get(world.currentRoomId)!)).toBe('start');
+    const start = world.rooms.get(world.currentRoomId)!;
+    start.layout.theme = 'grove';
+    expect(roomLabel(start)).toBe('start · grove');
+  });
+});
+
+describe('room sub-themes', () => {
+  const FLOOR_THEMES = [
+    ['grove', 'marsh', 'bramble'],
+    ['grotto', 'hollow', 'rift'],
+    ['crypt', 'cellblock', 'machineHall'],
+  ];
+  const worlds = Array.from({ length: 40 }, (_, seed) => createWorld(seed));
+
+  it("gives every room one of its floor's sub-themes", () => {
+    for (const world of worlds) {
+      for (const room of world.rooms.values()) expect(FLOOR_THEMES[room.floorIndex]).toContain(room.layout.theme);
+    }
+  });
+
+  it('uses all three sub-themes on every floor', () => {
+    for (const world of worlds) {
+      for (const floorIndex of [0, 1, 2]) {
+        const used = new Set([...world.rooms.values()].filter((r) => r.floorIndex === floorIndex).map((r) => r.layout.theme));
+        expect(used).toEqual(new Set(FLOOR_THEMES[floorIndex]));
+      }
+    }
+  });
+
+  it("gives a 1x1 room the theme of the idea it was built from", () => {
+    for (const world of worlds) {
+      for (const room of world.rooms.values()) {
+        const tag = archetypeById(room.layout.archetype ?? '')?.theme;
+        if (tag) expect(room.layout.theme).toBe(tag);
+      }
+    }
+  });
+
+  it('makes neighbouring rooms share a theme far more often than chance', () => {
+    let pairs = 0;
+    let shared = 0;
+    for (const world of worlds) {
+      for (const floor of world.floors) {
+        for (const [a, b] of floor.connections) {
+          pairs++;
+          if (world.rooms.get(a)!.layout.theme === world.rooms.get(b)!.layout.theme) shared++;
+        }
+      }
+    }
+    expect(shared / pairs).toBeGreaterThan(0.5);
+  });
+
+  it('gives the same themes for the same seed', () => {
+    const themes = (seed: number) => [...createWorld(seed).rooms.values()].map((r) => `${r.floorRoom.id}:${r.layout.theme}`);
+    expect(themes(11)).toEqual(themes(11));
   });
 });
 

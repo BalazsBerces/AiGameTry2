@@ -1,4 +1,5 @@
-import { assignArchetypes } from './archetypes';
+import { archetypeById, assignArchetypes } from './archetypes';
+import { assignRoomThemes } from './roomThemes';
 import { createRng, type Rng } from './rng';
 import {
   cellKey,
@@ -91,8 +92,17 @@ function buildFloor(world: World, rng: Rng, floor: FloorLayout) {
   const doorsOf = new Map(
     floor.rooms.map((r) => [r.id, [...roomDoors(floor, r.id), ...crossFloorDoors(world.floors, floor.floorIndex, r)]]),
   );
+  // Themes steer which ideas the rooms are built from; a built idea's own tag then has the last word.
+  const graph = floor.rooms.map((r) => ({ id: r.id, neighbors: roomDoors(floor, r.id).map((d) => d.to) }));
+  const wanted = assignRoomThemes(graph, floor.floorIndex, rng.fork('themes'));
   const archetypes = assignArchetypes(
-    floor.rooms.map((r) => ({ id: r.id, kind: r.kind, doors: doorsOf.get(r.id)!.map((d) => d.side), shape: r.shape })),
+    floor.rooms.map((r) => ({
+      id: r.id,
+      kind: r.kind,
+      doors: doorsOf.get(r.id)!.map((d) => d.side),
+      shape: r.shape,
+      theme: wanted.get(r.id),
+    })),
     floor.floorIndex,
     rng.fork('archetypes'),
   );
@@ -109,6 +119,9 @@ function buildFloor(world: World, rng: Rng, floor: FloorLayout) {
       layout.pickups.map((p) => ({ id: world.nextPickupId++, ...p })),
     );
   }
+  const built = graph.map((r) => ({ ...r, fixed: archetypeById(world.rooms.get(r.id)!.layout.archetype ?? '')?.theme }));
+  const themes = assignRoomThemes(built, floor.floorIndex, rng.fork('settled themes'));
+  for (const { id } of graph) world.rooms.get(id)!.layout.theme = themes.get(id);
 }
 
 export type PickupResult = 'none' | 'healed' | 'key' | 'bomb' | 'opened' | 'passive';
@@ -333,10 +346,13 @@ export function minimapRooms(world: World): { room: WorldRoom; visited: boolean;
 
 export const currentFloorIndex = (world: World) => world.rooms.get(world.currentRoomId)!.floorIndex;
 
-/** The room's kind and the idea it was built from (a boss arena's boss), for playtest reports: `normal · pillarHall`. */
+/**
+ * The room's kind, sub-theme and the idea it was built from (a boss arena's boss), for playtest
+ * reports: `normal · bramble · thornMaze`.
+ */
 export function roomLabel({ floorRoom, layout }: WorldRoom) {
   const idea = floorRoom.kind === 'boss' ? layout.enemies[0]?.type : layout.archetype;
-  return idea ? `${floorRoom.kind} · ${idea}` : floorRoom.kind;
+  return [floorRoom.kind, layout.theme, idea].filter(Boolean).join(' · ');
 }
 
 /**

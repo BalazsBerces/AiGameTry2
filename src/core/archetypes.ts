@@ -31,6 +31,8 @@ export interface Archetype {
   /** The only floor this idea appears on. */
   floor: number;
   kind: Extract<RoomKind, 'normal' | 'item'>;
+  /** The floor sub-theme a 1x1 idea always belongs to (see core/roomThemes); big rooms take theirs from the floor. */
+  theme?: string;
   /** Calm idea; the floor's first breather is its fallback and must fit every door set. */
   breather?: boolean;
   fits(doors: readonly Direction[]): boolean;
@@ -87,6 +89,7 @@ const turretsOf = (floorIndex: number, cells: Cell[]): EnemySpawn[] =>
 const pillaredHall: Archetype = {
   id: 'pillaredHall',
   floor: 0,
+  theme: 'grove',
   kind: 'normal',
   breather: true,
   fits: fitsAll,
@@ -110,6 +113,7 @@ const pillaredHall: Archetype = {
 const fourCorners: Archetype = {
   id: 'fourCorners',
   floor: 0,
+  theme: 'marsh',
   kind: 'normal',
   fits: fitsAll,
   build({ width, height, rng }) {
@@ -130,6 +134,7 @@ const fourCorners: Archetype = {
 const stash: Archetype = {
   id: 'stash',
   floor: 0,
+  theme: 'grove',
   kind: 'normal',
   fits: fitsAll,
   build({ width, height, rng }) {
@@ -206,6 +211,7 @@ function jarInside(shape: JarShape): Cell[] {
 const jar: Archetype = {
   id: 'jar',
   floor: 0,
+  theme: 'bramble',
   kind: 'normal',
   // Needs at least one wall without a door for the opening to face.
   fits: (doors) => doors.length < 4,
@@ -233,6 +239,7 @@ const jar: Archetype = {
 const sentryIsland: Archetype = {
   id: 'sentryIsland',
   floor: 0,
+  theme: 'marsh',
   kind: 'normal',
   fits: fitsAll,
   build({ width, height, rng }) {
@@ -272,6 +279,7 @@ const opposite = (c: Cell, width: number, height: number): Cell => ({ x: width -
 const track: Archetype = {
   id: 'track',
   floor: 1,
+  theme: 'rift',
   kind: 'normal',
   fits: fitsAll,
   build({ width, height, rng }) {
@@ -296,6 +304,7 @@ const track: Archetype = {
 const twinJars: Archetype = {
   id: 'twinJars',
   floor: 1,
+  theme: 'hollow',
   kind: 'normal',
   fits: fitsAll,
   build({ width, height, rng }) {
@@ -324,6 +333,7 @@ const twinJars: Archetype = {
 const gallery: Archetype = {
   id: 'gallery',
   floor: 1,
+  theme: 'grotto',
   kind: 'normal',
   fits: (doors) => !doors.includes('up') || !doors.includes('down'),
   build({ width, height, doors, rng }) {
@@ -343,6 +353,7 @@ const gallery: Archetype = {
 const serpentGarden: Archetype = {
   id: 'serpentGarden',
   floor: 1,
+  theme: 'rift',
   kind: 'normal',
   fits: fitsAll,
   build({ width, height, rng }) {
@@ -363,6 +374,7 @@ const serpentGarden: Archetype = {
 const courtyard: Archetype = {
   id: 'courtyard',
   floor: 1,
+  theme: 'hollow',
   kind: 'normal',
   breather: true,
   fits: fitsAll,
@@ -388,6 +400,7 @@ const courtyard: Archetype = {
 const vault: Archetype = {
   id: 'vault',
   floor: 1,
+  theme: 'grotto',
   kind: 'normal',
   fits: (doors) => !doors.includes('up') || !doors.includes('down'),
   build({ width, height, doors, rng }) {
@@ -418,6 +431,7 @@ const knightsOf = (cells: Cell[]): EnemySpawn[] => cells.map((cell) => ({ type: 
 const fortress: Archetype = {
   id: 'fortress',
   floor: 2,
+  theme: 'cellblock',
   kind: 'normal',
   fits: fitsAll,
   build({ width, height, rng }) {
@@ -444,6 +458,7 @@ const fortress: Archetype = {
 const killbox: Archetype = {
   id: 'killbox',
   floor: 2,
+  theme: 'machineHall',
   kind: 'normal',
   fits: fitsAll,
   build({ width, height, rng }) {
@@ -475,6 +490,7 @@ const killbox: Archetype = {
 const nest: Archetype = {
   id: 'nest',
   floor: 2,
+  theme: 'cellblock',
   kind: 'normal',
   fits: (doors) => !doors.includes('up') && !doors.includes('down'),
   build({ width, height, doors, rng }) {
@@ -508,6 +524,7 @@ const nest: Archetype = {
 const crossfire: Archetype = {
   id: 'crossfire',
   floor: 2,
+  theme: 'machineHall',
   kind: 'normal',
   fits: fitsAll,
   build({ width, height, rng }) {
@@ -529,6 +546,7 @@ const crossfire: Archetype = {
 const ruins: Archetype = {
   id: 'ruins',
   floor: 2,
+  theme: 'crypt',
   kind: 'normal',
   breather: true,
   fits: fitsAll,
@@ -557,6 +575,7 @@ const ruins: Archetype = {
 const minefield: Archetype = {
   id: 'minefield',
   floor: 2,
+  theme: 'crypt',
   kind: 'normal',
   fits: fitsAll,
   build({ width, height, rng }) {
@@ -640,6 +659,7 @@ const reliquary: Archetype = {
 const thornMaze: Archetype = {
   id: 'thornMaze',
   floor: 0,
+  theme: 'bramble',
   kind: 'normal',
   fits: fitsAll,
   build({ width, height, rng }) {
@@ -673,6 +693,7 @@ const thornMaze: Archetype = {
 const crusherCorridor: Archetype = {
   id: 'crusherCorridor',
   floor: 2,
+  theme: 'machineHall',
   kind: 'normal',
   fits: fitsAll,
   build({ width, height, rng }) {
@@ -710,6 +731,7 @@ const ghosts = (cells: Cell[]): EnemySpawn[] => cells.map((cell) => ({ type: 'gh
 const hauntedHall: Archetype = {
   id: 'hauntedHall',
   floor: 2,
+  theme: 'crypt',
   kind: 'normal',
   fits: fitsAll,
   build({ width, height, rng }) {
@@ -828,6 +850,7 @@ const descent = (floor: number): Archetype => ({
 const crystalGallery: Archetype = {
   id: 'crystalGallery',
   floor: 1,
+  theme: 'grotto',
   kind: 'normal',
   fits: fitsAll,
   build({ width, height, rng }) {
@@ -865,6 +888,7 @@ const crystalGallery: Archetype = {
 const knightGuard: Archetype = {
   id: 'knightGuard',
   floor: 2,
+  theme: 'cellblock',
   kind: 'normal',
   fits: fitsAll,
   build({ width, height, rng }) {
@@ -899,6 +923,7 @@ const swarm = (corner: Cell, rng: Rng): Cell[] =>
 const waspNest: Archetype = {
   id: 'waspNest',
   floor: 0,
+  theme: 'marsh',
   kind: 'normal',
   fits: fitsAll,
   build({ width, height, rng }) {
@@ -936,6 +961,7 @@ const waspNest: Archetype = {
 const boarRun: Archetype = {
   id: 'boarRun',
   floor: 0,
+  theme: 'grove',
   kind: 'normal',
   fits: fitsAll,
   build({ width, height, rng }) {
@@ -1048,6 +1074,7 @@ const ambush = (floor: number): Archetype => ({
 const glowshroomCave: Archetype = {
   id: 'glowshroomCave',
   floor: 1,
+  theme: 'hollow',
   kind: 'normal',
   fits: fitsAll,
   build({ width, height, rng }) {
@@ -1083,6 +1110,7 @@ const glowshroomCave: Archetype = {
 const batRoost: Archetype = {
   id: 'batRoost',
   floor: 1,
+  theme: 'rift',
   kind: 'normal',
   fits: fitsAll,
   build({ width, height, rng }) {
@@ -1193,12 +1221,15 @@ export interface RoomToAssign {
   doors: readonly Direction[];
   /** A single 1x1 cell if left out. */
   shape?: RoomShape;
+  /** The room's sub-theme: ideas tagged with it are picked first. */
+  theme?: string;
 }
 
 /**
  * Picks an archetype for every room on a floor that has any, uniformly among those drawn for
- * its shape, fitting its doors and used fewer than twice. When every fitting idea is at the cap
- * (more rooms than the floor has ideas for), the least-used fitting ones are picked from instead.
+ * its shape, fitting its doors and used fewer than twice, and among those of the room's theme
+ * while any of them are left. When every fitting idea is at the cap (more rooms than the floor
+ * has ideas for), the least-used fitting ones are picked from instead.
  */
 export function assignArchetypes(rooms: readonly RoomToAssign[], floorIndex: number, rng: Rng): Map<string, string> {
   const uses = new Map<string, number>();
@@ -1208,8 +1239,9 @@ export function assignArchetypes(rooms: readonly RoomToAssign[], floorIndex: num
     if (!fitting.length) continue;
     const count = (a: Archetype) => uses.get(a.id) ?? 0;
     const underCap = fitting.filter((a) => count(a) < MAX_USES_PER_FLOOR);
+    const themed = underCap.filter((a) => a.theme === room.theme);
     const least = Math.min(...fitting.map(count));
-    const pick = rng.pick(underCap.length ? underCap : fitting.filter((a) => count(a) === least));
+    const pick = rng.pick(themed.length ? themed : underCap.length ? underCap : fitting.filter((a) => count(a) === least));
     uses.set(pick.id, count(pick) + 1);
     assigned.set(room.id, pick.id);
   }

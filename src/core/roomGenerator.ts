@@ -97,6 +97,8 @@ export interface RoomLayout {
   pickups: PickupSpawn[];
   /** The idea the room was built from, if any. */
   archetype?: string;
+  /** The room's floor sub-theme (core/roomThemes), set once its whole floor is built. */
+  theme?: string;
   /** Crusher blocks and their axes; each stands on a `crusher` tile, which moves with it. */
   crushers?: Crusher[];
 }

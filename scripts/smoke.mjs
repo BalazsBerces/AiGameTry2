@@ -8,7 +8,7 @@ const [scenario = 'walk', outDir = 'smoke-out'] = process.argv.slice(2);
 mkdirSync(outDir, { recursive: true });
 
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
-const page = await browser.newPage({ viewport: { width: 720, height: 432 } });
+const page = await browser.newPage({ viewport: { width: 720, height: 452 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(String(e)));
 page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));

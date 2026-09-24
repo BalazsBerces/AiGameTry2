@@ -6,6 +6,8 @@ import { TUNING } from './config';
 
 export const CELL_PX_W = CELL_TILES.w * TUNING.tile;
 export const CELL_PX_H = CELL_TILES.h * TUNING.tile;
+/** Strip under the playfield for the room label (HudScene); the game camera stops above it. */
+export const LABEL_STRIP_H = 20;
 
 export function cellOrigin(cell: Cell) {
   return { x: cell.x * CELL_PX_W, y: cell.y * CELL_PX_H };

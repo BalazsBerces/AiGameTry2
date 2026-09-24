@@ -4,7 +4,7 @@ import { stepDownhill } from '../../core/grid';
 import { COLORS, TUNING } from '../config';
 import { championBoost, championColor, singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
 
-/** Shambles slowly along the walk field toward the player; lunges when close (rules in core/ghoul). */
+/** Shambles slowly along the walk field toward the player; winds up and lunges when close (rules in core/ghoul). */
 export function createGhoul(scene: Phaser.Scene, x: number, y: number, champion = false): Enemy {
   const boost = championBoost(champion);
   const size = TUNING.ghoul.size * boost.scale;
@@ -23,8 +23,12 @@ export function createGhoul(scene: Phaser.Scene, x: number, y: number, champion 
       toPlayer: { x: (ctx.player.x - sprite.x) / TUNING.tile, y: (ctx.player.y - sprite.y) / TUNING.tile },
       canSeePlayer: ctx.canSeePlayer(sprite),
     });
-    // Its eyes light up while it lunges.
-    sprite.setStrokeStyle(3, state.mode === 'lunge' ? COLORS.ghoulEye : body);
+    // Its eyes light up as it winds up (standing still, the tell) and stay lit through the lunge.
+    sprite.setStrokeStyle(3, state.mode === 'windUp' || state.mode === 'lunge' ? COLORS.ghoulEye : body);
+    if (state.mode === 'windUp') {
+      sprite.body.setVelocity(0, 0);
+      return;
+    }
     if (state.mode === 'lunge') {
       sprite.body.setVelocity(state.direction.x * lungeSpeed, state.direction.y * lungeSpeed);
       return;

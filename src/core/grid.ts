@@ -15,7 +15,13 @@ export const inBounds = <T>(grid: Grid<T>, c: Cell) => c.y >= 0 && c.y < grid.le
  * BFS step distance from every passable cell to `target` (Infinity where unreachable).
  * Walkers descend it to path around blocked cells. `target` itself is always treated as passable.
  */
-export function distanceField<T>(grid: Grid<T>, target: Cell, passable: (tile: T) => boolean): number[][] {
+export function distanceField<T>(
+  grid: Grid<T>,
+  target: Cell,
+  passable: (tile: T) => boolean,
+  /** Cells to route around whatever their tile, such as ones held by rooted enemies. */
+  blocked: (cell: Cell) => boolean = () => false,
+): number[][] {
   const dist = grid.map((row) => row.map(() => Infinity));
   if (!inBounds(grid, target)) return dist;
   dist[target.y][target.x] = 0;
@@ -24,7 +30,7 @@ export function distanceField<T>(grid: Grid<T>, target: Cell, passable: (tile: T
     const c = queue.shift()!;
     for (const n of NEIGHBORS) {
       const next = { x: c.x + n.x, y: c.y + n.y };
-      if (!inBounds(grid, next) || !passable(grid[next.y][next.x]) || dist[next.y][next.x] !== Infinity) continue;
+      if (!inBounds(grid, next) || !passable(grid[next.y][next.x]) || blocked(next) || dist[next.y][next.x] !== Infinity) continue;
       dist[next.y][next.x] = dist[c.y][c.x] + 1;
       queue.push(next);
     }

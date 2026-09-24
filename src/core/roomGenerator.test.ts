@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createRng } from './rng';
 import { ARCHETYPES, supportsShape } from './archetypes';
 import { ENEMY_CLASS } from './enemies';
-import { generateRoom, WORM_LENGTH, type DoorSpec } from './roomGenerator';
+import { generateRoom, WORM_LENGTH, type DoorSpec, type RoomLayout } from './roomGenerator';
 import { createWorld } from './world';
 import { AXIS_DIRECTIONS, slideCrusher } from './crusher';
 import { validateRoom } from './roomValidator';
@@ -593,14 +593,17 @@ describe('Sentry Island (floor 1)', () => {
 });
 
 describe('Thorn Maze (floor 1)', () => {
-  it('winds thorn hedges through the room, every floor cell walkable, walkers loose among them', () => {
+  it('winds hedges through the room, every floor cell walkable, walkers loose among them', () => {
     const layouts = new Set<string>();
     for (const doors of EVERY_DOOR_SET) {
       for (let seed = 0; seed < 30; seed++) {
         const r = generateRoom({ id: '0,0', kind: 'normal', doors: [...doors], archetype: 'thornMaze' }, 0, createRng(seed));
         const where = `seed ${seed} doors ${doors}`;
         expect(r.archetype, where).toBe('thornMaze');
-        expect(count(r, 'thorn'), where).toBeGreaterThanOrEqual(8);
+        // Mixed hedges: mostly plain bushes, a few thorny ones, never over the thorn cap.
+        expect(count(r, 'thorn'), where).toBeGreaterThanOrEqual(1);
+        expect(count(r, 'thorn'), where).toBeLessThanOrEqual(4);
+        expect(count(r, 'rock'), where).toBeGreaterThan(count(r, 'thorn'));
         // A maze, not a prison: thorns shape the paths but never seal floor away.
         expect(reachable(r, r.doors[0].cell).size, where).toBe(count(r, 'floor'));
         expect(r.enemies.length, where).toBeGreaterThan(0);
@@ -609,6 +612,20 @@ describe('Thorn Maze (floor 1)', () => {
       }
     }
     expect(layouts.size).toBeGreaterThan(3);
+  });
+
+  it('puts the thorns on the ends of hedges', () => {
+    const hedge = (t: string | undefined) => t === 'rock' || t === 'thorn';
+    for (let seed = 0; seed < 60; seed++) {
+      const r = generateRoom({ id: '0,0', kind: 'normal', doors: ['up', 'down', 'left', 'right'], archetype: 'thornMaze' }, 0, createRng(seed));
+      r.tiles.forEach((row, y) =>
+        row.forEach((t, x) => {
+          if (t !== 'thorn') return;
+          const touching = [r.tiles[y - 1]?.[x], r.tiles[y + 1]?.[x], row[x - 1], row[x + 1]].filter(hedge);
+          expect(touching.length, `seed ${seed} thorn at ${x},${y}`).toBeLessThanOrEqual(1);
+        }),
+      );
+    }
   });
 
   it('only grows thorns on floor 1', () => {
@@ -717,17 +734,6 @@ describe('every archetype', () => {
     }
   }, 30_000);
 
-  it.each([0, 1, 2])('gives floor %i a wide, a tall, a big and an L idea, one of each fitting every door set', (floorIndex) => {
-    for (const shape of ['2x1', '1x2', '2x2', ...L_SHAPES] as const) {
-      const own = ARCHETYPES.filter((a) => a.floor === floorIndex && a.kind === 'normal' && a.shapes?.includes(shape));
-      expect(own.some((a) => EVERY_DOOR_SET.every((d) => a.fits(d))), shape).toBe(true);
-      for (const doors of EVERY_SHAPED_DOOR_SET[shape].slice(0, 20)) {
-        const r = generateRoom({ id: '0,0', kind: 'normal', doors, shape }, floorIndex, createRng(doors.length));
-        expect(own.map((a) => a.id), `${shape} ${JSON.stringify(doors)}`).toContain(r.archetype);
-      }
-    }
-  });
-
   it.each([
     [1, ['jar', 'fourCorners', 'pillaredHall', 'sentryIsland', 'stash', 'thornMaze', 'waspNest', 'boarRun']],
     [2, ['courtyard', 'gallery', 'serpentGarden', 'track', 'twinJars', 'vault', 'crystalGallery', 'batRoost', 'glowshroomCave']],
@@ -742,6 +748,50 @@ describe('every archetype', () => {
         expect(ids).toContain(r.archetype);
       }
     }
+  });
+});
+
+describe('composed big rooms', () => {
+  it('builds every big normal room from a layout and an encounter, on every floor, shape and door set', () => {
+    for (const [floorIndex, theme] of ['marsh', 'rift', 'crypt'].entries()) {
+      for (const shape of ['2x1', '1x2', '2x2', ...L_SHAPES] as const) {
+        for (const [i, doors] of EVERY_SHAPED_DOOR_SET[shape].filter((_, j) => j % 9 === 0).entries()) {
+          const spec = { id: '0,0', kind: 'normal' as const, doors, shape, theme };
+          const r = generateRoom(spec, floorIndex, createRng(i));
+          const where = `floor ${floorIndex + 1} ${shape} doors ${JSON.stringify(doors)}`;
+          expect(r.layout, where).toBeDefined();
+          expect(r.encounter, where).toBeDefined();
+          expect(r.archetype, where).toBeUndefined();
+          expect([r.width, r.height], where).toEqual(SHAPE_SIZE[shape]);
+          expect(r.enemies.length, where).toBeGreaterThan(0);
+          expect(generateRoom(spec, floorIndex, createRng(i)), where).toEqual(r);
+        }
+      }
+    }
+  });
+});
+
+describe('edge filler', () => {
+  const differences = (a: RoomLayout, b: RoomLayout) =>
+    b.tiles.flatMap((row, y) => row.flatMap((t, x) => (t !== a.tiles[y][x] ? [{ was: a.tiles[y][x], now: t }] : [])));
+
+  it('dresses a themed room on top of the very same layout, only ever on floor', () => {
+    const rooms = [
+      ...EVERY_SHAPED_DOOR_SET['2x1'].slice(0, 20).map((doors) => ({ doors, shape: '2x1' as const, archetype: undefined, theme: 'crypt', floor: 2 })),
+      ...EVERY_DOOR_SET.map((doors) => ({ doors: [...doors], shape: '1x1' as const, archetype: 'pillaredHall', theme: 'grove', floor: 0 })),
+    ];
+    let dressed = 0;
+    for (const [i, r] of rooms.entries()) {
+      const spec = { id: '0,0', kind: 'normal' as const, doors: r.doors, shape: r.shape, archetype: r.archetype };
+      const bare = generateRoom(spec, r.floor, createRng(i));
+      const themed = generateRoom({ ...spec, theme: r.theme }, r.floor, createRng(i));
+      const where = `${r.shape} ${JSON.stringify(r.doors)}`;
+      expect(themed.enemies.map((e) => e.cell), where).toEqual(bare.enemies.map((e) => e.cell));
+      const diff = differences(bare, themed);
+      for (const d of diff) expect(d.was, where).toBe('floor');
+      if (diff.length) dressed++;
+    }
+    expect(dressed / rooms.length).toBeGreaterThan(0.8);
   });
 });
 
@@ -1050,7 +1100,7 @@ describe('Wasp Nest (floor 1)', () => {
     return groups;
   };
 
-  it('builds valid rooms around swarms of 3-4 wasps, for every door set', () => {
+  it('builds valid rooms around one swarm of 3-4 wasps, for every door set', () => {
     const layouts = new Set<string>();
     for (const doors of EVERY_DOOR_SET) {
       for (let seed = 0; seed < 30; seed++) {
@@ -1058,7 +1108,7 @@ describe('Wasp Nest (floor 1)', () => {
         const where = `seed ${seed} doors ${doors}`;
         expect(r.archetype, where).toBe('waspNest');
         const groups = swarms(r);
-        expect(groups.length, where).toBeGreaterThan(0);
+        expect(groups.length, where).toBe(1);
         for (const g of groups) {
           expect(g.length, where).toBeGreaterThanOrEqual(3);
           expect(g.length, where).toBeLessThanOrEqual(4);

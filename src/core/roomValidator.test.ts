@@ -35,6 +35,8 @@ function room(picture: string, doors: Direction[] = ['up', 'down', 'left', 'righ
 
 const BOTH: Symmetry = { axes: ['vertical', 'horizontal'] };
 const rules = (r: ReturnType<typeof room>, s: Symmetry = BOTH) => validateRoom(r, s).map((v) => v.rule);
+/** Rules broken besides the thorn cap, for rooms ringing a spawn in more thorns than a real room may hold. */
+const rulesBesidesCap = (r: ReturnType<typeof room>) => rules(r).filter((rule) => rule !== 'thorn-cap');
 
 describe('validateRoom', () => {
   it('accepts an open symmetric room', () => {
@@ -210,7 +212,7 @@ describe('validateRoom', () => {
       .............
       .............
     `);
-    expect(rules(r)).toEqual(['walker-unreachable']);
+    expect(rulesBesidesCap(r)).toEqual(['walker-unreachable']);
   });
 
   it('accepts a turret ringed by thorns, since shots fly over them', () => {
@@ -223,7 +225,7 @@ describe('validateRoom', () => {
       .............
       .............
     `);
-    expect(rules(r)).toEqual([]);
+    expect(rulesBesidesCap(r)).toEqual([]);
   });
 
   it('rejects thorns on the tile just inside a door', () => {
@@ -251,6 +253,32 @@ describe('validateRoom', () => {
     `);
     r.pickups.push({ type: 'heart', cell: { x: 3, y: 2 } });
     expect(rules(r, { axes: ['vertical'] })).toEqual(['spawn-off-floor']);
+  });
+
+  it('rejects more than four thorns in a one-cell room', () => {
+    const r = room(`
+      .............
+      ..x.......x..
+      .............
+      ......x......
+      .............
+      ..x.......x..
+      .............
+    `);
+    expect(rules(r)).toEqual(['thorn-cap']);
+  });
+
+  it('accepts four thorns in a one-cell room', () => {
+    const r = room(`
+      .............
+      ..x.......x..
+      .............
+      .............
+      .............
+      ..x.......x..
+      .............
+    `);
+    expect(rules(r)).toEqual([]);
   });
 
   it('accepts a ghost sealed behind a wall, since it drifts through stone', () => {
@@ -328,7 +356,43 @@ describe('validateRoom flyers', () => {
       .............
       .............
     `);
-    expect(rules(r)).toEqual([]);
+    expect(rulesBesidesCap(r)).toEqual([]);
+  });
+
+  // 32 of 91 tiles are pond: the player can reach 59, just under two thirds of the room.
+  const MARSH = (row3: string) => `
+    .............
+    oooooo.oooooo
+    oo.........oo
+    ${row3}
+    oo.........oo
+    oooooo.oooooo
+    .............
+  `;
+
+  it('accepts flyers alone with a bit under two thirds of the room to fight in', () => {
+    expect(rules(room(MARSH('...W.........')))).toEqual([]);
+  });
+
+  it('rejects flyers and walkers together in that room: the player needs more space to dodge both', () => {
+    expect(rules(room(MARSH('...W.....Z...')))).toEqual(['cramped']);
+  });
+
+  it('leaves rooms without flyers to the other rules, however little floor they have', () => {
+    expect(rules(room(MARSH('.........Z...')))).toEqual([]);
+  });
+
+  it('rejects flyers with barely more than half the room to fight in', () => {
+    const r = room(`
+      .............
+      oooooo.oooooo
+      oooo.....oooo
+      ...W.........
+      oooo.....oooo
+      oooooo.oooooo
+      .............
+    `);
+    expect(rules(r)).toEqual(['cramped']);
   });
 
   it('accepts a bat roosting beyond a chasm, since it flies over it', () => {

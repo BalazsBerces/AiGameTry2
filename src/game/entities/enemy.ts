@@ -1,5 +1,6 @@
 import type Phaser from 'phaser';
 import type { Cell } from '../../core/floorGenerator';
+import type { PackDecision, PackMember } from '../../core/forestCast';
 import type { Door, Tile } from '../../core/roomGenerator';
 import type { Stunnable } from '../../core/stun';
 import { COLORS, TUNING } from '../config';
@@ -14,6 +15,8 @@ export interface EnemyContext {
   playerTile: Cell;
   /** Distance to the player's tile, per room tile (walkers descend it). */
   walkDistance: number[][];
+  /** The same kind of field toward any tile, worked out once a frame per tile. */
+  walkDistanceTo(tile: Cell): number[][];
   tileOf(x: number, y: number): Cell;
   tileCenter(tile: Cell): { x: number; y: number };
   /** True for in-room floor tiles. */
@@ -60,6 +63,11 @@ export interface Enemy extends Stunnable {
   flies?: boolean;
   /** Parts that don't hurt the player on touch (the Candle Witch's candles); every part hurts if left out. */
   harmless?(part: EnemySprite): boolean;
+  /**
+   * Goblins decide as a pack (core/forestCast `updateGoblinPack`): each frame the scene gathers
+   * every goblin's `member()` and hands each its new state through `follow` before updating it.
+   */
+  pack?: { member(ctx: EnemyContext): PackMember; follow(decision: PackDecision): void };
 }
 
 /** Stat multipliers for a champion, or none for a regular enemy. */
@@ -75,6 +83,15 @@ export function championColor(color: number, champion: boolean) {
 /** Outlines a champion's sprite in gold. */
 export function markChampion(sprite: Phaser.GameObjects.Shape, champion: boolean) {
   if (champion) sprite.setStrokeStyle(3, COLORS.champion);
+}
+
+/**
+ * Gives a walker a round body as wide as the sprite's short side, centred on it, so it slides
+ * round corners and other walkers instead of snagging on them.
+ */
+export function roundBody(sprite: EnemySprite) {
+  const r = Math.min(sprite.width, sprite.height) / 2;
+  sprite.body.setCircle(r, sprite.width / 2 - r, sprite.height / 2 - r);
 }
 
 /** Flash a part briefly to show it took damage. */

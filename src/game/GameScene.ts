@@ -3,6 +3,7 @@ import { DIRECTIONS, STEP, type Cell, type Direction, type RoomKind } from '../c
 import { distanceField, lineOfSight } from '../core/grid';
 import type { ChampionDrop, EnemySpawn, EnemyType, Tile } from '../core/roomGenerator';
 import { themeForFloor, type Palette, type TileLook } from '../core/themes';
+import { roomLooks, roomThemeById, type DecorKind } from '../core/roomThemes';
 import { blocksShots, blocksSight, hurtsOnTouch, isWalkable } from '../core/tiles';
 import { crusherWakes, settleCrusher, slideCrusher, type Crusher } from '../core/crusher';
 import { launchVelocity, resolveWeapon, type Weapon } from '../core/weaponModel';
@@ -49,7 +50,7 @@ import { createCrystalTurret } from './entities/crystalTurret';
 import { reflectOff, ricochet } from '../core/ricochet';
 import { createGargoyle } from './entities/gargoyle';
 import { createTreant } from './entities/treant';
-import { doorCorridor, mapCellAt, roomBlock, tileAt, tileCenter } from './geometry';
+import { CELL_PX_H, CELL_PX_W, doorCorridor, mapCellAt, roomBlock, tileAt, tileCenter } from './geometry';
 import { createGoblin } from './entities/goblin';
 import { createSeedSpitter } from './entities/seedSpitter';
 import { createKnight } from './entities/knight';
@@ -64,6 +65,8 @@ import { stunBurst, GLOWSHROOM_RADIUS, type BurstTarget } from '../core/glowshro
 import { burstGlowshroom } from '../core/world';
 import type { Stunnable } from '../core/stun';
 import { createBat } from './entities/bat';
+import { softPush } from '../core/softPush';
+import { updateGoblinPack } from '../core/forestCast';
 
 type Keys = Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
 type PhysicsArc = Phaser.GameObjects.Arc & { body: Phaser.Physics.Arcade.Body };
@@ -132,6 +135,60 @@ function drawTile(scene: Phaser.Scene, x: number, y: number, look: TileLook): Sh
   return shape;
 }
 
+/** How strongly decor placeholder marks show through: faint, so they read as mood, not as things. */
+const DECOR_ALPHA = 0.55;
+
+/**
+ * A decor placeholder: a small mark in the kind's colour, nudged off the tile's centre by its
+ * cell so a scatter of them doesn't sit on the grid. The art pass swaps these for sprites.
+ */
+function drawDecorMark(g: Phaser.GameObjects.Graphics, at: { x: number; y: number }, cell: Cell, kind: DecorKind) {
+  const x = at.x + (((cell.x * 7 + cell.y * 3) % 5) - 2) * 4;
+  const y = at.y + (((cell.x * 3 + cell.y * 5) % 5) - 2) * 4;
+  g.fillStyle(kind.color, DECOR_ALPHA).lineStyle(2, kind.color, DECOR_ALPHA);
+  switch (kind.mark) {
+    case 'dot':
+      g.fillCircle(x, y, 3).fillCircle(x + 7, y + 4, 2);
+      break;
+    case 'dash':
+      g.lineBetween(x - 6, y + 2, x + 6, y - 2);
+      break;
+    case 'cross':
+      g.lineBetween(x - 5, y - 5, x + 5, y + 5).lineBetween(x - 5, y + 5, x + 5, y - 5);
+      break;
+    case 'ring':
+      g.strokeCircle(x, y, 7);
+      break;
+  }
+}
+
+/** How far each tile variant shifts its tile's shade, until the art pass gives variants sprites of their own. */
+const VARIANT_SHADE = [-0.08, -0.03, 0.03, 0.08];
+
+/** `color` lightened or darkened by the variant's shift. */
+function shade(color: number, variant: number): number {
+  const f = VARIANT_SHADE[variant] ?? 0;
+  const channel = (shift: number) => Math.max(0, Math.min(255, Math.round(((color >> shift) & 0xff) * (1 + f))));
+  return (channel(16) << 16) | (channel(8) << 8) | channel(0);
+}
+
+/** A faint line round each pit or pond region, along the edges it shares with anything else. */
+function drawRegionRims(g: Phaser.GameObjects.Graphics, room: WorldRoom, color: number) {
+  const t = TUNING.tile;
+  g.lineStyle(2, color, 0.6);
+  for (const region of room.layout.regions ?? []) {
+    const inRegion = new Set(region.cells.map((c) => `${c.x},${c.y}`));
+    for (const c of region.cells) {
+      const { x, y } = tileCenter(room, c.x, c.y);
+      const [l, r, u, d] = [x - t / 2, x + t / 2, y - t / 2, y + t / 2];
+      if (!inRegion.has(`${c.x},${c.y - 1}`)) g.lineBetween(l, u, r, u);
+      if (!inRegion.has(`${c.x},${c.y + 1}`)) g.lineBetween(l, d, r, d);
+      if (!inRegion.has(`${c.x - 1},${c.y}`)) g.lineBetween(l, u, l, d);
+      if (!inRegion.has(`${c.x + 1},${c.y}`)) g.lineBetween(r, u, r, d);
+    }
+  }
+}
+
 interface TrackedCrusher {
   roomId: string;
   /** The room layout's own crusher: sliding moves it for the rest of the run. */
@@ -147,6 +204,8 @@ export class GameScene extends Phaser.Scene {
   world!: World;
   /** Blocks movement and shots: room walls, obstacles and locked doors. */
   private walls!: Phaser.Physics.Arcade.StaticGroup;
+  /** Every room's drawn terrain, so rooms out of sight can be hidden from the renderer. */
+  private roomObjects!: Map<string, Phaser.GameObjects.GameObject[]>;
   /** Blocks movement only; shots fly over. */
   private holes!: Phaser.Physics.Arcade.StaticGroup;
   /** Blocks movement like holes, and hurts whoever pushes into it. */
@@ -216,7 +275,12 @@ export class GameScene extends Phaser.Scene {
     this.poisoned = new Map();
     this.playerStun = {};
     this.playerStunMark = undefined;
-    for (const room of this.world.rooms.values()) this.drawRoom(room);
+    this.roomObjects = new Map();
+    for (const room of this.world.rooms.values()) {
+      const before = this.children.list.length;
+      this.drawRoom(room);
+      this.roomObjects.set(room.floorRoom.id, this.children.list.slice(before));
+    }
     for (const room of this.world.rooms.values()) this.trackCrushers(room);
 
     const start = this.world.rooms.get(this.world.currentRoomId)!;
@@ -252,7 +316,9 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.walkers, this.walls);
     this.physics.add.collider(this.walkers, this.holes);
     this.physics.add.collider(this.walkers, this.thorns, (part) => this.thornWalker(part as EnemySprite));
-    this.physics.add.collider(this.walkers, this.walkers);
+    // Rooted enemies (turrets and the like) stay solid; walkers only push each other softly (see updateEnemies).
+    this.physics.add.collider(this.walkers, this.walkers, undefined, (a, b) =>
+      (a as EnemySprite).body.immovable || (b as EnemySprite).body.immovable);
     this.flyers = this.physics.add.group();
     this.physics.add.collider(this.flyers, this.walls);
     this.physics.add.overlap(this.shots, this.enemyParts, (shot, part) => this.hitEnemy(shot, part as EnemySprite));
@@ -287,7 +353,10 @@ export class GameScene extends Phaser.Scene {
     this.itemLockoutUntil = 0;
     this.showPickups();
 
+    // The playfield is one map cell; the label strip under it belongs to the HUD.
+    this.cameras.main.setViewport(0, 0, CELL_PX_W, CELL_PX_H);
     this.cameras.main.setBackgroundColor(themeForFloor(start.floorIndex).palette.background);
+    this.showRoomsAround(start);
     this.followInside(start);
     this.scene.launch('hud');
   }
@@ -612,11 +681,28 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     const ctx = this.enemyContext(time);
+    // Goblins decide together first (core/forestCast), then each moves as it was told.
+    const goblins = this.enemies.filter((e) => e.pack);
+    const decided = updateGoblinPack(goblins.map((e) => e.pack!.member(ctx)), {
+      time,
+      walkBetween: (a, b) => ctx.walkDistanceTo(b)[a.y]?.[a.x] ?? Infinity,
+      healRate: TUNING.goblin.healRate,
+      repairCooldownMs: TUNING.goblin.repairCooldownMs,
+    });
+    goblins.forEach((e, i) => e.pack!.follow(decided[i]));
     for (const e of this.enemies) {
       // The shared stun (core/stun): a stunned enemy of any kind stands still and does nothing.
       if (isStunned(e, time)) for (const p of e.parts) p.body.setVelocity(0, 0);
       else e.update(ctx);
     }
+    this.pushWalkersApart();
+  }
+
+  /** Overlapping walkers are nudged apart on top of their own steering, so a crowd flows instead of jamming (core/softPush). */
+  private pushWalkersApart() {
+    const movers = (this.walkers.getChildren() as EnemySprite[]).filter((p) => p.active && !p.body.immovable);
+    const pushes = softPush(movers.map((p) => ({ x: p.body.center.x, y: p.body.center.y, r: p.body.halfWidth })), TUNING.softPush);
+    movers.forEach((p, i) => p.body.velocity.add(pushes[i]));
   }
 
   /** A spinning star over each stunned enemy's head; gone once the stun wears off or the enemy dies. */
@@ -659,12 +745,34 @@ export class GameScene extends Phaser.Scene {
     const playerTile = tileOf(this.player.x, this.player.y);
     const first = tileCenter(room, 0, 0);
     const last = tileCenter(room, room.layout.width - 1, room.layout.height - 1);
+    // Walkers route around rooted enemies (turrets and the like) rather than pushing into them for good.
+    const rooted = new Set(
+      this.enemies
+        .filter((e) => e.collidesWithTerrain)
+        .flatMap((e) => e.parts)
+        .filter((p) => p.active && p.body.immovable)
+        .map((p) => {
+          const c = tileOf(p.x, p.y);
+          return `${c.x},${c.y}`;
+        }),
+    );
+    const fields = new Map<string, number[][]>();
+    const walkDistanceTo = (tile: Cell) => {
+      const key = `${tile.x},${tile.y}`;
+      let field = fields.get(key);
+      if (!field) {
+        field = distanceField(room.layout.tiles, tile, isWalkable, (c) => rooted.has(`${c.x},${c.y}`));
+        fields.set(key, field);
+      }
+      return field;
+    };
     return {
       time,
       player: this.player,
       roomCenter: { x: (first.x + last.x) / 2, y: (first.y + last.y) / 2 },
       playerTile,
-      walkDistance: distanceField(room.layout.tiles, playerTile, isWalkable),
+      walkDistance: walkDistanceTo(playerTile),
+      walkDistanceTo,
       tileOf,
       tileCenter: (tile: Cell) => tileCenter(room, tile.x, tile.y),
       isWalkable: (cell: Cell) => {
@@ -924,6 +1032,7 @@ export class GameScene extends Phaser.Scene {
         Phaser.Math.Distance.Between(b.c.x, b.c.y, this.player.x, this.player.y))[0];
     if (entry) this.player.body.reset(entry.c.x, entry.c.y);
 
+    this.showRoomsAround(room);
     this.slideCameraTo(room);
     this.cameras.main.setBackgroundColor(themeForFloor(room.floorIndex).palette.background);
 
@@ -1003,6 +1112,19 @@ export class GameScene extends Phaser.Scene {
     this.tweens.add({ targets: text, y: text.y - 40, alpha: 0, delay: 900, duration: 900, onComplete: () => text.destroy() });
   }
 
+  /**
+   * Renders only the room and its neighbours (the ones the camera slides through or peeks into)
+   * and hides every other room's terrain. The whole run is drawn up front, and Phaser draws
+   * everything visible every frame, on screen or not.
+   */
+  private showRoomsAround(room: WorldRoom) {
+    const shown = new Set([room.floorRoom.id, ...room.neighbors]);
+    for (const [id, objects] of this.roomObjects) {
+      const visible = shown.has(id);
+      for (const o of objects) (o as unknown as Phaser.GameObjects.Components.Visible).setVisible(visible);
+    }
+  }
+
   /** Camera tracks the player, clamped to the room: fixed in 1x1 rooms, scrolling in wide, tall and boss rooms. */
   private followInside(room: WorldRoom) {
     const b = roomBlock(room);
@@ -1027,13 +1149,31 @@ export class GameScene extends Phaser.Scene {
     const b = roomBlock(room);
     const { width, height } = room.layout;
     const corridors = new Set(room.layout.doors.flatMap((d) => doorCorridor(room, d)).map((c) => `${c.x},${c.y}`));
-    const { palette, looks } = themeForFloor(room.floorIndex);
+    const { palette } = themeForFloor(room.floorIndex);
+    const looks = roomLooks(room.floorIndex, room.layout.theme ?? '');
 
     this.add.rectangle(b.x, b.y, b.w, b.h, palette.wall).setOrigin(0);
     const floor = tileCenter(room, 0, 0);
     this.add
       .rectangle(floor.x - t / 2, floor.y - t / 2, width * t, height * t, FLOOR_COLOR[room.floorRoom.kind](palette))
       .setOrigin(0);
+    const dressing = this.add.graphics();
+    const variants = room.layout.variants;
+    // Each floor tile tinted a touch lighter or darker by its variant.
+    room.layout.tiles.forEach((row, ty) =>
+      row.forEach((tile, tx) => {
+        const v = variants?.[ty]?.[tx];
+        if (tile !== 'floor' || v === undefined) return;
+        const c = tileCenter(room, tx, ty);
+        dressing.fillStyle(VARIANT_SHADE[v] < 0 ? 0x000000 : 0xffffff, Math.abs(VARIANT_SHADE[v]) * 0.35);
+        dressing.fillRect(c.x - t / 2, c.y - t / 2, t, t);
+      }),
+    );
+    const theme = roomThemeById(room.layout.theme ?? '');
+    for (const d of room.layout.decor ?? []) {
+      const kind = theme?.decor.find((k) => k.id === d.kind);
+      if (kind) drawDecorMark(dressing, tileCenter(room, d.cell.x, d.cell.y), d.cell, kind);
+    }
 
     for (let ty = -b.pad.y; ty < b.tilesH - b.pad.y; ty++) {
       for (let tx = -b.pad.x; tx < b.tilesW - b.pad.x; tx++) {
@@ -1053,7 +1193,9 @@ export class GameScene extends Phaser.Scene {
           this.walls.add(this.add.rectangle(c.x, c.y, t, t, palette.wall));
           return;
         }
-        const shape = drawTile(this, c.x, c.y, looks[tile as Exclude<Tile, 'floor' | 'wall'>]);
+        const look = looks[tile as Exclude<Tile, 'floor' | 'wall'>];
+        const variant = variants?.[ty]?.[tx];
+        const shape = drawTile(this, c.x, c.y, variant === undefined ? look : { ...look, color: shade(look.color, variant) });
         // Shot-blocking tiles are walls to physics; the rest (holes) only stop walking.
         if (!blocksShots(tile)) {
           (hurtsOnTouch(tile) ? this.thorns : this.holes).add(shape);
@@ -1064,6 +1206,8 @@ export class GameScene extends Phaser.Scene {
         this.terrain.set(`${room.floorRoom.id}|${tx},${ty}`, shape);
       }),
     );
+    // Over the tiles, so each pit or pond reads as one shape.
+    drawRegionRims(this.add.graphics(), room, looks.hole.stroke ?? palette.accent);
   }
 
   /** Takes a room's drawn crusher blocks out of the breakable terrain and tracks them for sliding. */
@@ -1146,7 +1290,7 @@ export class GameScene extends Phaser.Scene {
       return false;
     }
     if (!sproutTile(this.world, roomId, cell, tile)) return false;
-    const shape = drawTile(this, c.x, c.y, themeForFloor(room.floorIndex).looks[tile]);
+    const shape = drawTile(this, c.x, c.y, roomLooks(room.floorIndex, room.layout.theme ?? '')[tile]);
     if (!blocksShots(tile)) {
       this.thorns.add(shape);
     } else {
@@ -1154,6 +1298,7 @@ export class GameScene extends Phaser.Scene {
       this.walls.add(shape);
       this.terrain.set(`${roomId}|${cell.x},${cell.y}`, shape);
     }
+    this.roomObjects.get(roomId)?.push(shape);
     shape.setScale(0.2);
     this.tweens.add({ targets: shape, scale: 1, duration: 180, ease: 'Back.easeOut' });
     return true;

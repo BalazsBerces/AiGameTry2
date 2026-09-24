@@ -33,7 +33,11 @@ export const TUNING = {
   /** Multipliers for a room's champion: size, hit points, and movement (or firing) speed. */
   champion: { scale: 1.35, hp: 2, speed: 1.15 },
   /** Faster than a zombie; runs off to regroup when hurt (core/forestCast). */
-  goblin: { hp: 3, speed: 130, retreatSpeed: 110, size: 24 },
+  /**
+   * `healRate`: share of its max HP a goblin gets back per second while its partner heals it.
+   * `repairCooldownMs`: how long a pair whose heal the player broke fights on before pairing again (placeholders).
+   */
+  goblin: { hp: 3, speed: 130, retreatSpeed: 110, size: 24, healRate: 0.45, repairCooldownMs: 1000 },
   /** Fires a 3-shot fan (core/forestCast). */
   seedSpitter: { hp: 4, radius: 17, fireDelayMs: 2000, shotSpeed: 200 },
   /** Slow stalker; `lungeSpeed` while lunging (range and timing live in core/ghoul). */
@@ -62,6 +66,8 @@ export const TUNING = {
   glowCloud: { showMs: 450 },
   /** Small and frail; its flutter, telegraph and swoop (in tiles) live in core/bat. */
   bat: { hp: 2, width: 26, height: 12 },
+  /** How hard overlapping walkers are nudged apart: px/s per px of overlap, and the most any one gets (placeholder). */
+  softPush: { stiffness: 8, cap: 120 },
 };
 
 /** How passives are named on screen (the HUD and the boss-kill upgrade message). */
@@ -126,6 +132,10 @@ export const COLORS = {
   minimapBoss: 0xd8323c,
   goblin: 0xa8c236,
   goblinEdge: 0x4a3a1c,
+  /** A hurt goblin keeping away from the player (placeholder). */
+  goblinHurt: 0xdde6a8,
+  /** The link between a healing goblin pair, and the healer's pulse (placeholder). */
+  goblinHeal: 0x7cf07c,
   seedSpitter: 0xc0584a,
   seedSpitterEdge: 0xf0d27a,
   ghoul: 0x9aa89c,

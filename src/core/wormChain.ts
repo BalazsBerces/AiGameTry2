@@ -48,6 +48,13 @@ function bodyHeading(segments: Cell[], fallback: Direction): Direction {
   return (DIRECTIONS.find((d) => STEP[d].x === dx && STEP[d].y === dy) ?? fallback);
 }
 
+/**
+ * When the worm's next step falls due, having just taken the one due at `due` at time `now`: one
+ * step later on a steady beat, but a full step from now if it fell behind (a tab left in the
+ * background), so it never rushes through missed steps.
+ */
+export const nextStepDue = (due: number, now: number, stepMs: number) => (now - due > stepMs ? now + stepMs : due + stepMs);
+
 /** Kills one segment. Returns the worms that remain: zero, one (shortened) or two (split). */
 export function killSegment(worm: Worm, index: number): Worm[] {
   const front = worm.segments.slice(0, index);

@@ -4,6 +4,7 @@ import {
   burstGlowshroom,
   createWorld,
   detonateBomb,
+  dropChampionLoot,
   enterRoom,
   hitTile,
   placeBomb,
@@ -346,6 +347,45 @@ describe('champions', () => {
       expect(crowned(worlds[seed]).length).toBeGreaterThan(0);
       expect(crowned(createWorld(seed))).toEqual(crowned(worlds[seed]));
     }
+  });
+});
+
+describe('champion loot', () => {
+  /** A normal room emptied out: floor everywhere, a pond (holes) in the middle walled off by stone on one side. */
+  const pondRoom = () => {
+    const world = createWorld(1);
+    const room = firstNormalRoom(world);
+    const tiles = room.layout.tiles;
+    tiles.forEach((row) => row.fill('floor'));
+    for (let x = 4; x <= 8; x++) for (let y = 2; y <= 4; y++) tiles[y][x] = 'hole';
+    world.pickups.set(room.floorRoom.id, []);
+    return { world, id: room.floorRoom.id, tiles };
+  };
+  const dropped = (world: ReturnType<typeof createWorld>, id: string) => world.pickups.get(id)!.map((p) => p.cell);
+
+  it('lands where the champion died when that is open floor', () => {
+    const { world, id } = pondRoom();
+    dropChampionLoot(world, id, { type: 'key' }, { x: 1, y: 1 });
+    expect(dropped(world, id)).toEqual([{ x: 1, y: 1 }]);
+  });
+
+  it('washes up on the nearest floor the player can reach when a flyer dies over a pond', () => {
+    const { world, id, tiles } = pondRoom();
+    dropChampionLoot(world, id, { type: 'key' }, { x: 6, y: 3 });
+    const [cell] = dropped(world, id);
+    expect(tiles[cell.y][cell.x]).toBe('floor');
+    expect(Math.max(Math.abs(cell.x - 6), Math.abs(cell.y - 3))).toBe(2);
+  });
+
+  it('never lands on floor sealed off from the doors, even if it is nearer', () => {
+    const { world, id, tiles } = pondRoom();
+    // A pocket of floor at 6,3 ringed by the pond: nearest, but out of reach.
+    tiles[3][6] = 'floor';
+    tiles[3][7] = 'floor';
+    dropChampionLoot(world, id, { type: 'key' }, { x: 7, y: 3 });
+    const [cell] = dropped(world, id);
+    expect(`${cell.x},${cell.y}`).not.toMatch(/^(6|7),3$/);
+    expect(tiles[cell.y][cell.x]).toBe('floor');
   });
 });
 

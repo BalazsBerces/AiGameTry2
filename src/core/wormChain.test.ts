@@ -1,4 +1,18 @@
 import { describe, expect, it } from 'vitest';
+import { nextStepDue } from './wormChain';
+
+describe('worm step timing', () => {
+  it('keeps a steady beat when frames arrive on time', () => {
+    expect(nextStepDue(1000, 1005, 300)).toBe(1300);
+  });
+
+  it('takes one step after a long pause and then waits a full step, instead of rushing to catch up', () => {
+    const due = nextStepDue(1000, 31000, 300);
+    expect(due).toBe(31300);
+    // The next frame is not due another step.
+    expect(31016 < due).toBe(true);
+  });
+});
 import { createRng } from './rng';
 import { createWorm, killSegment, stepWorm } from './wormChain';
 

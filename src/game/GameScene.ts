@@ -66,7 +66,7 @@ import type { Stunnable } from '../core/stun';
 import { createBat } from './entities/bat';
 
 type Keys = Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
-type PhysicsRect = Phaser.GameObjects.Rectangle & { body: Phaser.Physics.Arcade.Body };
+type PhysicsArc = Phaser.GameObjects.Arc & { body: Phaser.Physics.Arcade.Body };
 
 const DEPTH = { player: 10 };
 
@@ -151,7 +151,7 @@ export class GameScene extends Phaser.Scene {
   private holes!: Phaser.Physics.Arcade.StaticGroup;
   /** Blocks movement like holes, and hurts whoever pushes into it. */
   private thorns!: Phaser.Physics.Arcade.StaticGroup;
-  private player!: PhysicsRect;
+  private player!: PhysicsArc;
   private move!: Keys;
   private aim!: Keys;
   /** Drawn rock and stone blocks, keyed `roomId|x,y`, so broken ones can be removed. */
@@ -221,9 +221,11 @@ export class GameScene extends Phaser.Scene {
 
     const start = this.world.rooms.get(this.world.currentRoomId)!;
     const spawn = tileCenter(start, Math.floor(start.layout.width / 2), Math.floor(start.layout.height / 2));
-    this.player = this.add.rectangle(spawn.x, spawn.y, TUNING.playerSize, TUNING.playerSize, COLORS.player) as PhysicsRect;
+    this.player = this.add.circle(spawn.x, spawn.y, TUNING.playerSize / 2, COLORS.player) as PhysicsArc;
     this.player.setDepth(DEPTH.player);
     this.physics.add.existing(this.player);
+    // A round body too, so the ball slides round corners instead of snagging on them.
+    this.player.body.setCircle(TUNING.playerSize / 2);
     this.physics.add.collider(this.player, this.walls);
     this.physics.add.collider(this.player, this.holes);
     this.physics.add.collider(this.player, this.thorns, () => this.hurtPlayer(TUNING.thorn.playerDamage));
@@ -357,7 +359,7 @@ export class GameScene extends Phaser.Scene {
     if (!this.dash || this.dash === before) return;
     this.invincibleUntil = Math.max(this.invincibleUntil, this.dash.until);
     this.dashHits.clear();
-    const trail = this.add.rectangle(this.player.x, this.player.y, TUNING.playerSize, TUNING.playerSize, COLORS.passive.dash, 0.5);
+    const trail = this.add.circle(this.player.x, this.player.y, TUNING.playerSize / 2, COLORS.passive.dash, 0.5);
     this.tweens.add({ targets: trail, alpha: 0, duration: 260, onComplete: () => trail.destroy() });
   }
 

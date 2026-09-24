@@ -5,6 +5,7 @@ import { createWorm, killBossSegment, killSegment, nextStepDue, stepWorm, type W
 import { broodTick, eggStage, WORM_BROOD } from '../../core/wormBrood';
 import {
   absorbHit,
+  bossCrawl,
   breakOut,
   burrowAt,
   canAttack,
@@ -108,7 +109,7 @@ interface BossPiece {
   emerging?: { exit: Cell; steps: number; spit: boolean };
   /** When it next drops an egg (core/wormBrood); off while it can't. */
   nextEggAt?: number;
-  /** The last rampage round it has seen; a piece busy in the walls when one starts sits it out. */
+  /** The last rampage round it has joined (or sat out, too short); one busy in the walls joins once it is out. */
   rampageRound: number;
   rampage?: Rampage;
 }
@@ -245,7 +246,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
     if (tick.lay) ctx.spawnEnemy(wormEgg(scene, ctx, b.shared, tail));
   };
 
-  /** Starts a rampage round on the shared clock; this piece joins it if it is out of the walls and long enough. */
+  /** Starts a rampage round on the shared clock; this piece joins it once it is out of the walls, if it is long enough. */
   const joinRampage = (ctx: EnemyContext, b: BossPiece) => {
     const { shared } = b;
     if (shared.nextRampageAt === 0) shared.nextRampageAt = ctx.time + WORM_BOSS.rampageEveryMs;
@@ -253,9 +254,11 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
       shared.rampageRound++;
       shared.nextRampageAt = ctx.time + WORM_BOSS.rampageEveryMs;
     }
-    if (b.rampageRound === shared.rampageRound) return;
+    if (b.rampageRound === shared.rampageRound || b.burrow || b.diving || b.emerging) return;
     b.rampageRound = shared.rampageRound;
-    if (b.burrow || b.diving || b.emerging || !canAttack(state.parts.length)) return;
+    if (!canAttack(state.parts.length)) return;
+    // A late joiner (it was in the walls) keeps a full cooldown before the next round.
+    shared.nextRampageAt = Math.max(shared.nextRampageAt, ctx.time + WORM_BOSS.rampageEveryMs);
     b.rampage = { phase: 'charging', until: ctx.time + WORM_BOSS.rampageChargeMs, lunges: 0 };
   };
 
@@ -343,7 +346,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
     if (b.emerging) b.emerging.steps++;
     const rock = breakOut(worm, ctx.tiles);
     if (rock) ctx.smashRock(rock);
-    return stepWorm(worm, state.rng, (c) => !ctx.isWalkable(c), straight ? 0 : undefined);
+    return bossCrawl(worm, ctx.tiles, state.rng, straight ? 0 : undefined);
   };
 
   /** After a boss step: it goes under once the whole body is in the wall; in phase two each segment spits as it leaves the exit. */
@@ -433,8 +436,6 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
         }
       }
       part.destroy();
-      // A piece split off mid-rampage just crawls on: no swollen head left behind.
-      if (boss?.rampage && state.parts[0].active) state.parts[0].setScale(1);
       const pieces = boss ? killBossSegment(state.worm, index, boss.shared.split) : splitAt(state.worm, index);
       if (boss) {
         boss.shared.bodies.delete(state);
@@ -452,7 +453,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
           hp: from.map((k) => state.hp[k]),
           rng: state.rng.fork(`split ${index} ${i}`),
           nextStepAt: state.nextStepAt,
-          ...(boss ? { boss: splitPiece(boss, worm) } : {}),
+          ...(boss ? { boss: splitPiece(boss, worm, i === 0) } : {}),
         }),
       );
     },
@@ -515,9 +516,13 @@ function splitAt(worm: Worm, index: number): WormPiece[] {
   return killSegment(worm, index).map((w, i) => ({ worm: w, from: sources[i] }));
 }
 
-/** A piece split off `parent`: one whose head is already in the wall keeps diving, one still in the exit hole keeps coming out. */
-function splitPiece(parent: BossPiece, worm: Worm): BossPiece {
-  const { diving, emerging } = parent;
+/**
+ * A piece left after a kill: one whose head is already in the wall keeps diving, one still in the
+ * exit hole keeps coming out, and a rampage goes on in every piece. The piece that keeps the head
+ * (`front`) carries on its lunge; a back half starts its own lunge at once.
+ */
+function splitPiece(parent: BossPiece, worm: Worm, front: boolean): BossPiece {
+  const { diving, emerging, rampage } = parent;
   return {
     shared: parent.shared,
     readyAt: parent.readyAt,
@@ -525,7 +530,14 @@ function splitPiece(parent: BossPiece, worm: Worm): BossPiece {
     rampageRound: parent.rampageRound,
     diving: diving && sameCell(worm.segments[0], diving) ? diving : undefined,
     emerging: emerging && worm.segments.some((c) => sameCell(c, emerging.exit)) ? { ...emerging } : undefined,
+    rampage: rampage && carryRampage(rampage, front),
   };
+}
+
+function carryRampage(r: Rampage, front: boolean): Rampage {
+  if (front) return { ...r, lunge: r.lunge && { ...r.lunge, path: [...r.lunge.path] } };
+  // A back half cut off mid-lunge picks its own line straight away.
+  return r.lunge ? { ...r, phase: 'pausing', until: 0, lunge: undefined } : { ...r };
 }
 
 export function spawnWorm(

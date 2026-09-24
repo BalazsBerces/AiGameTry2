@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { STEP, type Cell, type Direction } from './floorGenerator';
 import type { Tile } from './roomGenerator';
 import { createRng } from './rng';
-import { absorbHit, burrowAt, breakOut, planLunge, planRockfall, rockfallAt, sharedPool, canAttack, diveCell, inPhaseTwo, planExit, spitWave, WORM_BOSS } from './wormBossAttack';
+import { absorbHit, bossCrawl, burrowAt, breakOut, planLunge, planRockfall, rockfallAt, sharedPool, canAttack, diveCell, inPhaseTwo, planExit, spitWave, WORM_BOSS } from './wormBossAttack';
 import { createWorm } from './wormChain';
 
 /** ASCII fixture: `.` floor, `#` stone, `r` rock. */
@@ -310,6 +310,26 @@ describe('worm boss boxed in', () => {
   it('smashes nothing while it has a way to go', () => {
     const tiles = grid(['.r.', '..r', '...']);
     expect(breakOut(worm([[1, 1], [1, 2], [0, 2]], 'up'), tiles)).toBeUndefined();
+  });
+});
+
+describe('worm boss crawling out of a hole', () => {
+  // Curled round in a pocket: stone left of and below the head, its own body above and right.
+  const tiles = grid(['....', '#..#', '#..#', '####']);
+  const curl: [number, number][] = [[1, 2], [2, 2], [2, 1], [1, 1], [1, 0]];
+
+  it('never turns back while its tail is still in a wall hole: it crawls over its own body instead', () => {
+    const w = worm([...curl, [1, -1], [1, -1]], 'left');
+    for (let seed = 0; seed < 10; seed++) {
+      const next = bossCrawl(w, tiles, createRng(seed));
+      expect(next.segments[0], `seed ${seed}`).toEqual({ x: 1, y: 1 });
+      expect(next.segments.slice(1), `seed ${seed}`).toEqual(w.segments.slice(0, -1));
+    }
+  });
+
+  it('turns back like any worm when boxed in out in the open', () => {
+    const w = worm([...curl, [0, 0]], 'left');
+    expect(bossCrawl(w, tiles, createRng(1)).segments[0]).toEqual({ x: 0, y: 0 });
   });
 });
 

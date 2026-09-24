@@ -2,7 +2,7 @@ import { ring } from './bulletPatterns';
 import { DIRECTIONS, STEP, type Cell, type Direction } from './floorGenerator';
 import type { Door, Tile } from './roomGenerator';
 import { isWalkable } from './tiles';
-import type { Worm } from './wormChain';
+import { createWorm, stepWorm, type Worm } from './wormChain';
 import type { Rng } from './rng';
 
 /** Worm boss numbers; placeholders for playtest tuning. */
@@ -243,4 +243,25 @@ export function breakOut(worm: Worm, tiles: Tile[][]): Cell | undefined {
   const tile = (c: Cell) => tiles[c.y]?.[c.x];
   if (around.some((c) => tile(c) !== undefined && isWalkable(tile(c)!))) return undefined;
   return around.find((c) => tile(c) === 'rock');
+}
+
+/**
+ * The boss's crawl step: like any worm's, except that it never turns back while part of it is
+ * still in a wall hole (its head would dive back into the hole, and it could flip there for
+ * good). Boxed in then, it crawls over its own body instead.
+ */
+export function bossCrawl(worm: Worm, tiles: Tile[][], rng: Rng, turnChance?: number): Worm {
+  const walkable = (c: Cell) => {
+    const tile = tiles[c.y]?.[c.x];
+    return tile !== undefined && isWalkable(tile);
+  };
+  const next = stepWorm(worm, rng, (c) => !walkable(c), turnChance);
+  const [head, neck] = worm.segments;
+  const turnedBack = next.segments[1] && (next.segments[1].x !== head.x || next.segments[1].y !== head.y);
+  if (!turnedBack || !worm.segments.some((c) => outside(tiles, c))) return next;
+  const over = [worm.heading, ...DIRECTIONS.filter((d) => d !== worm.heading)].find((d) => {
+    const c = ahead(head, d);
+    return walkable(c) && !(neck && c.x === neck.x && c.y === neck.y);
+  });
+  return over ? createWorm([ahead(head, over), ...worm.segments.slice(0, -1)], over) : next;
 }

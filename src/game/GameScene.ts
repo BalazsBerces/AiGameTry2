@@ -5,7 +5,18 @@ import type { ChampionDrop, EnemySpawn, EnemyType, Tile } from '../core/roomGene
 import { themeForFloor, type Palette, type TileLook } from '../core/themes';
 import { blocksShots, blocksSight, hurtsOnTouch, isWalkable } from '../core/tiles';
 import { crusherWakes, settleCrusher, slideCrusher, type Crusher } from '../core/crusher';
-import { launchVelocity, resolveWeapon } from '../core/weaponModel';
+import { launchVelocity, resolveWeapon, type Weapon } from '../core/weaponModel';
+import { fan } from '../core/bulletPatterns';
+import {
+  boomerangLeg,
+  createHitLog,
+  homingBlocks,
+  meetEnemy,
+  meetTerrain,
+  type HitLog,
+  type Leg,
+  type ShotMods,
+} from '../core/shotFlight';
 import {
   BOMB_RADIUS,
   createWorld,
@@ -34,7 +45,7 @@ import { BOSS_WORM, championWorm, REGULAR_WORM, spawnWorm } from './entities/wor
 import { createZombie } from './entities/zombie';
 import { createGhoul } from './entities/ghoul';
 import { createCrystalTurret } from './entities/crystalTurret';
-import { ricochet } from '../core/ricochet';
+import { reflectOff, ricochet } from '../core/ricochet';
 import { createGargoyle } from './entities/gargoyle';
 import { createTreant } from './entities/treant';
 import { doorCorridor, mapCellAt, roomBlock, tileAt, tileCenter } from './geometry';
@@ -55,6 +66,19 @@ type Keys = Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
 type PhysicsRect = Phaser.GameObjects.Rectangle & { body: Phaser.Physics.Arcade.Body };
 
 const DEPTH = { player: 10 };
+
+/** How a player projectile flies, stored on it: its passives (core/shotFlight), whom it hit, its age. */
+interface Flight {
+  mods: ShotMods;
+  hits: HitLog;
+  born: number;
+  speed: number;
+  boomerang?: Weapon['boomerang'];
+  /** Blade waves fade out at this time. */
+  expiresAt?: number;
+}
+
+const PLAIN_SHOT: ShotMods = { piercesEnemies: false, piercesTerrain: false, spectral: false, passesShields: false, bouncesLeft: 0 };
 
 type At = (c: Cell) => { x: number; y: number };
 type RoomSize = { width: number; height: number };
@@ -196,7 +220,7 @@ export class GameScene extends Phaser.Scene {
     this.aim = kb.addKeys({ up: 'UP', down: 'DOWN', left: 'LEFT', right: 'RIGHT' }) as Keys;
 
     this.shots = this.physics.add.group();
-    // Player shots have no bounces of their own, so only crystals turn them around; the rest hit.
+    // Player shots pass through, bounce off or stop at terrain as their passives say (core/shotFlight).
     this.physics.add.collider(
       this.shots,
       this.walls,
@@ -205,7 +229,7 @@ export class GameScene extends Phaser.Scene {
         shot.destroy();
         this.hitTerrain(wall as Phaser.GameObjects.Rectangle);
       },
-      (shot, wall) => !this.ricochetEnemyShot(shot as Phaser.GameObjects.Arc, wall as Phaser.GameObjects.Shape),
+      (shot, wall) => this.playerShotMeetsWall(shot as Phaser.GameObjects.Arc, wall as Phaser.GameObjects.Shape),
     );
 
     this.enemyParts = this.physics.add.group();
@@ -262,7 +286,8 @@ export class GameScene extends Phaser.Scene {
     this.updatePlayerStunMark(time, stunned);
 
     if (!stunned) this.tryShoot(time);
-    this.steerHomingShots(delta);
+    this.steerHomingShots(time, delta);
+    this.flyShots(time);
     this.dropShotsOutsideRoom();
     this.updateEnemies(time);
     this.updateCrushers(time);
@@ -280,14 +305,70 @@ export class GameScene extends Phaser.Scene {
     this.nextShotAt = time + weapon.fireDelayMs;
     if (weapon.mode === 'sword') {
       this.swingSword(aim, weapon.damage, weapon.swordArcDeg);
+      // With any shot passive, the swing also throws a short-lived blade wave that carries them.
+      if (weapon.bladeWave) this.launch(aim, weapon, time, true);
       return;
     }
+    this.launch(aim, weapon, time, false);
+  }
+
+  /** Fires the weapon's projectiles (shots, or the sword's blade waves), fanned out if there are several. */
+  private launch(aim: Direction, weapon: Weapon, time: number, wave: boolean) {
     const v = launchVelocity(aim, this.player.body.velocity, TUNING.shotSpeed);
-    const color = weapon.homing ? COLORS.passive.homing : COLORS.shot;
-    const shot = this.add.circle(this.player.x, this.player.y, TUNING.shotRadius, color);
-    shot.setData({ damage: weapon.damage, homing: weapon.homing });
-    this.shots.add(shot);
-    (shot.body as Phaser.Physics.Arcade.Body).setCircle(TUNING.shotRadius).setVelocity(v.x, v.y);
+    const heading = Math.atan2(v.y, v.x);
+    const speed = Math.hypot(v.x, v.y);
+    const radius = wave ? TUNING.bladeWave.radius : TUNING.shotRadius;
+    const color = wave ? COLORS.passive.sword : weapon.homing ? COLORS.passive.homing : COLORS.shot;
+    const spread = ((weapon.shots - 1) * weapon.spreadDeg * Math.PI) / 180;
+    for (const angle of fan(heading, weapon.shots, spread)) {
+      const shot = this.add.circle(this.player.x, this.player.y, radius, color).setAlpha(weapon.spectral ? 0.6 : 1);
+      if (weapon.piercesEnemies) shot.setStrokeStyle(2, COLORS.passive.pierce);
+      const flight: Flight = {
+        mods: {
+          piercesEnemies: weapon.piercesEnemies,
+          piercesTerrain: weapon.piercesTerrain,
+          spectral: weapon.spectral,
+          passesShields: weapon.passesShields,
+          bouncesLeft: weapon.bounces,
+        },
+        hits: createHitLog(),
+        born: time,
+        speed,
+        boomerang: weapon.boomerang,
+        expiresAt: wave ? time + TUNING.bladeWave.lifeMs : undefined,
+      };
+      shot.setData({ damage: wave ? weapon.damage * TUNING.bladeWave.damageShare : weapon.damage, homing: weapon.homing, flight });
+      this.shots.add(shot);
+      (shot.body as Phaser.Physics.Arcade.Body).setCircle(radius).setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
+    }
+  }
+
+  /** Blade waves fade out, and boomerang shots turn back to the player once they have flown out, caught on arrival. */
+  private flyShots(time: number) {
+    for (const obj of this.shots.getChildren()) {
+      const shot = obj as Phaser.GameObjects.Arc;
+      const flight = shot.getData('flight') as Flight | undefined;
+      if (!flight) continue;
+      if (flight.expiresAt !== undefined && time >= flight.expiresAt) {
+        shot.destroy();
+        continue;
+      }
+      if (!flight.boomerang || boomerangLeg(time - flight.born, flight.boomerang.outMs) === 'out') continue;
+      const dx = this.player.x - shot.x;
+      const dy = this.player.y - shot.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist < TUNING.playerSize) {
+        shot.destroy();
+        continue;
+      }
+      const speed = flight.speed * flight.boomerang.returnSpeedFactor;
+      (shot.body as Phaser.Physics.Arcade.Body).setVelocity((dx / dist) * speed, (dy / dist) * speed);
+    }
+  }
+
+  /** The leg of its flight a shot is on: boomerang shots come back after flying out. */
+  private legOf(flight: Flight | undefined, time: number): Leg {
+    return flight?.boomerang ? boomerangLeg(time - flight.born, flight.boomerang.outMs) : 'out';
   }
 
   /** Shots that fly out through a doorway vanish at the room's edge, like in Isaac. */
@@ -343,15 +424,19 @@ export class GameScene extends Phaser.Scene {
 
   /**
    * Homing shots turn at a limited rate, keeping their speed: the player's toward the nearest
-   * enemy part with a clear line past anything that blocks shots (so they don't curve into
-   * rocks after hidden enemies), enemy ones (the Shadow's) toward the player.
+   * enemy part with a clear line past anything that would stop the shot (so they don't curve
+   * into rocks after hidden enemies), homing enemy shots toward the player.
    */
-  private steerHomingShots(deltaMs: number) {
+  private steerHomingShots(time: number, deltaMs: number) {
     const maxTurn = (resolveWeapon(this.world.player.passives).homingTurnRate * deltaMs) / 1000;
     const room = this.currentRoom;
     const parts = this.enemies.flatMap((e) => e.parts);
-    const clearShot = (from: { x: number; y: number }, to: { x: number; y: number }) =>
-      lineOfSight(room.layout.tiles, this.toTileUnits(room, from), this.toTileUnits(room, to), blocksShots);
+    // What blocks the view is what the shot couldn't fly through: a spectral shot homes through rock.
+    const clearShot = (shot: Phaser.GameObjects.Arc, to: { x: number; y: number }) => {
+      const flight = shot.getData('flight') as Flight | undefined;
+      const blocks = flight ? homingBlocks(flight.mods) : blocksShots;
+      return lineOfSight(room.layout.tiles, this.toTileUnits(room, shot), this.toTileUnits(room, to), blocks);
+    };
     const steer = (group: Phaser.Physics.Arcade.Group, targetFor: (shot: Phaser.GameObjects.Arc) => { x: number; y: number } | undefined) => {
       for (const obj of group.getChildren()) {
         const shot = obj as Phaser.GameObjects.Arc;
@@ -365,6 +450,8 @@ export class GameScene extends Phaser.Scene {
     };
     const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Phaser.Math.Distance.Between(a.x, a.y, b.x, b.y);
     steer(this.shots, (shot) => {
+      // A boomerang on its way back is headed for the player, not for enemies.
+      if (this.legOf(shot.getData('flight') as Flight | undefined, time) === 'back') return undefined;
       const visible = parts.filter((p) => clearShot(shot, p));
       return visible.length ? visible.reduce((best, p) => (dist(shot, p) < dist(shot, best) ? p : best)) : undefined;
     });
@@ -463,18 +550,59 @@ export class GameScene extends Phaser.Scene {
     return { x: (p.x - origin.x) / TUNING.tile + 0.5, y: (p.y - origin.y) / TUNING.tile + 0.5 };
   }
 
+  /**
+   * A player shot touches an enemy part. What happens is core/shotFlight's call: a shield facing
+   * it turns it aside unless it passes shields, a piercing shot flies on (hurting each part once
+   * per leg of its flight), and a boomerang hits harder on its way back if upgraded.
+   */
   private hitEnemy(shotObject: unknown, part: EnemySprite) {
-    const shot = shotObject as Phaser.GameObjects.GameObject;
+    const shot = shotObject as Phaser.GameObjects.Arc;
     if (!shot.active) return; // already spent on another part this frame
+    const flight = shot.getData('flight') as Flight | undefined;
+    const leg = this.legOf(flight, this.time.now);
+    if (flight && !flight.hits.first(leg, part)) return;
     // Read before destroying: destroy() discards the object's data.
-    const damage = shot.getData('damage') as number;
-    // A shot meeting a shield is spent without doing any damage.
+    const damage = (shot.getData('damage') as number) * (leg === 'back' ? flight!.boomerang!.returnDamageFactor : 1);
     const { velocity } = shot.body as Phaser.Physics.Arcade.Body;
-    const blocked = this.shieldBlocks(part, { x: velocity.x, y: velocity.y });
-    const at = { x: (shot as Phaser.GameObjects.Arc).x, y: (shot as Phaser.GameObjects.Arc).y };
-    shot.destroy();
-    if (blocked) this.clink(at.x, at.y);
-    else this.damagePart(part, damage);
+    const shielded = this.shieldBlocks(part, { x: velocity.x, y: velocity.y });
+    const { damages, continues } = meetEnemy(flight?.mods ?? PLAIN_SHOT, shielded);
+    const at = { x: shot.x, y: shot.y };
+    if (!continues) shot.destroy();
+    if (damages) this.damagePart(part, damage);
+    else this.clink(at.x, at.y);
+  }
+
+  /**
+   * A player shot touches a wall piece: flies on through, bounces or is turned by crystal (both
+   * handled here), or stops against it, which is what returning true tells physics to do.
+   */
+  private playerShotMeetsWall(shot: Phaser.GameObjects.Arc, wall: Phaser.GameObjects.Shape): boolean {
+    if (!shot.active) return false;
+    const flight = shot.getData('flight') as Flight | undefined;
+    const { cell, tile } = this.wallPiece(wall);
+    const outcome = meetTerrain(flight?.mods ?? PLAIN_SHOT, tile ?? 'wall');
+    if (outcome === 'pass') return false;
+    if (outcome === 'stop') return true;
+    const pos = this.toTileUnits(this.currentRoom, shot);
+    const body = shot.body as Phaser.Physics.Arcade.Body;
+    const { x: vx, y: vy } = body.velocity;
+    // Already heading away: it just bounced off a neighbouring piece.
+    if ((cell.x + 0.5 - pos.x) * vx + (cell.y + 0.5 - pos.y) * vy <= 0) return false;
+    const out = reflectOff({ ...pos, vx, vy }, cell);
+    body.setVelocity(out.vx, out.vy);
+    if (outcome === 'bounce' && flight) flight.mods.bouncesLeft--;
+    return false;
+  }
+
+  /** The room cell a wall piece stands on, and its tile; no tile for the room's own walls and door locks. */
+  private wallPiece(wall: Phaser.GameObjects.Shape): { cell: Cell; tile?: Tile } {
+    const room = this.currentRoom;
+    const roomId = wall.getData('roomId') as string | undefined;
+    const tileCell = wall.getData('tile') as Cell | undefined;
+    const centre = this.toTileUnits(room, wall);
+    const cell = tileCell && roomId === room.floorRoom.id ? tileCell : { x: Math.floor(centre.x), y: Math.floor(centre.y) };
+    const tile = tileCell && roomId ? this.world.rooms.get(roomId)?.layout.tiles[tileCell.y]?.[tileCell.x] : undefined;
+    return { cell, tile };
   }
 
   /** A player shot hit a wall piece; rocks crack and eventually break open. */
@@ -518,19 +646,16 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * A shot (an enemy's, or the player's on a crystal) touches a wall piece: bounces it (core/ricochet) and returns true, or returns
+   * An enemy shot touches a wall piece: bounces it (core/ricochet) and returns true, or returns
    * false to let it be spent. Room walls and door locks count as stone. A shot already heading
    * away from the piece (it just bounced off a neighbouring piece) is left alone.
    */
   private ricochetEnemyShot(shot: Phaser.GameObjects.Arc, wall: Phaser.GameObjects.Shape): boolean {
     if (!shot.active) return true;
-    const room = this.currentRoom;
-    const pos = this.toTileUnits(room, shot);
-    const roomId = wall.getData('roomId') as string | undefined;
-    const tileCell = wall.getData('tile') as Cell | undefined;
-    const centre = this.toTileUnits(room, wall);
-    const cell = tileCell && roomId === room.floorRoom.id ? tileCell : { x: Math.floor(centre.x), y: Math.floor(centre.y) };
-    const tile: Tile = (tileCell && roomId ? this.world.rooms.get(roomId)?.layout.tiles[tileCell.y]?.[tileCell.x] : undefined) ?? 'obstacle';
+    const pos = this.toTileUnits(this.currentRoom, shot);
+    const piece = this.wallPiece(wall);
+    const { cell } = piece;
+    const tile: Tile = piece.tile ?? 'obstacle';
     const body = shot.body as Phaser.Physics.Arcade.Body;
     const { x: vx, y: vy } = body.velocity;
     const heading = (cell.x + 0.5 - pos.x) * vx + (cell.y + 0.5 - pos.y) * vy;

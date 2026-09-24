@@ -10,6 +10,8 @@ export const TUNING = {
   shotRadius: 7,
   /** The sword's arc width and homing's turn rate come from the weapon model (core/weaponModel). */
   sword: { range: 78, showMs: 110 },
+  /** The sword's blade wave (with a shot passive): its size, how long it lives, and its share of a swing's damage. */
+  bladeWave: { radius: 11, lifeMs: 280, damageShare: 1 / 3 },
   invincibleMs: 1000,
   enemyWakeMs: 500,
   /** After a chest opens, items can't be picked up for this long. */
@@ -61,7 +63,16 @@ export const TUNING = {
 };
 
 /** How passives are named on screen (the HUD and the boss-kill upgrade message). */
-export const PASSIVE_NAMES: Record<Passive, string> = { homing: 'Homing', fireRate: 'Fire rate', sword: 'Sword' };
+export const PASSIVE_NAMES: Record<Passive, string> = {
+  homing: 'Homing',
+  fireRate: 'Fire rate',
+  sword: 'Sword',
+  triple: 'Triple shot',
+  pierce: 'Piercing',
+  ricochet: 'Ricochet',
+  spectral: 'Spectral',
+  boomerang: 'Boomerang',
+};
 
 /** Floor, wall, door and terrain colours come from each floor's theme (core/themes). */
 export const COLORS = {
@@ -84,7 +95,16 @@ export const COLORS = {
   chest: 0x9a6a36,
   lockedChest: 0xc9a227,
   openChest: 0x4a3420,
-  passive: { homing: 0x5fd4e8, fireRate: 0xff9a3c, sword: 0xc8ccd4 } as Record<Passive, number>,
+  passive: {
+    homing: 0x5fd4e8,
+    fireRate: 0xff9a3c,
+    sword: 0xc8ccd4,
+    triple: 0xf2e05a,
+    pierce: 0xe05a5a,
+    ricochet: 0x7fd4a0,
+    spectral: 0xb89aff,
+    boomerang: 0xd8a24a,
+  } as Record<Passive, number>,
   heartEmpty: 0x3a1c20,
   text: '#e8d7b0',
   minimapBackground: 0x000000,

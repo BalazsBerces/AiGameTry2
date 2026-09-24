@@ -269,7 +269,7 @@ describe('passives', () => {
   it('offers a passive the player doesn’t own when they walk into the item room', () => {
     for (let seed = 0; seed < 20; seed++) {
       const world = createWorld(seed);
-      world.player.passives = { homing: 1, sword: 2 };
+      world.player.passives = Object.fromEntries(PASSIVE_POOL.filter((p) => p !== 'fireRate').map((p) => [p, 1]));
       const id = itemRoomOf(world);
       enterRoom(world, id);
       expect(passiveIn(world, id)!.passive, `seed ${seed}`).toBe('fireRate');
@@ -297,7 +297,7 @@ describe('passives', () => {
     const world = createWorld(1);
     const id = firstNormalRoom(world).floorRoom.id;
     world.rooms.get(id)!.layout.tiles.forEach((row) => row.fill('floor'));
-    world.player.passives = { sword: 1, fireRate: 1 };
+    world.player.passives = Object.fromEntries(PASSIVE_POOL.filter((p) => p !== 'homing').map((p) => [p, 1]));
     world.pickups.set(id, [{ id: 1, type: 'chest', cell: { x: 6, y: 3 }, contents: [{ type: 'passive' }] }]);
     touchPickup(world, id, 1);
     expect(world.pickups.get(id)!.find((p) => p.type === 'passive')!.passive).toBe('homing');

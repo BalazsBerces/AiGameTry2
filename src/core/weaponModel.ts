@@ -5,7 +5,10 @@ export interface Vec {
   y: number;
 }
 
-export type Passive = 'homing' | 'fireRate' | 'sword';
+export type Passive = 'homing' | 'fireRate' | 'sword' | 'triple' | 'pierce' | 'ricochet' | 'spectral' | 'boomerang';
+
+/** Passives that shape a projectile's flight: with the sword, any of them makes it throw a blade wave. */
+const SHOT_MODIFIERS: readonly Passive[] = ['homing', 'triple', 'pierce', 'ricochet', 'spectral', 'boomerang'];
 
 /** A passive is picked up at level 1; a boss kill can raise one to level 2. */
 export type PassiveLevel = 1 | 2;
@@ -21,6 +24,23 @@ export interface Weapon {
   homingTurnRate: number;
   /** How wide a sword swing sweeps. */
   swordArcDeg: number;
+  /** Projectiles per attack, fanned `spreadDeg` apart. */
+  shots: number;
+  spreadDeg: number;
+  /** Carries on through enemies it hurts (each one once per leg of its flight). */
+  piercesEnemies: boolean;
+  /** Carries on through stone and rock. */
+  piercesTerrain: boolean;
+  /** How often it may bounce off walls and stone. */
+  bounces: number;
+  /** Flies through stone and rock (not the room's walls). */
+  spectral: boolean;
+  /** Gets past shields. */
+  passesShields: boolean;
+  /** Flies out for `outMs`, then back to the player. */
+  boomerang?: { outMs: number; returnSpeedFactor: number; returnDamageFactor: number };
+  /** Sword swings also throw a short-lived projectile that carries the shot passives. */
+  bladeWave: boolean;
 }
 
 /** Weapon numbers; placeholders for playtest tuning. Level-2 values are indexed by level. */
@@ -34,20 +54,41 @@ export const WEAPON = {
   /** Fire-rate passive: multiplies the delay between attacks and their damage (shots and sword). */
   fireRateDelayFactor: 0.4,
   fireRateDamageFactor: { 1: 0.5, 2: 0.75 },
+  triple: { shots: { 1: 3, 2: 5 }, spreadDeg: 14, damageFactor: 0.75 },
+  ricochetBounces: { 1: 2, 2: 4 },
+  boomerang: { outMs: 420, returnSpeedFactor: { 1: 1, 2: 1.5 }, returnDamageFactor: { 1: 1, 2: 2 } },
 };
 
 /** Everything the player's passives, at their levels, make of their attack. Pickup order never matters. */
 export function resolveWeapon(passives: PassiveLevels): Weapon {
-  const sword = passives.sword;
-  const fast = passives.fireRate;
+  const { sword, fireRate: fast, triple, pierce, ricochet, spectral, boomerang } = passives;
+  const bladeWave = !!sword && SHOT_MODIFIERS.some((p) => passives[p]);
   return {
     mode: sword ? 'sword' : 'shots',
     fireDelayMs: (sword ? WEAPON.swordDelayMs : WEAPON.shotDelayMs) * (fast ? WEAPON.fireRateDelayFactor : 1),
-    damage: (sword ? WEAPON.swordDamage : WEAPON.shotDamage) * (fast ? WEAPON.fireRateDamageFactor[fast] : 1),
-    // Homing steers projectiles; the sword has none.
-    homing: !sword && !!passives.homing,
+    damage:
+      (sword ? WEAPON.swordDamage : WEAPON.shotDamage) *
+      (fast ? WEAPON.fireRateDamageFactor[fast] : 1) *
+      (triple && !sword ? WEAPON.triple.damageFactor : 1),
+    // Homing steers projectiles: shots, or the sword's blade waves.
+    homing: !!passives.homing,
     homingTurnRate: WEAPON.homingTurnRate[passives.homing ?? 1],
     swordArcDeg: WEAPON.swordArcDeg[sword ?? 1],
+    shots: triple ? WEAPON.triple.shots[triple] : 1,
+    spreadDeg: WEAPON.triple.spreadDeg,
+    piercesEnemies: !!pierce,
+    piercesTerrain: pierce === 2,
+    bounces: ricochet ? WEAPON.ricochetBounces[ricochet] : 0,
+    spectral: !!spectral,
+    passesShields: spectral === 2,
+    boomerang: boomerang
+      ? {
+          outMs: WEAPON.boomerang.outMs,
+          returnSpeedFactor: WEAPON.boomerang.returnSpeedFactor[boomerang],
+          returnDamageFactor: WEAPON.boomerang.returnDamageFactor[boomerang],
+        }
+      : undefined,
+    bladeWave,
   };
 }
 

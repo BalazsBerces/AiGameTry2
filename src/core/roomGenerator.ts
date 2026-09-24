@@ -123,7 +123,7 @@ export type EnemyType =
   | 'turret'
   | 'worm'
   | 'wormBoss'
-  | 'shadowBoss'
+  | 'ironMaiden'
   | 'treantBoss'
   | 'goblin'
   | 'seedSpitter'
@@ -246,19 +246,20 @@ function placeLabyrinth(tiles: Tile[][], rng: Rng, keepClear: (c: Cell) => boole
 
 type TerrainStrategy = (tiles: Tile[][], rng: Rng, keepClear: (c: Cell) => boolean) => void;
 
-export type BossType = 'wormBoss' | 'shadowBoss' | 'treantBoss';
+export type BossType = 'wormBoss' | 'ironMaiden' | 'treantBoss';
 
-export const bossForFloor = (floorIndex: number): BossType => themeForFloor(floorIndex).boss;
+/** The floor's boss, from its theme's pool; `rng` should be the run's, so a seed always meets the same boss. */
+export const bossForFloor = (floorIndex: number, rng: Rng): BossType => rng.pick(themeForFloor(floorIndex).bosses);
 
 const BOSS_ARENAS: Record<BossType, TerrainStrategy> = {
   wormBoss: placeLabyrinth,
-  shadowBoss: placePillars,
+  ironMaiden: placePillars,
   treantBoss: placeCaveMouth,
 };
 
 /**
- * Shadow arena: randomly scattered pillars on a loose lattice. Deliberately asymmetric, so the
- * point-mirrored Shadow gets blocked where the player is not, opening gaps in its mirroring.
+ * Iron Maiden arena: randomly scattered dungeon pillars on a loose lattice, cover from its
+ * volleys and stomp rings that the player has to keep moving between.
  */
 function placePillars(tiles: Tile[][], rng: Rng, keepClear: (c: Cell) => boolean) {
   const nearDoor = (c: Cell) =>
@@ -386,7 +387,9 @@ export function generateRoom(spec: RoomSpec, floorIndex: number, rng: Rng): Room
   // Normal and item rooms come from archetypes above; boss arenas are built here, start rooms stay empty.
   const isDoor = (c: Cell) => doors.some((d) => d.cell.x === c.x && d.cell.y === c.y);
   let tiles = wallOff(emptyTiles(width, height), spec.shape ?? '1x1');
-  const terrain = spec.kind === 'boss' ? BOSS_ARENAS[bossForFloor(floorIndex)] : undefined;
+  // Its own stream, so which boss it is never shifts the arena's layout.
+  const boss = spec.kind === 'boss' ? bossForFloor(floorIndex, rng.fork('boss')) : undefined;
+  const terrain = boss ? BOSS_ARENAS[boss] : undefined;
   for (let attempt = 0; terrain && attempt < MAX_TERRAIN_ATTEMPTS; attempt++) {
     const candidate = emptyTiles(width, height);
     terrain(candidate, rng, isDoor);
@@ -396,7 +399,7 @@ export function generateRoom(spec: RoomSpec, floorIndex: number, rng: Rng): Room
     }
   }
   const enemies: EnemySpawn[] = [];
-  if (spec.kind === 'boss' && bossForFloor(floorIndex) === 'wormBoss') {
+  if (boss === 'wormBoss') {
     const farFromDoors = (c: Cell) => doors.every((d) => Math.abs(d.cell.x - c.x) + Math.abs(d.cell.y - c.y) > 3);
     const pool = reachableCells(tiles, doors).filter(farFromDoors);
     for (let attempt = 0; attempt < 100 && pool.length; attempt++) {
@@ -409,16 +412,16 @@ export function generateRoom(spec: RoomSpec, floorIndex: number, rng: Rng): Room
       }
     }
   }
-  if (spec.kind === 'boss' && bossForFloor(floorIndex) === 'shadowBoss') {
-    // The Shadow mirrors the player through the room centre, so it starts opposite the entrance.
+  if (boss === 'ironMaiden') {
+    // It starts across the room from the entrance and walks at the player from there.
     const entrance = doors[0]?.cell ?? { x: 0, y: 0 };
-    const mirror = { x: width - 1 - entrance.x, y: height - 1 - entrance.y };
+    const opposite = { x: width - 1 - entrance.x, y: height - 1 - entrance.y };
     const cell = reachableCells(tiles, doors).sort(
-      (a, b) => Math.hypot(a.x - mirror.x, a.y - mirror.y) - Math.hypot(b.x - mirror.x, b.y - mirror.y),
+      (a, b) => Math.hypot(a.x - opposite.x, a.y - opposite.y) - Math.hypot(b.x - opposite.x, b.y - opposite.y),
     )[0];
-    enemies.push({ type: 'shadowBoss', cell });
+    enemies.push({ type: 'ironMaiden', cell });
   }
-  if (spec.kind === 'boss' && bossForFloor(floorIndex) === 'treantBoss') {
+  if (boss === 'treantBoss') {
     // The Treant roots itself across the clearing from the entrance, on open ground it can fill.
     const entrance = doors[0]?.cell ?? { x: 0, y: 0 };
     const centre = { x: (width - 1) / 2, y: (height - 1) / 2 };

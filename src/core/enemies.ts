@@ -11,7 +11,7 @@ export const ENEMY_CLASS: Record<EnemyType, EnemyClass> = {
   turret: 'stationary',
   worm: 'walker',
   wormBoss: 'walker',
-  shadowBoss: 'walker',
+  ironMaiden: 'walker',
   goblin: 'walker',
   seedSpitter: 'stationary',
   ghoul: 'walker',

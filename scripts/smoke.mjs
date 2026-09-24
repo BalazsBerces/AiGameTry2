@@ -269,6 +269,46 @@ if (scenario === 'worm-boss') {
   console.log('left after killing', JSON.stringify(await status()), 'room cleared', await page.evaluate(`${scene()}.world.cleared.has('${id}')`));
 }
 
+if (scenario === 'floor3-boss') {
+  // Enters floor 3's boss room (which boss depends on SMOKE_SEED), watches it fight, then kills it.
+  const id = await page.evaluate(`[...${scene()}.world.rooms.values()].find((r) => r.floorIndex === 2 && r.floorRoom.kind === 'boss').floorRoom.id`);
+  const type = await page.evaluate(`${scene()}.world.rooms.get('${id}').layout.enemies[0].type`);
+  console.log('floor 3 boss', type);
+  await page.evaluate(`(() => { const s = ${scene()};
+    for (const e of s.enemies) for (const p of e.parts) p.destroy();
+    s.enemies = [];
+    s.invincibleUntil = Infinity;
+    const room = s.world.rooms.get('${id}');
+    const door = room.layout.doors[0];
+    s.player.body.reset(room.floorRoom.cell.x * 720 + (door.cell.x + 1.5) * 48, room.floorRoom.cell.y * 432 + (door.cell.y + 1.5) * 48);
+    s.enterRoom(room, s.time.now);
+    // Stand in the middle of the room, so boss and player share the screen.
+    s.player.body.reset(room.floorRoom.cell.x * 720 + 720, room.floorRoom.cell.y * 432 + 432);
+  })()`);
+  const status = () =>
+    page.evaluate(`(() => { const s = ${scene()}; const p = s.enemies[0]?.parts[0]; return {
+      at: p && [Math.round(p.x), Math.round(p.y)],
+      enemyShots: s.enemyShots.getChildren().length,
+    }; })()`);
+  const hurtOnce = () => page.evaluate(`(() => { const s = ${scene()}; const e = s.enemies[0]; if (!e) return -1;
+    const before = JSON.stringify(e.parts.map((p) => p.alpha)); s.damagePart(e.parts[0], 1); return s.enemies.length; })()`);
+  for (let i = 0; i < 14; i++) {
+    await page.waitForTimeout(500);
+    console.log(`t=${(i + 1) * 0.5}s`, JSON.stringify(await status()));
+    if ([3, 7, 8, 9].includes(i)) await shot(`floor3-${type}-${i}`);
+  }
+  const left = [];
+  for (let i = 0; i < 800 && (await page.evaluate(`${scene()}.enemies.length`)); i++) {
+    await hurtOnce();
+    if (i === 200) {
+      await shot(`floor3-${type}-phase2`);
+      console.log('phase two', JSON.stringify(await status()));
+    }
+    await page.waitForTimeout(25);
+  }
+  console.log('boss dead', (await page.evaluate(`${scene()}.enemies.length`)) === 0, 'run won', await page.evaluate(`window.game.scene.isActive('end')`));
+}
+
 if (scenario === 'turret-los') {
   // Uses the room above the start on seed 7; picks rows from its real tiles.
   const tiles = await page.evaluate(`${scene()}.world.rooms.get('0,-1').layout.tiles`);
@@ -529,11 +569,13 @@ if (scenario === 'full-run') {
     return true;
   };
   const floorNow = () => page.evaluate(`${scene()}.world.rooms.get(${scene()}.world.currentRoomId).floorIndex + 1`);
+  // Keeps hitting; bosses that can't be hurt for a while (a burrowed worm, a shut Iron Maiden) are waited out.
   const killAll = async () => {
-    for (let i = 0; i < 200; i++) {
+    for (let i = 0; i < 800; i++) {
       const left = await page.evaluate(`(() => { const s = ${scene()}; if (!s.scene.isActive()) return 0;
         const p = s.enemies[0]?.parts[0]; if (p) s.damagePart(p, 1); return s.enemies.length; })()`);
       if (!left) return;
+      await page.waitForTimeout(20);
     }
   };
   for (let f = 0; f < 3; f++) {
@@ -549,23 +591,10 @@ if (scenario === 'full-run') {
         health: s.world.player.health }; })()`));
     }
     if (f === 2) {
-      const shadowInfo = () => page.evaluate(`(() => { const s = ${scene()}; const ctx = s.enemyContext(s.time.now);
-        const sh = s.enemies[0]?.parts[0]; const p = s.player;
-        return { shadow: sh && [Math.round(sh.x), Math.round(sh.y)],
-          mirrorTarget: [Math.round(2 * ctx.roomCenter.x - p.x), Math.round(2 * ctx.roomCenter.y - p.y)],
-          enemyShots: s.enemyShots.getChildren().map((o) => [Math.round(o.body.velocity.x), Math.round(o.body.velocity.y)]) }; })()`);
-      await page.waitForTimeout(800);
-      await hold('d', 500);
-      await page.waitForTimeout(400);
-      console.log('  shadow vs its mirrored target after moving right:', await shadowInfo());
-      await page.evaluate(`${scene()}.world.player.passives = []`);
-      await hold('ArrowUp', 120);
-      console.log('  after the player shoots up (shadow shot should go down, vy > 0):', (await shadowInfo()).enemyShots);
-      await shot('04-shadow');
-      await page.waitForTimeout(1500);
-      await page.evaluate(`${scene()}.world.player.passives = ['sword']`);
-      await hold('ArrowUp', 120);
-      console.log('  with the sword, shadow fires no shots:', (await shadowInfo()).enemyShots.length === 0);
+      const bossType = boss.id && (await page.evaluate(`${scene()}.world.rooms.get('${boss.id}').layout.enemies[0]?.type`));
+      await page.waitForTimeout(4500);
+      console.log(`  floor 3 boss: ${bossType}, enemy shots in flight: ${await page.evaluate(`${scene()}.enemyShots.getChildren().length`)}`);
+      await shot('04-floor3-boss');
     }
     await killAll();
     if (f === 2) break;

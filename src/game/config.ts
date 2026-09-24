@@ -23,8 +23,8 @@ export const TUNING = {
   worm: { segmentSize: 30, segmentHp: 2, stepMs: 300 },
   /** Twenty segments long; its attacks and their timing live in core/wormBossAttack. */
   wormBoss: { segmentSize: 38, segmentHp: 2.5, stepMs: 230, shotSpeed: 185 },
-  /** `follow`: how hard it closes on its mirrored target (1/s); speed capped relative to the player's. */
-  shadow: { hp: 45, follow: 10, maxSpeedFactor: 1.2 },
+  /** Its walk/open cycle, stomps, volleys, spikes and chains live in core/ironMaiden. */
+  ironMaiden: { hp: 60, width: 40, height: 46, speed: 70, shotSpeed: 175 },
   /** Multipliers for a room's champion: size, hit points, and movement (or firing) speed. */
   champion: { scale: 1.35, hp: 2, speed: 1.15 },
   /** Faster than a zombie; runs off to regroup when hurt (core/forestCast). */
@@ -67,8 +67,6 @@ export const COLORS = {
   turret: 0x8f5fc4,
   wormHead: 0xd98b3a,
   wormBody: 0xb0703a,
-  shadow: 0x15121a,
-  shadowEdge: 0x8a7fa0,
   wormBossHead: 0xe0453a,
   wormBossBody: 0x9c2f2a,
   champion: 0xf2b632,
@@ -128,4 +126,8 @@ export const COLORS = {
   batTelegraph: 0xe05a7a,
   burrowWarning: 0xd8a860,
   fallingRock: 0x8a7458,
+  maidenIron: 0x5c6068,
+  maidenRivets: 0xb8bcc4,
+  maidenInside: 0x7a1c20,
+  maidenGlow: 0xe8643a,
 };

@@ -45,6 +45,8 @@ export interface EnemyContext {
   crushSprout(cell: Cell): void;
   /** Moves the player straight away from `from` until they are `distance` px from it (if nearer). */
   pushPlayerOut(from: { x: number; y: number }, distance: number): void;
+  /** Something heavy (a lunging worm boss) slammed into the rock at `tile`: it takes `hits` shots' worth of damage. */
+  chipRock(tile: Cell, hits: number): void;
   /** Brings a new enemy into the fight (the worm boss's eggs, and what hatches from them). */
   spawnEnemy(enemy: Enemy): void;
   /** Takes an enemy out of the fight without killing it (an egg that hatched, a brood outliving its boss). */

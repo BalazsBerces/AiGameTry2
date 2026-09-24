@@ -1,6 +1,7 @@
 import { ring } from './bulletPatterns';
-import { STEP, type Cell, type Direction } from './floorGenerator';
+import { DIRECTIONS, STEP, type Cell, type Direction } from './floorGenerator';
 import type { Door, Tile } from './roomGenerator';
+import { isWalkable } from './tiles';
 import type { Worm } from './wormChain';
 import type { Rng } from './rng';
 
@@ -26,6 +27,18 @@ export const WORM_BOSS = {
   rockfallCount: 3,
   rockfallRadius: 3,
   rockShadowMs: 1000,
+  /**
+   * Every piece rampages together this often, from the start of the fight: it charges up, then
+   * lunges this many times, pausing between lunges, and lies dazed at the end.
+   */
+  rampageEveryMs: 12000,
+  rampageChargeMs: 1200,
+  rampageLunges: 5,
+  lungeStepMs: 55,
+  lungePauseMs: 300,
+  rampageDazeMs: 1000,
+  /** A lunge into rock takes this share of its hit points. */
+  lungeRockShare: 0.5,
   /** How many cells in front of the exit are marked and hurt as it bursts out. */
   laneLength: 3,
   /** The spit wave runs down the body one segment per this long. */
@@ -175,4 +188,52 @@ export function planRockfall(tiles: Tile[][], player: Cell, avoid: Cell[], doors
 /** A falling rock `elapsedMs` after it was shaken loose: its shadow grows (0 to 1) until it lands. */
 export function rockfallAt(elapsedMs: number): { shadow: number; landed: boolean } {
   return { shadow: Math.min(1, elapsedMs / WORM_BOSS.rockShadowMs), landed: elapsedMs >= WORM_BOSS.rockShadowMs };
+}
+
+export interface Lunge {
+  heading: Direction;
+  /** The cells the head races through, nearest first. */
+  path: Cell[];
+  /** What it runs into at the end, inside the room (rock takes a blow); none at the outer wall. */
+  stop?: Cell;
+}
+
+/**
+ * One lunge of a rampage: straight along one of the four lines from the head (never back into
+ * its own neck), over open floor until it runs into anything. It takes the line that brings it
+ * closest to the player, the longer run on a tie; none if every line is blocked at once.
+ */
+export function planLunge(tiles: Tile[][], worm: Worm, player: Cell): Lunge | undefined {
+  const [head, neck] = worm.segments;
+  const manhattan = (a: Cell) => Math.abs(a.x - player.x) + Math.abs(a.y - player.y);
+  const lunges = DIRECTIONS.flatMap((heading): (Lunge & { closest: number })[] => {
+    const first = ahead(head, heading);
+    if (neck && first.x === neck.x && first.y === neck.y) return [];
+    const path: Cell[] = [];
+    let at = first;
+    while (tiles[at.y]?.[at.x] === 'floor') {
+      path.push(at);
+      at = ahead(at, heading);
+    }
+    if (!path.length) return [];
+    return [{ heading, path, stop: outside(tiles, at) ? undefined : at, closest: Math.min(...path.map(manhattan)) }];
+  });
+  const best = lunges.sort((a, b) => a.closest - b.closest || b.path.length - a.path.length)[0];
+  return best && { heading: best.heading, path: best.path, stop: best.stop };
+}
+
+/**
+ * A boxed-in worm boss breaks out instead of turning back: with nowhere to crawl, the rock next
+ * to its head that it smashes (straight ahead first). None while it has a way to go.
+ */
+export function breakOut(worm: Worm, tiles: Tile[][]): Cell | undefined {
+  const head = worm.segments[0];
+  // The tail's cell is free by the time the head moves, as in stepWorm.
+  const body = worm.segments.slice(0, -1);
+  const around = [worm.heading, ...DIRECTIONS.filter((d) => d !== worm.heading)]
+    .map((d) => ahead(head, d))
+    .filter((c) => !body.some((b) => b.x === c.x && b.y === c.y));
+  const tile = (c: Cell) => tiles[c.y]?.[c.x];
+  if (around.some((c) => tile(c) !== undefined && isWalkable(tile(c)!))) return undefined;
+  return around.find((c) => tile(c) === 'rock');
 }

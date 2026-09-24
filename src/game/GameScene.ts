@@ -821,6 +821,13 @@ export class GameScene extends Phaser.Scene {
         const [ux, uy] = d > 0 ? [dx / d, dy / d] : [0, 1];
         this.player.body.reset(from.x + ux * distance, from.y + uy * distance);
       },
+      chipRock: (cell, hits) => {
+        const roomId = room.floorRoom.id;
+        const result = hitTile(this.world, roomId, cell, hits);
+        if (result === 'broken') this.removeTerrain(roomId, cell);
+        const shape = this.terrain.get(`${roomId}|${cell.x},${cell.y}`) as Phaser.GameObjects.Rectangle | undefined;
+        if (result === 'damaged' && shape) shape.setAlpha(shape.alpha - 0.25 * hits);
+      },
       spawnEnemy: (enemy) => this.addEnemy(enemy),
       removeEnemy: (enemy) => {
         if (!this.enemies.includes(enemy)) return;

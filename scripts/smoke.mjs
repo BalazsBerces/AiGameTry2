@@ -239,6 +239,7 @@ if (scenario === 'worm-boss') {
       pieces: s.enemies.map((e) => e.parts.length),
       hidden: s.enemies.map((e) => e.parts.filter((p) => !p.visible).length),
       enemyShots: s.enemyShots.getChildren().length,
+      charging: s.enemies.filter((e) => e.parts[0].scale > 1.05).length,
     }; })()`);
   const rocksAtStart = await rocks();
   console.log('rocks at start', rocksAtStart, await status());
@@ -248,6 +249,17 @@ if (scenario === 'worm-boss') {
     console.log(`t=${(i + 1) * 0.5}s`, JSON.stringify(now), 'rocks', await rocks());
     if ([3, 7, 9, 13].includes(i)) await shot(`worm-boss-${i}`);
   }
+  // Every piece rampages together 12s in: a charge-up (swollen head), then five lunges.
+  for (let i = 0; i < 60 && !(await status()).charging; i++) await page.waitForTimeout(100);
+  console.log('charging', JSON.stringify(await status()));
+  await shot('worm-boss-charge');
+  const head = () => page.evaluate(`(() => { const p = ${scene()}.enemies[0].parts[0]; return [Math.round(p.x), Math.round(p.y)]; })()`);
+  const trail = [];
+  for (let i = 0; i < 30; i++) {
+    trail.push((await head()).join(','));
+    await page.waitForTimeout(100);
+  }
+  console.log('head during the rampage', trail.join(' '));
   console.log('rocks broken so far', rocksAtStart - (await rocks()));
   // Wait for it to be all the way under, then catch the exit cracking over its marked lane.
   const allUnder = ({ pieces, hidden }) => pieces.length > 0 && pieces.every((n, k) => hidden[k] === n);

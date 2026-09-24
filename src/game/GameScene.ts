@@ -54,7 +54,9 @@ import { createSeedSpitter } from './entities/seedSpitter';
 import { createKnight } from './entities/knight';
 import { createWasp } from './entities/wasp';
 import { createBoar } from './entities/boar';
-import { isStunned } from '../core/stun';
+import { isStunned, stun } from '../core/stun';
+import { applyPoison, chainTargets, poisonTick, rollsFreeze, type Poison } from '../core/onHit';
+import { createRng } from '../core/rng';
 import { smashRock } from '../core/world';
 import { createGhost } from './entities/ghost';
 import { stunBurst, GLOWSHROOM_RADIUS, type BurstTarget } from '../core/glowshroom';
@@ -175,6 +177,10 @@ export class GameScene extends Phaser.Scene {
   private flyers!: Phaser.Physics.Arcade.Group;
   /** The star drawn over each currently stunned enemy. */
   private stunMarks = new Map<Enemy, Shape>();
+  /** Enemies the Poison passive is working on. */
+  private poisoned = new Map<Enemy, Poison>();
+  /** Rolls for the Freeze passive. */
+  private hitRng = createRng(Math.floor(Math.random() * 2 ** 31));
   /** The player's share of the stun (a glowshroom cloud): no moving or shooting until it wears off. */
   private playerStun: Stunnable = {};
   private playerStunMark?: Shape;
@@ -201,6 +207,7 @@ export class GameScene extends Phaser.Scene {
     this.terrain = new Map();
     this.crushers = [];
     this.stunMarks = new Map();
+    this.poisoned = new Map();
     this.playerStun = {};
     this.playerStunMark = undefined;
     for (const room of this.world.rooms.values()) this.drawRoom(room);
@@ -407,7 +414,68 @@ export class GameScene extends Phaser.Scene {
     for (const part of this.enemies.flatMap((e) => e.parts).filter(inArc)) {
       const heading = { x: part.x - this.player.x, y: part.y - this.player.y };
       if (this.shieldBlocks(part, heading)) this.clink(part.x - heading.x * 0.3, part.y - heading.y * 0.3);
-      else this.damagePart(part, damage);
+      else this.strike(part, damage);
+    }
+  }
+
+  /**
+   * The player's own hit, a shot's or a swing's: hurts the part, then the on-hit passives
+   * (core/onHit) poison and may freeze its enemy and send lightning on to others.
+   */
+  private strike(part: EnemySprite, damage: number) {
+    const enemy = this.enemies.find((e) => e.parts.includes(part));
+    const at = { x: part.x, y: part.y };
+    this.damagePart(part, damage);
+    if (!enemy) return;
+    const weapon = resolveWeapon(this.world.player.passives);
+    const time = this.time.now;
+    const alive = this.enemies.includes(enemy);
+    if (weapon.poison && alive) {
+      this.poisoned.set(enemy, applyPoison(this.poisoned.get(enemy), time, weapon.poison));
+    }
+    if (weapon.freeze && alive && rollsFreeze(weapon.freeze.chance, this.hitRng)) stun(enemy, time, weapon.freeze.stunMs);
+    if (weapon.chain) this.chainLightning(enemy, at, damage * weapon.chain.damageFactor, weapon.chain);
+  }
+
+  /** Lightning from the struck enemy on to the nearest others in turn, drawn as it goes. */
+  private chainLightning(from: Enemy, at: { x: number; y: number }, damage: number, rules: NonNullable<Weapon['chain']>) {
+    const room = this.currentRoom;
+    const bodyOf = (e: Enemy) => e.parts.find((p) => p.active && p.visible);
+    const placed = this.enemies.flatMap((e) => {
+      const p = e === from ? at : bodyOf(e);
+      return p ? [{ id: e, at: this.toTileUnits(room, p) }] : [];
+    });
+    if (!placed.some((p) => p.id === from)) placed.push({ id: from, at: this.toTileUnits(room, at) });
+    const g = this.add.graphics().setDepth(DARK_DEPTH + 3).lineStyle(3, COLORS.passive.chain, 1);
+    let prev = at;
+    for (const target of chainTargets(from, placed, rules.jumps, rules.range)) {
+      const part = bodyOf(target);
+      if (!part) continue;
+      // A jagged bolt: the straight line nudged sideways at its middle.
+      const mid = { x: (prev.x + part.x) / 2 + (Math.random() - 0.5) * 20, y: (prev.y + part.y) / 2 + (Math.random() - 0.5) * 20 };
+      g.lineBetween(prev.x, prev.y, mid.x, mid.y).lineBetween(mid.x, mid.y, part.x, part.y);
+      prev = { x: part.x, y: part.y };
+      this.damagePart(part, damage);
+    }
+    this.tweens.add({ targets: g, alpha: 0, duration: 220, onComplete: () => g.destroy() });
+  }
+
+  /** Poison ticks away on every poisoned enemy, a green puff with each tick. */
+  private tickPoison(time: number) {
+    const rules = resolveWeapon(this.world.player.passives).poison;
+    for (const [enemy, poison] of this.poisoned) {
+      if (!this.enemies.includes(enemy) || !rules) {
+        this.poisoned.delete(enemy);
+        continue;
+      }
+      const tick = poisonTick(poison, time, rules);
+      if (tick.poison) this.poisoned.set(enemy, tick.poison);
+      else this.poisoned.delete(enemy);
+      const part = enemy.parts.find((p) => p.active);
+      if (tick.damage <= 0 || !part) continue;
+      const puff = this.add.circle(part.x, part.y - 8, 7, COLORS.passive.poison, 0.8).setDepth(DEPTH.player + 1);
+      this.tweens.add({ targets: puff, y: puff.y - 18, alpha: 0, duration: 380, onComplete: () => puff.destroy() });
+      this.damagePart(part, tick.damage);
     }
   }
 
@@ -460,6 +528,7 @@ export class GameScene extends Phaser.Scene {
 
   private updateEnemies(time: number) {
     this.updateStunMarks(time);
+    this.tickPoison(time);
     if (this.enemies.length === 0) return;
     if (time < this.enemiesWakeAt) {
       for (const e of this.enemies) for (const p of e.parts) p.body.setVelocity(0, 0);
@@ -568,7 +637,7 @@ export class GameScene extends Phaser.Scene {
     const { damages, continues } = meetEnemy(flight?.mods ?? PLAIN_SHOT, shielded);
     const at = { x: shot.x, y: shot.y };
     if (!continues) shot.destroy();
-    if (damages) this.damagePart(part, damage);
+    if (damages) this.strike(part, damage);
     else this.clink(at.x, at.y);
   }
 

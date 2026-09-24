@@ -461,7 +461,7 @@ if (scenario === 'passives') {
 
   // 2) Fire rate: count shots in one second, without and with the passive.
   const countShots = async (passives) => {
-    await page.evaluate(`(() => { const s = ${scene()}; s.world.player.passives = ${JSON.stringify(passives)};
+    await page.evaluate(`(() => { const s = ${scene()}; s.world.player.passives = Object.fromEntries(${JSON.stringify(passives)}.map((p) => [p, 1]));
       s.__fired = 0; const orig = s.shots.add.bind(s.shots); s.shots.add = (o) => { s.__fired++; return orig(o); }; })()`);
     await hold('ArrowDown', 1000);
     return page.evaluate(`${scene()}.__fired`);
@@ -478,7 +478,7 @@ if (scenario === 'passives') {
     const s = ${scene()};
     const room = s.world.rooms.get('0,-1');
     s.world.currentRoomId = '0,-1';
-    s.world.player.passives = ['homing'];
+    s.world.player.passives = { homing: 1 };
     s.cameras.main.stopFollow().removeBounds().centerOn(360, -216);
     s.player.body.reset((6 + 1.5) * 48, -432 + (6 + 1.5) * 48);
     s.invincibleUntil = Infinity;
@@ -505,7 +505,7 @@ if (scenario === 'sword') {
       s.enemies = [];
       const room = s.world.rooms.get('0,-1');
       s.world.currentRoomId = '0,-1';
-      s.world.player.passives = ${JSON.stringify(passives)};
+      s.world.player.passives = Object.fromEntries(${JSON.stringify(passives)}.map((p) => [p, 1]));
       s.cameras.main.stopFollow().removeBounds().centerOn(360, -216);
       s.player.body.reset((6 + 1.5) * 48, -432 + (0 + 1.5) * 48);
       s.invincibleUntil = Infinity;
@@ -636,7 +636,7 @@ if (scenario === 'shot-damage') {
       s.enemies = [];
       const room = s.world.rooms.get('0,-1');
       s.world.currentRoomId = '0,-1';
-      s.world.player.passives = ${JSON.stringify(passives)};
+      s.world.player.passives = Object.fromEntries(${JSON.stringify(passives)}.map((p) => [p, 1]));
       s.cameras.main.stopFollow().removeBounds().centerOn(360, -216);
       s.player.body.reset((6 + 1.5) * 48, -432 + (6 + 1.5) * 48);
       s.invincibleUntil = Infinity;
@@ -704,6 +704,27 @@ if (scenario === 'end-race') {
   console.log('final boss dies, then player dies (expect YOU WIN):', await race(['win', 'die']));
 }
 
+if (scenario === 'boss-upgrade') {
+  // With homing at level 1, kill the floor 1 boss: homing should go up to level 2, with a message and a HUD ring.
+  const id = await page.evaluate(`[...${scene()}.world.rooms.values()].find((r) => r.floorIndex === 0 && r.floorRoom.kind === 'boss').floorRoom.id`);
+  await page.evaluate(`(() => { const s = ${scene()};
+    s.invincibleUntil = Infinity;
+    s.world.player.passives = { homing: 1, fireRate: 2 };
+    const room = s.world.rooms.get('${id}');
+    const door = room.layout.doors[0];
+    s.player.body.reset(room.floorRoom.cell.x * 720 + (door.cell.x + 1.5) * 48, room.floorRoom.cell.y * 432 + (door.cell.y + 1.5) * 48);
+    s.enterRoom(room, s.time.now);
+  })()`);
+  await page.waitForTimeout(800);
+  await shot('02-hud-before');
+  for (let i = 0; i < 400 && (await page.evaluate(`${scene()}.enemies.length`)); i++) {
+    await page.evaluate(`(() => { const s = ${scene()}; const p = s.enemies[0]?.parts[0]; if (p) s.damagePart(p, 1); })()`);
+  }
+  await page.waitForTimeout(300);
+  await shot('03-upgraded');
+  console.log('passives after the boss (expect homing 2, fireRate 2):', JSON.stringify(await page.evaluate(`${scene()}.world.player.passives`)));
+}
+
 if (scenario === 'chest-passive') {
   await page.evaluate(`(() => {
     const s = ${scene()};
@@ -725,11 +746,11 @@ if (scenario === 'chest-passive') {
   const drop = await page.evaluate(`${scene()}.world.pickups.get('0,-1').find((p) => p.type === 'passive')?.cell`);
   if (!drop) throw new Error('no passive on the floor after opening the chest');
   await standOn(drop.x, drop.y, 100);
-  console.log('passives right after opening the chest (expect []):', await page.evaluate(`${scene()}.world.player.passives`));
+  console.log('passives right after opening the chest (expect {}):', await page.evaluate(`${scene()}.world.player.passives`));
   await page.waitForTimeout(500);
   await standOn(6, 5, 50);
   await standOn(drop.x, drop.y, 150);
-  console.log('passives after the lockout (expect [homing]):', await page.evaluate(`${scene()}.world.player.passives`));
+  console.log('passives after the lockout (expect { homing: 1 }):', await page.evaluate(`${scene()}.world.player.passives`));
 }
 
 if (scenario === 'rooms') {
@@ -803,7 +824,7 @@ if (scenario === 'rocks') {
     s.enemiesWakeAt = Infinity;
     const c = { x: room.floorRoom.cell.x * 720 + (6 + 1.5) * 48, y: room.floorRoom.cell.y * 432 + (5 + 1.5) * 48 };
     s.player.body.reset(c.x, c.y);
-    s.world.player.passives = [];
+    s.world.player.passives = {};
   })()`);
   await page.waitForTimeout(500);
   await shot('02-stash');

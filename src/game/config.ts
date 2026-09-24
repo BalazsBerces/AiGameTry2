@@ -8,9 +8,8 @@ export const TUNING = {
   roomSlideMs: 280,
   shotSpeed: 420,
   shotRadius: 7,
-  /** How fast homing shots can turn, in radians per second. */
-  homingTurnRate: 5,
-  sword: { range: 78, arcDeg: 90, showMs: 110 },
+  /** The sword's arc width and homing's turn rate come from the weapon model (core/weaponModel). */
+  sword: { range: 78, showMs: 110 },
   invincibleMs: 1000,
   enemyWakeMs: 500,
   /** After a chest opens, items can't be picked up for this long. */
@@ -60,6 +59,9 @@ export const TUNING = {
   /** Small and frail; its flutter, telegraph and swoop (in tiles) live in core/bat. */
   bat: { hp: 2, width: 26, height: 12 },
 };
+
+/** How passives are named on screen (the HUD and the boss-kill upgrade message). */
+export const PASSIVE_NAMES: Record<Passive, string> = { homing: 'Homing', fireRate: 'Fire rate', sword: 'Sword' };
 
 /** Floor, wall, door and terrain colours come from each floor's theme (core/themes). */
 export const COLORS = {

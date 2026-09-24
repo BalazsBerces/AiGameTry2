@@ -407,7 +407,8 @@ describe('generateRoom pickups', () => {
       const r = generateRoom({ id: '0,0', kind: 'item', doors: ['left'] }, 0, createRng(seed));
       expect(r.enemies).toEqual([]);
       expect(r.pickups.map((p) => p.type)).toEqual(['passive']);
-      expect(['homing', 'fireRate', 'sword']).toContain(r.pickups[0].passive);
+      // Which one is decided when the player walks in (see the world's passives tests).
+      expect(r.pickups[0].passive).toBeUndefined();
       const c = r.pickups[0].cell;
       expect(r.tiles[c.y][c.x]).toBe('floor');
     }

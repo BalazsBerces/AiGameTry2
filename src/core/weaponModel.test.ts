@@ -3,41 +3,57 @@ import { launchVelocity, resolveWeapon, SHOT_SKEW } from './weaponModel';
 
 describe('resolveWeapon', () => {
   it('fires plain shots with no passives', () => {
-    expect(resolveWeapon([])).toEqual({ mode: 'shots', fireDelayMs: 330, damage: 1, homing: false });
+    expect(resolveWeapon({})).toMatchObject({ mode: 'shots', fireDelayMs: 330, damage: 1, homing: false });
   });
 
   it('homing makes shots home without changing rate or damage', () => {
-    expect(resolveWeapon(['homing'])).toEqual({ mode: 'shots', fireDelayMs: 330, damage: 1, homing: true });
+    expect(resolveWeapon({ homing: 1 })).toMatchObject({ mode: 'shots', fireDelayMs: 330, damage: 1, homing: true, homingTurnRate: 5 });
   });
 
   it('fire rate drastically speeds up shots but lowers their damage', () => {
-    expect(resolveWeapon(['fireRate'])).toEqual({ mode: 'shots', fireDelayMs: 132, damage: 0.5, homing: false });
+    expect(resolveWeapon({ fireRate: 1 })).toMatchObject({ mode: 'shots', fireDelayMs: 132, damage: 0.5, homing: false });
   });
 
-  it('homing and fire rate stack', () => {
-    expect(resolveWeapon(['homing', 'fireRate'])).toEqual({ mode: 'shots', fireDelayMs: 132, damage: 0.5, homing: true });
-    expect(resolveWeapon(['fireRate', 'homing'])).toEqual(resolveWeapon(['homing', 'fireRate']));
+  it('homing and fire rate stack, whatever order they were picked up in', () => {
+    expect(resolveWeapon({ homing: 1, fireRate: 1 })).toMatchObject({ mode: 'shots', fireDelayMs: 132, damage: 0.5, homing: true });
+    expect(resolveWeapon({ fireRate: 1, homing: 1 })).toEqual(resolveWeapon({ homing: 1, fireRate: 1 }));
   });
 
   it('the sword replaces shots with slower, harder swings', () => {
-    expect(resolveWeapon(['sword'])).toEqual({ mode: 'sword', fireDelayMs: 450, damage: 3, homing: false });
+    expect(resolveWeapon({ sword: 1 })).toMatchObject({ mode: 'sword', fireDelayMs: 450, damage: 3, homing: false, swordArcDeg: 90 });
   });
 
   it('homing has no effect on the sword', () => {
-    expect(resolveWeapon(['sword', 'homing'])).toEqual({ mode: 'sword', fireDelayMs: 450, damage: 3, homing: false });
+    expect(resolveWeapon({ sword: 1, homing: 1 })).toMatchObject({ mode: 'sword', fireDelayMs: 450, damage: 3, homing: false });
   });
 
   it('fire rate speeds up and weakens sword swings', () => {
-    expect(resolveWeapon(['sword', 'fireRate'])).toEqual({ mode: 'sword', fireDelayMs: 180, damage: 1.5, homing: false });
+    expect(resolveWeapon({ sword: 1, fireRate: 1 })).toMatchObject({ mode: 'sword', fireDelayMs: 180, damage: 1.5, homing: false });
   });
 
   it('all three passives together: fast, weakened sword without homing', () => {
-    expect(resolveWeapon(['homing', 'sword', 'fireRate'])).toEqual({
-      mode: 'sword',
-      fireDelayMs: 180,
-      damage: 1.5,
-      homing: false,
-    });
+    expect(resolveWeapon({ homing: 1, sword: 1, fireRate: 1 })).toMatchObject({ mode: 'sword', fireDelayMs: 180, damage: 1.5, homing: false });
+  });
+});
+
+describe('resolveWeapon at level 2', () => {
+  it('upgraded homing turns faster', () => {
+    expect(resolveWeapon({ homing: 2 }).homingTurnRate).toBeGreaterThan(resolveWeapon({ homing: 1 }).homingTurnRate);
+  });
+
+  it('upgraded fire rate keeps its speed but loses less damage', () => {
+    const one = resolveWeapon({ fireRate: 1 });
+    const two = resolveWeapon({ fireRate: 2 });
+    expect(two.fireDelayMs).toBe(one.fireDelayMs);
+    expect(two.damage).toBeGreaterThan(one.damage);
+    expect(two.damage).toBeLessThan(1);
+  });
+
+  it('an upgraded sword swings a wider arc, as hard and as often', () => {
+    const one = resolveWeapon({ sword: 1 });
+    const two = resolveWeapon({ sword: 2 });
+    expect(two.swordArcDeg).toBeGreaterThan(one.swordArcDeg);
+    expect(two).toMatchObject({ damage: one.damage, fireDelayMs: one.fireDelayMs });
   });
 });
 

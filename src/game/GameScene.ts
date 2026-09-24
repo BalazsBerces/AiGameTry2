@@ -20,11 +20,12 @@ import {
   shownPickups,
   sproutTile,
   touchPickup,
+  upgradeAfterBoss,
   type World,
   type WorldPickup,
   type WorldRoom,
 } from '../core/world';
-import { COLORS, TUNING } from './config';
+import { COLORS, PASSIVE_NAMES, TUNING } from './config';
 import type { Enemy, EnemyContext, EnemySprite } from './entities/enemy';
 import { createIronMaidenBoss } from './entities/ironMaiden';
 import { createCandleWitch, DARK_DEPTH } from './entities/candleWitch';
@@ -278,7 +279,7 @@ export class GameScene extends Phaser.Scene {
     const weapon = resolveWeapon(this.world.player.passives);
     this.nextShotAt = time + weapon.fireDelayMs;
     if (weapon.mode === 'sword') {
-      this.swingSword(aim, weapon.damage);
+      this.swingSword(aim, weapon.damage, weapon.swordArcDeg);
       return;
     }
     const v = launchVelocity(aim, this.player.body.velocity, TUNING.shotSpeed);
@@ -302,8 +303,8 @@ export class GameScene extends Phaser.Scene {
    * Draws a sword arc from `from` toward `aim` and returns a test for whether a target of the
    * given size is inside it.
    */
-  private sweepArc(from: { x: number; y: number }, aim: Direction, color: number) {
-    const { range, arcDeg, showMs } = TUNING.sword;
+  private sweepArc(from: { x: number; y: number }, aim: Direction, color: number, arcDeg: number) {
+    const { range, showMs } = TUNING.sword;
     const facing = Math.atan2(STEP[aim].y, STEP[aim].x);
     const half = Phaser.Math.DegToRad(arcDeg / 2);
     const arc = this.add.graphics().setDepth(DEPTH.player - 1);
@@ -320,8 +321,8 @@ export class GameScene extends Phaser.Scene {
    * A melee arc in the aimed direction; damages every enemy part inside it. A blow counts as
    * travelling from the player to the part, so a shield facing the player turns it aside.
    */
-  private swingSword(aim: Direction, damage: number) {
-    const inArc = this.sweepArc(this.player, aim, COLORS.passive.sword);
+  private swingSword(aim: Direction, damage: number, arcDeg: number) {
+    const inArc = this.sweepArc(this.player, aim, COLORS.passive.sword, arcDeg);
     for (const part of this.enemies.flatMap((e) => e.parts).filter(inArc)) {
       const heading = { x: part.x - this.player.x, y: part.y - this.player.y };
       if (this.shieldBlocks(part, heading)) this.clink(part.x - heading.x * 0.3, part.y - heading.y * 0.3);
@@ -346,7 +347,7 @@ export class GameScene extends Phaser.Scene {
    * rocks after hidden enemies), enemy ones (the Shadow's) toward the player.
    */
   private steerHomingShots(deltaMs: number) {
-    const maxTurn = (TUNING.homingTurnRate * deltaMs) / 1000;
+    const maxTurn = (resolveWeapon(this.world.player.passives).homingTurnRate * deltaMs) / 1000;
     const room = this.currentRoom;
     const parts = this.enemies.flatMap((e) => e.parts);
     const clearShot = (from: { x: number; y: number }, to: { x: number; y: number }) =>
@@ -713,8 +714,22 @@ export class GameScene extends Phaser.Scene {
     for (const lock of this.doorLocks) lock.destroy();
     this.doorLocks = [];
     this.showPickups();
+    if (this.currentRoom.floorRoom.kind !== 'boss') return;
+    // Every boss kill raises one of the player's passives to level 2.
+    const upgraded = upgradeAfterBoss(this.world, this.world.currentRoomId);
+    if (upgraded) this.announce(`${PASSIVE_NAMES[upgraded]} upgraded!`, COLORS.passive[upgraded]);
     // Earlier bosses just unlock their doors, exit included; the last one ends the run.
-    if (this.currentRoom.floorRoom.kind === 'boss' && isFinalFloor(this.currentRoom.floorIndex)) this.endRun(true);
+    if (isFinalFloor(this.currentRoom.floorIndex)) this.endRun(true);
+  }
+
+  /** A line of text that rises over the player and fades. */
+  private announce(message: string, color: number) {
+    const text = this.add
+      .text(this.player.x, this.player.y - 36, message, { fontFamily: 'monospace', fontSize: '16px', color: `#${color.toString(16).padStart(6, '0')}` })
+      .setOrigin(0.5)
+      .setStroke('#000000', 4)
+      .setDepth(DARK_DEPTH + 3);
+    this.tweens.add({ targets: text, y: text.y - 40, alpha: 0, delay: 900, duration: 900, onComplete: () => text.destroy() });
   }
 
   /** Camera tracks the player, clamped to the room: fixed in 1x1 rooms, scrolling in wide, tall and boss rooms. */

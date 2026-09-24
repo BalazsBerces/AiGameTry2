@@ -1,11 +1,15 @@
 import Phaser from 'phaser';
 import { currentFloorIndex, minimapRooms } from '../core/world';
+import { PASSIVE_POOL } from '../core/roomGenerator';
+import type { PassiveLevels } from '../core/weaponModel';
 import { COLORS } from './config';
 import type { GameScene } from './GameScene';
 
 const HEART = { size: 18, gap: 6, x: 14, y: 14 };
 /** Minimap window in the top-right corner, centred on the current room. */
 const MAP = { w: 150, h: 84, margin: 10, cellW: 16, cellH: 10, gap: 2 };
+/** The row of owned passives under the keys and bombs. */
+const PASSIVES = { x: HEART.x + 7, y: HEART.y + HEART.size + 44, radius: 6, pitch: 20 };
 
 /** Overlay drawn in screen space on top of the game scene. */
 export class HudScene extends Phaser.Scene {
@@ -46,6 +50,7 @@ export class HudScene extends Phaser.Scene {
   update() {
     const { world } = this.scene.get('game') as GameScene;
     this.drawHearts(world.player.health, world.player.maxHealth);
+    this.drawPassives(world.player.passives);
     this.drawMinimap(world);
     this.floorText.setText(`FLOOR ${currentFloorIndex(world) + 1}`);
     this.keysText.setText(`x ${world.player.keys}`);
@@ -60,6 +65,16 @@ export class HudScene extends Phaser.Scene {
       g.fillStyle(COLORS.heartEmpty).fillRect(x, HEART.y, HEART.size, HEART.size);
       if (halves > 0) g.fillStyle(COLORS.heart).fillRect(x, HEART.y, (HEART.size * halves) / 2, HEART.size);
     }
+  }
+
+  /** A dot per owned passive in its pickup's colour, below the keys and bombs; a white ring marks level 2. */
+  private drawPassives(passives: PassiveLevels) {
+    const g = this.graphics;
+    PASSIVE_POOL.filter((p) => passives[p]).forEach((p, i) => {
+      const x = PASSIVES.x + i * PASSIVES.pitch;
+      g.fillStyle(COLORS.passive[p]).fillCircle(x, PASSIVES.y, PASSIVES.radius);
+      if (passives[p] === 2) g.lineStyle(2, 0xffffff).strokeCircle(x, PASSIVES.y, PASSIVES.radius + 3);
+    });
   }
 
   private drawMinimap(world: GameScene['world']) {

@@ -12,7 +12,8 @@ import {
 } from './floorGenerator';
 import { generateRoom, type ChampionDrop, type ChestItem, type PickupType, type RoomLayout } from './roomGenerator';
 import { bombDestructible, hitsToBreak, isWalkable } from './tiles';
-import type { Passive } from './weaponModel';
+import type { Passive, PassiveLevels } from './weaponModel';
+import { offerPassive, pickUpgrade } from './passivePool';
 
 export interface WorldRoom {
   floorIndex: number;
@@ -29,7 +30,7 @@ export interface PlayerState {
   maxHealth: number;
   keys: number;
   bombs: number;
-  passives: Passive[];
+  passives: PassiveLevels;
 }
 
 export interface WorldPickup {
@@ -141,7 +142,7 @@ export function touchPickup(world: World, roomId: string, pickupId: number): Pic
       openChest(world, roomId, pickup);
       return 'opened';
     case 'passive':
-      if (pickup.passive && !player.passives.includes(pickup.passive)) player.passives.push(pickup.passive);
+      if (pickup.passive && !player.passives[pickup.passive]) player.passives[pickup.passive] = 1;
       remove();
       return 'passive';
     case 'openChest':
@@ -169,10 +170,31 @@ function openChest(world: World, roomId: string, chest: WorldPickup) {
   }
   chest.type = 'openChest';
   (chest.contents ?? []).forEach((item, i) => {
-    const passive = item.type === 'passive' ? item.passive : undefined;
-    list.push({ id: world.nextPickupId++, type: item.type, passive, cell: around[i] ?? chest.cell, visible: chest.visible });
+    const pickup: WorldPickup = { id: world.nextPickupId++, type: item.type, cell: around[i] ?? chest.cell, visible: chest.visible };
+    if (item.type === 'passive') pickup.passive = item.passive;
+    list.push(pickup);
+    decidePassive(world, pickup);
   });
   chest.contents = undefined;
+}
+
+/**
+ * Settles what an undecided passive pickup holds, as late as possible so it knows what the
+ * player owns by then: one they lack, or a heart once they have them all. Its own RNG stream,
+ * so the same seed and the same collection always get the same offer.
+ */
+function decidePassive(world: World, pickup: WorldPickup) {
+  if (pickup.type !== 'passive' || pickup.passive) return;
+  const offer = offerPassive(world.player.passives, createRng(world.seed).fork(`passive ${pickup.id}`));
+  if (offer) pickup.passive = offer;
+  else pickup.type = 'heart';
+}
+
+/** A boss died: one of the player's level-1 passives goes up to level 2. Returns which, if any. */
+export function upgradeAfterBoss(world: World, roomId: string): Passive | undefined {
+  const upgrade = pickUpgrade(world.player.passives, createRng(world.seed).fork(`upgrade ${roomId}`));
+  if (upgrade) world.player.passives[upgrade] = 2;
+  return upgrade;
 }
 
 /** A champion died on `cell`: its extra pickup lands there, in plain sight. */
@@ -271,9 +293,11 @@ export function shownPickups(world: World, roomId: string): WorldPickup[] {
   return world.cleared.has(roomId) ? all : all.filter((p) => p.visible);
 }
 
+/** The player walks into a room; passives lying there are decided now, against what they own. */
 export function enterRoom(world: World, roomId: string) {
   world.currentRoomId = roomId;
   world.visited.add(roomId);
+  for (const p of world.pickups.get(roomId) ?? []) decidePassive(world, p);
 }
 
 /** Rooms shown on the minimap: visited ones, plus unvisited neighbours of visited ones (as outlines). */
@@ -311,7 +335,7 @@ export function createWorld(seed: number): World {
     currentRoomId: floors[0].startRoomId,
     cleared: new Set(),
     visited: new Set([floors[0].startRoomId]),
-    player: { health: STARTING_HEARTS * 2, maxHealth: STARTING_HEARTS * 2, keys: 0, bombs: STARTING_BOMBS, passives: [] },
+    player: { health: STARTING_HEARTS * 2, maxHealth: STARTING_HEARTS * 2, keys: 0, bombs: STARTING_BOMBS, passives: {} },
     pickups: new Map(),
     nextPickupId: 1,
     tileHits: new Map(),

@@ -7,33 +7,47 @@ export interface Vec {
 
 export type Passive = 'homing' | 'fireRate' | 'sword';
 
+/** A passive is picked up at level 1; a boss kill can raise one to level 2. */
+export type PassiveLevel = 1 | 2;
+/** The passives the player owns, each with its level. */
+export type PassiveLevels = Partial<Record<Passive, PassiveLevel>>;
+
 export interface Weapon {
   mode: 'shots' | 'sword';
   fireDelayMs: number;
   damage: number;
   homing: boolean;
+  /** How fast homing shots turn, in radians per second. */
+  homingTurnRate: number;
+  /** How wide a sword swing sweeps. */
+  swordArcDeg: number;
 }
 
-/** Weapon numbers; placeholders for playtest tuning. */
+/** Weapon numbers; placeholders for playtest tuning. Level-2 values are indexed by level. */
 export const WEAPON = {
   shotDelayMs: 330,
   shotDamage: 1,
   swordDelayMs: 450,
   swordDamage: 3,
+  swordArcDeg: { 1: 90, 2: 140 },
+  homingTurnRate: { 1: 5, 2: 8.5 },
   /** Fire-rate passive: multiplies the delay between attacks and their damage (shots and sword). */
   fireRateDelayFactor: 0.4,
-  fireRateDamageFactor: 0.5,
+  fireRateDamageFactor: { 1: 0.5, 2: 0.75 },
 };
 
-export function resolveWeapon(passives: readonly Passive[]): Weapon {
-  const sword = passives.includes('sword');
-  const fast = passives.includes('fireRate');
+/** Everything the player's passives, at their levels, make of their attack. Pickup order never matters. */
+export function resolveWeapon(passives: PassiveLevels): Weapon {
+  const sword = passives.sword;
+  const fast = passives.fireRate;
   return {
     mode: sword ? 'sword' : 'shots',
     fireDelayMs: (sword ? WEAPON.swordDelayMs : WEAPON.shotDelayMs) * (fast ? WEAPON.fireRateDelayFactor : 1),
-    damage: (sword ? WEAPON.swordDamage : WEAPON.shotDamage) * (fast ? WEAPON.fireRateDamageFactor : 1),
+    damage: (sword ? WEAPON.swordDamage : WEAPON.shotDamage) * (fast ? WEAPON.fireRateDamageFactor[fast] : 1),
     // Homing steers projectiles; the sword has none.
-    homing: !sword && passives.includes('homing'),
+    homing: !sword && !!passives.homing,
+    homingTurnRate: WEAPON.homingTurnRate[passives.homing ?? 1],
+    swordArcDeg: WEAPON.swordArcDeg[sword ?? 1],
   };
 }
 

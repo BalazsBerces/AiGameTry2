@@ -49,6 +49,10 @@ export interface EnemyContext {
    * shake runs doesn't stack or restart it, so several enemies can ask every frame.
    */
   shakeCamera(ms: number, intensity: number): void;
+  /** Brings a new enemy into the fight (the worm boss's eggs, and what hatches from them). */
+  spawnEnemy(enemy: Enemy): void;
+  /** Takes an enemy out of the fight without killing it (an egg that hatched, a brood outliving its boss). */
+  removeEnemy(enemy: Enemy): void;
 }
 
 /**

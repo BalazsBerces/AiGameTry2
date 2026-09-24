@@ -823,6 +823,13 @@ export class GameScene extends Phaser.Scene {
       },
       // Not forced: a shake already running is left to finish.
       shakeCamera: (ms, intensity) => this.cameras.main.shake(ms, intensity, false),
+      spawnEnemy: (enemy) => this.addEnemy(enemy),
+      removeEnemy: (enemy) => {
+        if (!this.enemies.includes(enemy)) return;
+        for (const part of enemy.parts) part.destroy();
+        this.enemies = this.enemies.filter((e) => e !== enemy);
+        if (this.enemies.length === 0) this.clearRoom();
+      },
     };
   }
 

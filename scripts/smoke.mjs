@@ -279,11 +279,15 @@ if (scenario === 'worm-boss') {
     if (i % 3 === 2) console.log(`phase-2 t=${(i + 1) * 0.5}s`, JSON.stringify(await status()));
   }
   await shot('worm-boss-split');
-  for (let i = 0; i < 80 && (await page.evaluate(`${scene()}.enemies.length`)); i++) {
-    await page.evaluate(`(() => { const s = ${scene()}; const e = s.enemies.find((e) => e.parts[0].visible);
+  // Kill only the boss's pieces (its segments are the big ones): its eggs and hatchlings go with it.
+  const bossLeft = `${scene()}.enemies.filter((e) => e.parts[0].width === 38).length`;
+  console.log('brood before the boss dies', await page.evaluate(`${scene()}.enemies.length - ${bossLeft}`));
+  for (let i = 0; i < 80 && (await page.evaluate(bossLeft)); i++) {
+    await page.evaluate(`(() => { const s = ${scene()}; const e = s.enemies.find((e) => e.parts[0].visible && e.parts[0].width === 38);
       if (e) for (let k = 0; k < 3; k++) s.damagePart(e.parts[0], 1); })()`);
     await page.waitForTimeout(60);
   }
+  await page.waitForTimeout(200);
   console.log('left after killing', JSON.stringify(await status()), 'room cleared', await page.evaluate(`${scene()}.world.cleared.has('${id}')`));
 }
 

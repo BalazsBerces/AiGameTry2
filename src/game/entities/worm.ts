@@ -2,9 +2,10 @@ import type Phaser from 'phaser';
 import { DIRECTIONS, STEP, type Cell, type Direction } from '../../core/floorGenerator';
 import { createRng, type Rng } from '../../core/rng';
 import { createWorm, killBossSegment, killSegment, nextStepDue, stepWorm, type Worm, type WormPiece } from '../../core/wormChain';
+import { broodTick, eggStage, WORM_BROOD } from '../../core/wormBrood';
 import { burrowAt, diveCell, inPhaseTwo, planExit, spitWave, WORM_BOSS, type BurrowExit } from '../../core/wormBossAttack';
 import { COLORS, TUNING } from '../config';
-import { championBoost, championColor, flash, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
+import { championBoost, championColor, flash, singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
 
 export interface WormStyle {
   segmentSize: number;
@@ -62,6 +63,8 @@ interface WormBossShared {
   /** Hole-and-rubble decals, each drawn once. */
   holes: Phaser.GameObjects.Graphics;
   holeCells: Cell[];
+  /** The parts of each egg and hatchling laid in phase two; one counts while any of its parts lives. */
+  brood: EnemySprite[][];
   tickedAt: number;
   rng: Rng;
 }
@@ -76,6 +79,8 @@ interface BossPiece {
   burrow?: { plan: BurrowExit; start: number };
   /** Coming out of the exit: steps taken so far, and whether each segment spits as it leaves the wall. */
   emerging?: { exit: Cell; steps: number; spit: boolean };
+  /** When it next drops an egg (core/wormBrood); off while it can't. */
+  nextEggAt?: number;
 }
 
 interface WormState {
@@ -168,10 +173,25 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
     state.nextStepAt = ctx.time;
   };
 
+  /** Phase two: drops an egg from its tail now and then, while it is all out of the walls. */
+  const layEggs = (ctx: EnemyContext, b: BossPiece) => {
+    const { segments } = state.worm;
+    const tail = segments[segments.length - 1];
+    const tick = broodTick(b.nextEggAt, ctx.time, {
+      length: segments.length,
+      aboveGround: !b.burrow && !b.diving && !b.emerging && ctx.isWalkable(tail),
+      phaseTwo: inPhaseTwo(b.shared.hp, b.shared.maxHp),
+      brood: b.shared.brood.filter((parts) => parts.some((p) => p.active)).length,
+    });
+    b.nextEggAt = tick.nextLayAt;
+    if (tick.lay) ctx.spawnEnemy(wormEgg(scene, ctx, b.shared, tail));
+  };
+
   /** Runs the boss's burrow; true while the piece is under the ground and must not move. */
   const updateBoss = (ctx: EnemyContext, b: BossPiece): boolean => {
     tickHazards(ctx, b.shared);
     if (b.readyAt === 0) b.readyAt = ctx.time + WORM_BOSS.burrowCooldownMs;
+    layEggs(ctx, b);
     if (!b.burrow) return false;
     const { phase } = burrowAt(b.burrow.plan, ctx.time - b.burrow.start);
     if (phase === 'rumbling' || phase === 'warning') {
@@ -292,6 +312,52 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
   return enemy;
 }
 
+/**
+ * One of the worm boss's brood, and every piece it splits into: it lives only as long as the
+ * boss does, and is taken out of the fight once the last boss piece dies.
+ */
+function tethered(enemy: Enemy, shared: WormBossShared): Enemy {
+  const brood: Enemy = {
+    ...enemy,
+    update(ctx) {
+      if (shared.pieces === 0) ctx.removeEnemy(brood);
+      else enemy.update(ctx);
+    },
+    hit: (part, damage) => enemy.hit(part, damage).map((e) => (e === enemy ? brood : tethered(e, shared))),
+  };
+  return brood;
+}
+
+/**
+ * An egg dropped on `cell`: it breaks in about two shots, wobbles for its last stretch and then
+ * hatches into a regular worm, coiled on the egg's cell.
+ */
+function wormEgg(scene: Phaser.Scene, ctx: EnemyContext, shared: WormBossShared, cell: Cell): Enemy {
+  const at = ctx.tileCenter(cell);
+  const sprite = scene.add.ellipse(at.x, at.y, 22, 28, COLORS.wormEgg).setStrokeStyle(2, COLORS.wormBossBody) as unknown as EnemySprite;
+  scene.physics.add.existing(sprite);
+  sprite.body.setImmovable(true);
+  const parts = [sprite];
+  shared.brood.push(parts);
+  const laidAt = ctx.time;
+  const egg: Enemy = tethered(
+    singlePartEnemy(scene, sprite, WORM_BROOD.eggHp, (ctx) => {
+      const stage = eggStage(laidAt, ctx.time);
+      sprite.setAngle(stage === 'wobbling' ? Math.sin(ctx.time / 45) * 20 : 0);
+      if (stage !== 'hatched') return;
+      const hatchling = spawnWorm(scene, Array.from({ length: WORM_BROOD.hatchlingLength }, () => cell), ctx.tileCenter);
+      // The egg's place in the brood passes to what hatched from it.
+      parts.splice(0, parts.length, ...hatchling.parts);
+      ctx.removeEnemy(egg);
+      ctx.spawnEnemy(tethered(hatchling, shared));
+    }),
+    shared,
+  );
+  // Eggs only get in the way: bumping one doesn't hurt.
+  egg.harmless = () => true;
+  return egg;
+}
+
 /** A regular worm splits wherever a segment dies: the pieces in front of and behind it. */
 function splitAt(worm: Worm, index: number): WormPiece[] {
   const front = worm.segments.map((_, i) => i).slice(0, index);
@@ -307,6 +373,7 @@ function splitPiece(parent: BossPiece, worm: Worm): BossPiece {
   return {
     shared: parent.shared,
     readyAt: parent.readyAt,
+    nextEggAt: parent.nextEggAt,
     diving: diving && sameCell(worm.segments[0], diving) ? diving : undefined,
     emerging: emerging && worm.segments.some((c) => sameCell(c, emerging.exit)) ? { ...emerging } : undefined,
   };
@@ -327,7 +394,8 @@ export function spawnWorm(
     scene.physics.add.existing(sprite);
     return sprite;
   });
-  const heading = cells.length > 1 ? DIRECTIONS.find((d) => sameCell(cells[0], { x: cells[1].x + STEP[d].x, y: cells[1].y + STEP[d].y }))! : 'right';
+  // A worm still coiled on one cell (a hatchling) heads off any way; it turns if that is blocked.
+  const heading = (cells.length > 1 && DIRECTIONS.find((d) => sameCell(cells[0], { x: cells[1].x + STEP[d].x, y: cells[1].y + STEP[d].y }))) || 'right';
   const rng = createRng(Math.floor(Math.random() * 2 ** 31));
   const shared: WormBossShared | undefined = holes
     ? {
@@ -339,6 +407,7 @@ export function spawnWorm(
         ground: scene.add.graphics().setDepth(1),
         holes,
         holeCells: [],
+        brood: [],
         tickedAt: -1,
         rng: rng.fork('attacks'),
       }

@@ -1,7 +1,7 @@
 import type Phaser from 'phaser';
 import { createGoblin as newGoblinState, goblinStep, updateGoblin } from '../../core/forestCast';
 import { COLORS, TUNING } from '../config';
-import { championBoost, championColor, markChampion, singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
+import { championBoost, championColor, markChampion, roundBody, singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
 
 /**
  * Forest walker: rushes the player faster than a zombie, runs off to regroup once below half
@@ -18,6 +18,7 @@ export function createGoblin(scene: Phaser.Scene, x: number, y: number, champion
     .setStrokeStyle(2, COLORS.goblinEdge) as unknown as EnemySprite;
   markChampion(sprite, champion);
   scene.physics.add.existing(sprite);
+  roundBody(sprite);
   let hp = maxHp;
   let state = newGoblinState();
   const enemy = singlePartEnemy(scene, sprite, maxHp, (ctx: EnemyContext) => {

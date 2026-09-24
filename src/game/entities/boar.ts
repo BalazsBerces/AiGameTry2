@@ -3,7 +3,7 @@ import { createBoar as createBoarState, updateBoar, type Boar } from '../../core
 import { stepDownhill } from '../../core/grid';
 import { stun } from '../../core/stun';
 import { COLORS, TUNING } from '../config';
-import { championBoost, championColor, markChampion, singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
+import { championBoost, championColor, markChampion, roundBody, singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
 
 /** How hard a dashing boar is pulled back onto the centre line of its lane (1/s). */
 const LANE_PULL = 8;
@@ -23,6 +23,7 @@ export function createBoar(scene: Phaser.Scene, x: number, y: number, champion =
   sprite.setStrokeStyle(2, COLORS.boarTusk);
   markChampion(sprite, champion);
   scene.physics.add.existing(sprite);
+  roundBody(sprite);
   let state: Boar | undefined;
   const enemy = singlePartEnemy(scene, sprite, hp * boost.hp, (ctx: EnemyContext) => {
     state ??= createBoarState(ctx.time);

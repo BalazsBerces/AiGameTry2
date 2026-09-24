@@ -65,6 +65,7 @@ import { stunBurst, GLOWSHROOM_RADIUS, type BurstTarget } from '../core/glowshro
 import { burstGlowshroom } from '../core/world';
 import type { Stunnable } from '../core/stun';
 import { createBat } from './entities/bat';
+import { softPush } from '../core/softPush';
 
 type Keys = Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
 type PhysicsArc = Phaser.GameObjects.Arc & { body: Phaser.Physics.Arcade.Body };
@@ -314,7 +315,9 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.walkers, this.walls);
     this.physics.add.collider(this.walkers, this.holes);
     this.physics.add.collider(this.walkers, this.thorns, (part) => this.thornWalker(part as EnemySprite));
-    this.physics.add.collider(this.walkers, this.walkers);
+    // Rooted enemies (turrets and the like) stay solid; walkers only push each other softly (see updateEnemies).
+    this.physics.add.collider(this.walkers, this.walkers, undefined, (a, b) =>
+      (a as EnemySprite).body.immovable || (b as EnemySprite).body.immovable);
     this.flyers = this.physics.add.group();
     this.physics.add.collider(this.flyers, this.walls);
     this.physics.add.overlap(this.shots, this.enemyParts, (shot, part) => this.hitEnemy(shot, part as EnemySprite));
@@ -682,6 +685,14 @@ export class GameScene extends Phaser.Scene {
       if (isStunned(e, time)) for (const p of e.parts) p.body.setVelocity(0, 0);
       else e.update(ctx);
     }
+    this.pushWalkersApart();
+  }
+
+  /** Overlapping walkers are nudged apart on top of their own steering, so a crowd flows instead of jamming (core/softPush). */
+  private pushWalkersApart() {
+    const movers = (this.walkers.getChildren() as EnemySprite[]).filter((p) => p.active && !p.body.immovable);
+    const pushes = softPush(movers.map((p) => ({ x: p.body.center.x, y: p.body.center.y, r: p.body.halfWidth })), TUNING.softPush);
+    movers.forEach((p, i) => p.body.velocity.add(pushes[i]));
   }
 
   /** A spinning star over each stunned enemy's head; gone once the stun wears off or the enemy dies. */

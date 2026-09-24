@@ -77,6 +77,15 @@ export function markChampion(sprite: Phaser.GameObjects.Shape, champion: boolean
   if (champion) sprite.setStrokeStyle(3, COLORS.champion);
 }
 
+/**
+ * Gives a walker a round body as wide as the sprite's short side, centred on it, so it slides
+ * round corners and other walkers instead of snagging on them.
+ */
+export function roundBody(sprite: EnemySprite) {
+  const r = Math.min(sprite.width, sprite.height) / 2;
+  sprite.body.setCircle(r, sprite.width / 2 - r, sprite.height / 2 - r);
+}
+
 /** Flash a part briefly to show it took damage. */
 export function flash(scene: Phaser.Scene, part: EnemySprite) {
   part.setAlpha(0.5);

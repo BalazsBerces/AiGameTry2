@@ -62,6 +62,8 @@ export const TUNING = {
   glowCloud: { showMs: 450 },
   /** Small and frail; its flutter, telegraph and swoop (in tiles) live in core/bat. */
   bat: { hp: 2, width: 26, height: 12 },
+  /** How hard overlapping walkers are nudged apart: px/s per px of overlap, and the most any one gets (placeholder). */
+  softPush: { stiffness: 8, cap: 120 },
 };
 
 /** How passives are named on screen (the HUD and the boss-kill upgrade message). */

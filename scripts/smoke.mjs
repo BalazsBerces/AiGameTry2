@@ -681,7 +681,84 @@ if (scenario === 'immovable') {
     return { before, after, moved: Math.round(Math.hypot(after[0] - before[0], after[1] - before[1])) };
   };
   console.log('turret pushed by zombies (moved should be 0):', await pushTest(`{ type: 'turret', cell: { x: 6, y: 4 } }`));
-  console.log('treant pushed by zombies (moved should be 0):', await pushTest(`{ type: 'treantBoss', cell: { x: 5, y: 3 } }`));
+}
+
+if (scenario === 'treant') {
+  // Enters floor 1's boss room and watches the Treant walk at the player, stopping for its roots.
+  const id = await page.evaluate(`[...${scene()}.world.rooms.values()].find((r) => r.floorIndex === 0 && r.floorRoom.kind === 'boss').floorRoom.id`);
+  await page.evaluate(`(() => { const s = ${scene()};
+    for (const e of s.enemies) for (const p of e.parts) p.destroy();
+    s.enemies = [];
+    s.invincibleUntil = Infinity;
+    const room = s.world.rooms.get('${id}');
+    const door = room.layout.doors[0];
+    s.player.body.reset(room.floorRoom.cell.x * 720 + (door.cell.x + 1.5) * 48, room.floorRoom.cell.y * 432 + (door.cell.y + 1.5) * 48);
+    s.enterRoom(room, s.time.now);
+  })()`);
+  const treant = () =>
+    page.evaluate(`(() => { const s = ${scene()}; const p = s.enemies[0]?.parts[0]; const pl = s.player;
+      return p && { at: [Math.round(p.x), Math.round(p.y)], player: [Math.round(pl.x), Math.round(pl.y)], moving: Math.round(Math.hypot(p.body.velocity.x, p.body.velocity.y)) }; })()`);
+  // Rock and thorn in the room: its pods add some, it crushes those it walks into, never the room's own.
+  const sprouts = () => page.evaluate(`${scene()}.world.rooms.get('${id}').layout.tiles.flat().filter((t) => t === 'rock' || t === 'thorn').length`);
+  console.log('rock+thorn at start', await sprouts());
+  for (let i = 0; i < 40; i++) {
+    await page.waitForTimeout(500);
+    console.log(`t=${(i + 1) * 0.5}s`, JSON.stringify(await treant()), 'rock+thorn', await sprouts());
+    if ([1, 5, 11, 15, 25, 39].includes(i)) await shot(`treant-${i}`);
+  }
+  // Set it down right beside one of its sprouts: it crushes that one straight away.
+  const beside = await page.evaluate(`(() => { const s = ${scene()}; const room = s.world.rooms.get('${id}');
+    const tiles = room.layout.tiles; let cell;
+    tiles.forEach((row, y) => row.forEach((t, x) => { if (!cell && (t === 'rock' || t === 'thorn')) cell = { x, y }; }));
+    return cell ?? null; })()`);
+  if (beside) {
+    const before = await sprouts();
+    await page.evaluate(`(() => { const s = ${scene()}; const room = s.world.rooms.get('${id}');
+      const p = s.enemies[0].parts[0];
+      const ox = room.floorRoom.cell.x * 720 + (15 * 2 - room.layout.width) / 2 * 48;
+      const oy = room.floorRoom.cell.y * 432 + (9 * 2 - room.layout.height) / 2 * 48;
+      p.body.reset(ox + (${beside.x} - 0.9) * 48, oy + (${beside.y} + 0.5) * 48); })()`);
+    await page.waitForTimeout(300);
+    console.log('set down beside sprout', JSON.stringify(beside), 'rock+thorn', before, '->', await sprouts());
+    await shot('treant-crushed');
+  }
+
+  // Strike it down to a quarter with the player standing in the middle of the room: it sinks
+  // (untouchable), its sprouts crumble, it marks the middle and bursts up, shoving the player clear.
+  const mid = await page.evaluate(`(() => { const s = ${scene()}; const room = s.world.rooms.get('${id}');
+    const ox = room.floorRoom.cell.x * 720 + (15 * 2 - room.layout.width) / 2 * 48;
+    const oy = room.floorRoom.cell.y * 432 + (9 * 2 - room.layout.height) / 2 * 48;
+    return { x: ox + room.layout.width / 2 * 48, y: oy + room.layout.height / 2 * 48 }; })()`);
+  await page.evaluate(`(() => { const s = ${scene()};
+    s.player.body.reset(${mid.x}, ${mid.y});
+    s.invincibleUntil = 0; s.world.player.health = 6;
+    s.damagePart(s.enemies[0].parts[0], 53); })()`);
+  const lastStand = () => page.evaluate(`(() => { const s = ${scene()}; const p = s.enemies[0]?.parts[0];
+    return { alive: s.enemies.length, visible: p && Math.round(p.alpha * 100) / 100, bodyOn: p?.body.enable,
+      treantAt: p && [Math.round(p.x), Math.round(p.y)], player: [Math.round(s.player.x), Math.round(s.player.y)], health: s.world.player.health }; })()`);
+  await page.waitForTimeout(300);
+  console.log('sinking', JSON.stringify(await lastStand()), 'rock+thorn', await sprouts());
+  await page.evaluate(`(() => { const s = ${scene()}; s.damagePart(s.enemies[0].parts[0], 30); s.invincibleUntil = 0; })()`);
+  console.log('struck for 30 while sinking (should still be alive)', JSON.stringify(await lastStand()));
+  await page.waitForTimeout(800);
+  await shot('treant-marked');
+  console.log('marked', JSON.stringify(await lastStand()));
+  await page.waitForTimeout(700);
+  await shot('treant-burst');
+  console.log('burst (player shoved clear, half a heart lost)', JSON.stringify(await lastStand()), 'middle', JSON.stringify(mid));
+  await page.waitForTimeout(700);
+  await shot('treant-ring-warning');
+  console.log('ring warning (no harm yet)', JSON.stringify(await lastStand()));
+  // Stand still: the gap that opened on the player turns away, and the branches start to hurt.
+  for (let i = 0; i < 8; i++) {
+    await page.waitForTimeout(500);
+    if (i === 3) await shot('treant-ring-spinning');
+    console.log(`ring t=${((i + 1) * 0.5).toFixed(1)}s`, JSON.stringify(await lastStand()));
+  }
+  await page.evaluate(`(() => { const s = ${scene()}; s.damagePart(s.enemies[0].parts[0], 17); })()`);
+  await page.waitForTimeout(300);
+  await shot('treant-dead');
+  console.log('after the killing blow', JSON.stringify({ enemies: await page.evaluate(`${scene()}.enemies.length`), cleared: await page.evaluate(`${scene()}.world.cleared.has('${id}')`) }));
 }
 
 if (scenario === 'end-race') {

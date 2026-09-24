@@ -59,7 +59,7 @@ import { createBoar } from './entities/boar';
 import { isStunned, stun } from '../core/stun';
 import { applyPoison, chainTargets, poisonTick, rollsFreeze, type Poison } from '../core/onHit';
 import { createRng } from '../core/rng';
-import { smashRock } from '../core/world';
+import { clearSprout, smashRock } from '../core/world';
 import { createGhost } from './entities/ghost';
 import { stunBurst, GLOWSHROOM_RADIUS, type BurstTarget } from '../core/glowshroom';
 import { burstGlowshroom } from '../core/world';
@@ -258,7 +258,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   create(data: { seed?: number }) {
-    const urlSeed = firstBoot ? Number(new URLSearchParams(location.search).get('seed') ?? NaN) : NaN;
+    const params = new URLSearchParams(firstBoot ? location.search : '');
+    const urlSeed = Number(params.get('seed') ?? NaN);
+    // Playtesting: `?boss` (or `?boss=2`, `?boss=3`) starts at that floor's boss room door.
+    const urlBoss = params.has('boss') ? Number(params.get('boss') || 1) : undefined;
     firstBoot = false;
     const seed = data.seed ?? (Number.isFinite(urlSeed) ? urlSeed : Math.floor(Math.random() * 2 ** 31));
     this.world = createWorld(seed);
@@ -362,6 +365,14 @@ export class GameScene extends Phaser.Scene {
     this.showRoomsAround(start);
     this.followInside(start);
     this.scene.launch('hud');
+
+    const boss = [...this.world.rooms.values()].find((r) => r.floorRoom.kind === 'boss' && r.floorIndex === (urlBoss ?? 0) - 1);
+    if (boss) {
+      const door = boss.layout.doors[0];
+      const at = tileCenter(boss, door.cell.x, door.cell.y);
+      this.player.body.reset(at.x, at.y);
+      this.enterRoom(boss, this.time.now);
+    }
   }
 
   update(time: number, delta: number) {
@@ -798,6 +809,18 @@ export class GameScene extends Phaser.Scene {
       },
       doors: room.layout.doors,
       landSeedPod: (cell, tile) => this.landSeedPod(room, cell, tile),
+      crushSprout: (cell: Cell) => {
+        if (clearSprout(this.world, room.floorRoom.id, cell)) this.removeTerrain(room.floorRoom.id, cell);
+      },
+      pushPlayerOut: (from, distance) => {
+        const dx = this.player.x - from.x;
+        const dy = this.player.y - from.y;
+        const d = Math.hypot(dx, dy);
+        if (d >= distance) return;
+        // Dead centre: straight down.
+        const [ux, uy] = d > 0 ? [dx / d, dy / d] : [0, 1];
+        this.player.body.reset(from.x + ux * distance, from.y + uy * distance);
+      },
     };
   }
 
@@ -1204,6 +1227,8 @@ export class GameScene extends Phaser.Scene {
         // Shot-blocking tiles are walls to physics; the rest (holes) only stop walking.
         if (!blocksShots(tile)) {
           (hurtsOnTouch(tile) ? this.thorns : this.holes).add(shape);
+          // Thorn can be a Treant sprout it may crush later (crushSprout).
+          if (hurtsOnTouch(tile)) this.terrain.set(`${room.floorRoom.id}|${tx},${ty}`, shape);
           return;
         }
         shape.setData({ roomId: room.floorRoom.id, tile: { x: tx, y: ty } });
@@ -1301,8 +1326,9 @@ export class GameScene extends Phaser.Scene {
     } else {
       shape.setData({ roomId, tile: cell });
       this.walls.add(shape);
-      this.terrain.set(`${roomId}|${cell.x},${cell.y}`, shape);
     }
+    // Kept by cell either way, so the Treant can crush it again (crushSprout).
+    this.terrain.set(`${roomId}|${cell.x},${cell.y}`, shape);
     this.roomObjects.get(roomId)?.push(shape);
     shape.setScale(0.2);
     this.tweens.add({ targets: shape, scale: 1, duration: 180, ease: 'Back.easeOut' });

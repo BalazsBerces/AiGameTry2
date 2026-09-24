@@ -144,6 +144,86 @@ export function planSeedVolley(tiles: Tile[][], doors: Door[], treant: Cell, pla
   return { pods, flightMs: SEEDS.flightMs, durationMs: SEEDS.flightMs + SEEDS.settleMs };
 }
 
+/** The last stand's branch ring; all numbers are placeholders for playtest tuning. */
+export const RING = {
+  /** Gaps in the branches, evenly spaced round the Treant... */
+  gaps: 3,
+  /** ...each this wide... */
+  gapDeg: 35,
+  /** ...shown this long before the branches hurt... */
+  warnMs: 1500,
+  /** ...then turning clockwise at this speed, rising to the next as its last hit points drain. */
+  startDegPerSec: 25,
+  endDegPerSec: 40,
+};
+
+/**
+ * Huge branches over the whole room round the Treant but for a few narrow gaps, which turn
+ * clockwise for as long as it lives. Advanced frame by frame (`advanceRing`), adding up its
+ * speed over time, so a change of speed never makes the gaps jump.
+ */
+export interface BranchRing {
+  centre: Point;
+  start: number;
+  /** Angle of the first gap's middle when it appeared, in radians (screen angles: clockwise grows). */
+  offset: number;
+  /** How far it has turned since, in radians. */
+  turned: number;
+  /** Up to when it has been turned. */
+  lastTime: number;
+}
+
+const DEG = Math.PI / 180;
+
+/** A ring round `centre`, a gap on the player so the last stand opens fairly. */
+export function planBranchRing(centre: Point, player: Point, time: number): BranchRing {
+  return { centre, start: time, offset: Math.atan2(player.y - centre.y, player.x - centre.x), turned: 0, lastTime: time };
+}
+
+/**
+ * Turns the ring on to `time` (not while it is still a warning). `drained` is how far through its
+ * last-stand hit points the Treant is, 0 to 1: the further, the faster it turns.
+ */
+export function advanceRing(ring: BranchRing, time: number, drained: number): BranchRing {
+  const from = Math.max(ring.lastTime, ring.start + RING.warnMs);
+  if (time <= from) return { ...ring, lastTime: Math.max(ring.lastTime, time) };
+  const share = Math.min(1, Math.max(0, drained));
+  const degPerSec = RING.startDegPerSec + (RING.endDegPerSec - RING.startDegPerSec) * share;
+  return { ...ring, turned: ring.turned + (degPerSec * DEG * (time - from)) / 1000, lastTime: time };
+}
+
+/** The middles of the ring's gaps now, in radians (not wrapped). */
+export const ringGaps = (ring: BranchRing): number[] =>
+  Array.from({ length: RING.gaps }, (_, i) => ring.offset + ring.turned + (i * 2 * Math.PI) / RING.gaps);
+
+export const ringWarning = (ring: BranchRing, time: number) => time - ring.start < RING.warnMs;
+
+/** True if the branches hurt a player at `point`: anywhere outside the gaps, however far, once past the warning. */
+export function ringHits(ring: BranchRing, time: number, point: Point): boolean {
+  if (ringWarning(ring, time)) return false;
+  const angle = Math.atan2(point.y - ring.centre.y, point.x - ring.centre.x);
+  const half = (RING.gapDeg / 2) * DEG;
+  return ringGaps(ring).every((gap) => Math.abs(Math.atan2(Math.sin(angle - gap), Math.cos(angle - gap))) > half);
+}
+
+/**
+ * Where the Treant bursts up for its last stand: the cell nearest the room's middle with floor
+ * all round it (the 3x3 its body covers), or undefined if there is no such spot.
+ */
+export function burstSpot(tiles: Tile[][]): Cell | undefined {
+  const middle = { x: (tiles[0].length - 1) / 2, y: (tiles.length - 1) / 2 };
+  const open = (c: Cell) => [-1, 0, 1].every((dy) => [-1, 0, 1].every((dx) => tiles[c.y + dy]?.[c.x + dx] === 'floor'));
+  let best: Cell | undefined;
+  let bestDistance = Infinity;
+  tiles.forEach((row, y) =>
+    row.forEach((_, x) => {
+      const d = Math.hypot(x - middle.x, y - middle.y);
+      if (d < bestDistance && open({ x, y })) [best, bestDistance] = [{ x, y }, d];
+    }),
+  );
+  return best;
+}
+
 /** Branch sweep reach and timing; all numbers are placeholders for playtest tuning. */
 export const SWEEP = {
   /** Reach from the treant's centre, in tiles; the player closer than this provokes a sweep. */

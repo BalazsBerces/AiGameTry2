@@ -21,7 +21,8 @@ export const TUNING = {
   /** Damage to enemy parts is a placeholder; the player always loses a full heart. */
   bomb: { fuseMs: 1500, enemyDamage: 6, playerDamage: 2, radius: 12 },
   worm: { segmentSize: 30, segmentHp: 2, stepMs: 300 },
-  wormBoss: { segmentSize: 42, segmentHp: 5, stepMs: 240 },
+  /** Twenty segments long; its attacks and their timing live in core/wormBossAttack. */
+  wormBoss: { segmentSize: 38, segmentHp: 2.5, stepMs: 230, shotSpeed: 185 },
   /** `follow`: how hard it closes on its mirrored target (1/s); speed capped relative to the player's. */
   shadow: { hp: 45, follow: 10, maxSpeedFactor: 1.2 },
   /** Multipliers for a room's champion: size, hit points, and movement (or firing) speed. */
@@ -125,4 +126,6 @@ export const COLORS = {
   bat: 0x4a3a5c,
   batWing: 0x1c1424,
   batTelegraph: 0xe05a7a,
+  burrowWarning: 0xd8a860,
+  fallingRock: 0x8a7458,
 };

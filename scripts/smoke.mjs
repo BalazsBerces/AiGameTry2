@@ -221,6 +221,54 @@ if (scenario === 'boss-walk') {
   await shot('05-win');
 }
 
+if (scenario === 'worm-boss') {
+  // Enters floor 2's boss room, lets the worm boss attack, splits it, then kills it off.
+  const id = await page.evaluate(`[...${scene()}.world.rooms.values()].find((r) => r.floorIndex === 1 && r.floorRoom.kind === 'boss').floorRoom.id`);
+  const rocks = () => page.evaluate(`${scene()}.world.rooms.get('${id}').layout.tiles.flat().filter((t) => t === 'rock').length`);
+  await page.evaluate(`(() => { const s = ${scene()};
+    for (const e of s.enemies) for (const p of e.parts) p.destroy();
+    s.enemies = [];
+    s.invincibleUntil = Infinity;
+    const room = s.world.rooms.get('${id}');
+    const door = room.layout.doors[0];
+    s.player.body.reset(room.floorRoom.cell.x * 720 + (door.cell.x + 1.5) * 48, room.floorRoom.cell.y * 432 + (door.cell.y + 1.5) * 48);
+    s.enterRoom(room, s.time.now);
+  })()`);
+  const status = () =>
+    page.evaluate(`(() => { const s = ${scene()}; return {
+      pieces: s.enemies.map((e) => e.parts.length),
+      hidden: s.enemies.map((e) => e.parts.filter((p) => !p.visible).length),
+      enemyShots: s.enemyShots.getChildren().length,
+    }; })()`);
+  const rocksAtStart = await rocks();
+  console.log('rocks at start', rocksAtStart, await status());
+  for (let i = 0; i < 16; i++) {
+    await page.waitForTimeout(500);
+    const now = await status();
+    console.log(`t=${(i + 1) * 0.5}s`, JSON.stringify(now), 'rocks', await rocks());
+    if ([3, 7, 9, 13].includes(i)) await shot(`worm-boss-${i}`);
+  }
+  console.log('rocks broken so far', rocksAtStart - (await rocks()));
+  // Knock it to half its hit points by killing segments in the middle, splitting it.
+  const hitPart = (enemy, part, times) =>
+    page.evaluate(`(() => { const s = ${scene()}; const p = s.enemies[${enemy}]?.parts[${part}];
+      for (let i = 0; i < ${times} && p; i++) s.damagePart(p, 1); })()`);
+  await page.waitForTimeout(1500);
+  for (const part of [9, 4]) await hitPart(0, part, 3);
+  console.log('after splitting', JSON.stringify(await status()));
+  for (let i = 0; i < 12; i++) {
+    await page.waitForTimeout(500);
+    if (i % 3 === 2) console.log(`phase-2 t=${(i + 1) * 0.5}s`, JSON.stringify(await status()));
+  }
+  await shot('worm-boss-split');
+  for (let i = 0; i < 80 && (await page.evaluate(`${scene()}.enemies.length`)); i++) {
+    await page.evaluate(`(() => { const s = ${scene()}; const e = s.enemies.find((e) => e.parts[0].visible);
+      if (e) for (let k = 0; k < 3; k++) s.damagePart(e.parts[0], 1); })()`);
+    await page.waitForTimeout(60);
+  }
+  console.log('left after killing', JSON.stringify(await status()), 'room cleared', await page.evaluate(`${scene()}.world.cleared.has('${id}')`));
+}
+
 if (scenario === 'turret-los') {
   // Uses the room above the start on seed 7; picks rows from its real tiles.
   const tiles = await page.evaluate(`${scene()}.world.rooms.get('0,-1').layout.tiles`);

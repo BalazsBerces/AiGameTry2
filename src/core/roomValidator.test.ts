@@ -35,6 +35,8 @@ function room(picture: string, doors: Direction[] = ['up', 'down', 'left', 'righ
 
 const BOTH: Symmetry = { axes: ['vertical', 'horizontal'] };
 const rules = (r: ReturnType<typeof room>, s: Symmetry = BOTH) => validateRoom(r, s).map((v) => v.rule);
+/** Rules broken besides the thorn cap, for rooms ringing a spawn in more thorns than a real room may hold. */
+const rulesBesidesCap = (r: ReturnType<typeof room>) => rules(r).filter((rule) => rule !== 'thorn-cap');
 
 describe('validateRoom', () => {
   it('accepts an open symmetric room', () => {
@@ -210,7 +212,7 @@ describe('validateRoom', () => {
       .............
       .............
     `);
-    expect(rules(r)).toEqual(['walker-unreachable']);
+    expect(rulesBesidesCap(r)).toEqual(['walker-unreachable']);
   });
 
   it('accepts a turret ringed by thorns, since shots fly over them', () => {
@@ -223,7 +225,7 @@ describe('validateRoom', () => {
       .............
       .............
     `);
-    expect(rules(r)).toEqual([]);
+    expect(rulesBesidesCap(r)).toEqual([]);
   });
 
   it('rejects thorns on the tile just inside a door', () => {
@@ -251,6 +253,32 @@ describe('validateRoom', () => {
     `);
     r.pickups.push({ type: 'heart', cell: { x: 3, y: 2 } });
     expect(rules(r, { axes: ['vertical'] })).toEqual(['spawn-off-floor']);
+  });
+
+  it('rejects more than four thorns in a one-cell room', () => {
+    const r = room(`
+      .............
+      ..x.......x..
+      .............
+      ......x......
+      .............
+      ..x.......x..
+      .............
+    `);
+    expect(rules(r)).toEqual(['thorn-cap']);
+  });
+
+  it('accepts four thorns in a one-cell room', () => {
+    const r = room(`
+      .............
+      ..x.......x..
+      .............
+      .............
+      .............
+      ..x.......x..
+      .............
+    `);
+    expect(rules(r)).toEqual([]);
   });
 
   it('accepts a ghost sealed behind a wall, since it drifts through stone', () => {
@@ -328,7 +356,7 @@ describe('validateRoom flyers', () => {
       .............
       .............
     `);
-    expect(rules(r)).toEqual([]);
+    expect(rulesBesidesCap(r)).toEqual([]);
   });
 
   it('accepts a bat roosting beyond a chasm, since it flies over it', () => {

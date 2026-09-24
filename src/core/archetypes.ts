@@ -651,10 +651,10 @@ const reliquary: Archetype = {
 };
 
 /**
- * Floor 1: thorn hedges wind through the room, mirrored into all four quadrants, with goblins
- * loose in the lanes between them. The hedges never seal floor away or touch a door approach,
- * so it fits every door set; shots fly over them, so the fight is about luring walkers into
- * the thorns while not brushing against them yourself.
+ * Floor 1: hedges of bushes wind through the room, mirrored into all four quadrants, with goblins
+ * loose in the lanes between them. One end of each quarter's hedge is a thorn bush, so the fight
+ * is about luring walkers into the thorny ends while not brushing against them yourself. The
+ * hedges never seal floor away or touch a door approach, so it fits every door set.
  */
 const thornMaze: Archetype = {
   id: 'thornMaze',
@@ -665,18 +665,20 @@ const thornMaze: Archetype = {
   build({ width, height, rng }) {
     const axes: MirrorAxis[] = ['vertical', 'horizontal'];
     const canvas = new Canvas(width, height, axes);
-    // Each layout is a top-left quarter of hedge plus a lane cell a goblin prowls.
+    // Each layout is a top-left quarter of hedge, the hedge's ends, and a lane cell a goblin prowls.
     const layout = rng.pick([
       // Hedgerows: an L in each corner, lanes along the walls and through the middle.
-      { hedge: [{ x: 2, y: 1 }, { x: 3, y: 1 }, { x: 4, y: 1 }, { x: 2, y: 2 }], lane: { x: 3, y: 2 } },
+      { hedge: [{ x: 2, y: 1 }, { x: 3, y: 1 }, { x: 4, y: 1 }, { x: 2, y: 2 }], ends: [{ x: 4, y: 1 }, { x: 2, y: 2 }], lane: { x: 3, y: 2 } },
       // Crossed hedges: a stub off the wall meets a post, leaving a crooked lane.
-      { hedge: [{ x: 4, y: 1 }, { x: 4, y: 2 }, { x: 1, y: 2 }, { x: 2, y: 2 }], lane: { x: 3, y: 1 } },
+      { hedge: [{ x: 4, y: 1 }, { x: 4, y: 2 }, { x: 1, y: 2 }, { x: 2, y: 2 }], ends: [{ x: 4, y: 1 }, { x: 4, y: 2 }, { x: 2, y: 2 }], lane: { x: 3, y: 1 } },
       // Zigzag: staggered hedges the walkers have to snake through.
-      { hedge: [{ x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 2 }, { x: 4, y: 2 }, { x: 5, y: 1 }], lane: { x: 2, y: 2 } },
+      { hedge: [{ x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 2 }, { x: 4, y: 2 }, { x: 5, y: 1 }], ends: [{ x: 2, y: 1 }, { x: 3, y: 2 }, { x: 5, y: 1 }], lane: { x: 2, y: 2 } },
     ]);
-    canvas.paint(layout.hedge, 'thorn');
+    canvas.paint(layout.hedge, 'rock');
     // Sometimes a bush in each corner nook as well.
-    if (rng.next() < 0.5) canvas.paint([{ x: 0, y: 1 }], 'thorn');
+    if (rng.next() < 0.5) canvas.paint([{ x: 0, y: 1 }], 'rock');
+    // One thorny end per quarter: four thorns in all, within the thorn cap.
+    canvas.paint([rng.pick(layout.ends)], 'thorn');
     const lanes = canvas.images(layout.lane);
     // A pack in every quarter, or just a diagonal pair.
     const chosen = rng.next() < 0.5 ? lanes : [lanes[0], lanes[lanes.length - 1]];

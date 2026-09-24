@@ -593,14 +593,17 @@ describe('Sentry Island (floor 1)', () => {
 });
 
 describe('Thorn Maze (floor 1)', () => {
-  it('winds thorn hedges through the room, every floor cell walkable, walkers loose among them', () => {
+  it('winds hedges through the room, every floor cell walkable, walkers loose among them', () => {
     const layouts = new Set<string>();
     for (const doors of EVERY_DOOR_SET) {
       for (let seed = 0; seed < 30; seed++) {
         const r = generateRoom({ id: '0,0', kind: 'normal', doors: [...doors], archetype: 'thornMaze' }, 0, createRng(seed));
         const where = `seed ${seed} doors ${doors}`;
         expect(r.archetype, where).toBe('thornMaze');
-        expect(count(r, 'thorn'), where).toBeGreaterThanOrEqual(8);
+        // Mixed hedges: mostly plain bushes, a few thorny ones, never over the thorn cap.
+        expect(count(r, 'thorn'), where).toBeGreaterThanOrEqual(1);
+        expect(count(r, 'thorn'), where).toBeLessThanOrEqual(4);
+        expect(count(r, 'rock'), where).toBeGreaterThan(count(r, 'thorn'));
         // A maze, not a prison: thorns shape the paths but never seal floor away.
         expect(reachable(r, r.doors[0].cell).size, where).toBe(count(r, 'floor'));
         expect(r.enemies.length, where).toBeGreaterThan(0);
@@ -609,6 +612,20 @@ describe('Thorn Maze (floor 1)', () => {
       }
     }
     expect(layouts.size).toBeGreaterThan(3);
+  });
+
+  it('puts the thorns on the ends of hedges', () => {
+    const hedge = (t: string | undefined) => t === 'rock' || t === 'thorn';
+    for (let seed = 0; seed < 60; seed++) {
+      const r = generateRoom({ id: '0,0', kind: 'normal', doors: ['up', 'down', 'left', 'right'], archetype: 'thornMaze' }, 0, createRng(seed));
+      r.tiles.forEach((row, y) =>
+        row.forEach((t, x) => {
+          if (t !== 'thorn') return;
+          const touching = [r.tiles[y - 1]?.[x], r.tiles[y + 1]?.[x], row[x - 1], row[x + 1]].filter(hedge);
+          expect(touching.length, `seed ${seed} thorn at ${x},${y}`).toBeLessThanOrEqual(1);
+        }),
+      );
+    }
   });
 
   it('only grows thorns on floor 1', () => {

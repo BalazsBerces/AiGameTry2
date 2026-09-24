@@ -1,7 +1,7 @@
 import type { Cell } from './floorGenerator';
 import { ENEMY_CLASS } from './enemies';
 import { floodFill, lineOfSight } from './grid';
-import type { Door, RoomLayout, Tile } from './roomGenerator';
+import { ROOM_HEIGHT, ROOM_WIDTH, type Door, type RoomLayout, type Tile } from './roomGenerator';
 import { blocksSight, isWalkable } from './tiles';
 import { AXIS_DIRECTIONS, settleCrusher, slideCrusher, type Crusher } from './crusher';
 
@@ -22,7 +22,11 @@ export type ViolationRule =
   | 'overlap'
   | 'spawn-off-floor'
   | 'asymmetric'
-  | 'crusher-lane';
+  | 'crusher-lane'
+  | 'thorn-cap';
+
+/** Most thorn tiles a room may hold per 1x1 map cell it covers, so damaging terrain stays rare. */
+export const THORNS_PER_CELL = 4;
 
 export interface Violation {
   rule: ViolationRule;
@@ -89,8 +93,15 @@ export function validateRoom(room: RoomToValidate, symmetry: Symmetry): Violatio
 
   if (!isSymmetric(tiles, symmetry)) violations.push({ rule: 'asymmetric' });
   for (const c of room.crushers ?? []) if (!crusherLaneHolds(room, c)) violations.push({ rule: 'crusher-lane', cell: c.cell });
+  if (countTiles(tiles, 'thorn') > THORNS_PER_CELL * mapCells(tiles)) violations.push({ rule: 'thorn-cap' });
   return violations;
 }
+
+const countTiles = (tiles: Tile[][], tile: Tile) => tiles.flat().filter((t) => t === tile).length;
+
+/** How many 1x1 map cells of room the tiles make up (an L's walled-off corner doesn't count). */
+const mapCells = (tiles: Tile[][]) =>
+  Math.max(1, Math.round((tiles.flat().length - countTiles(tiles, 'wall')) / (ROOM_WIDTH * ROOM_HEIGHT)));
 
 /**
  * Crusher lanes: wherever the crusher settles along its axis (the others left where they

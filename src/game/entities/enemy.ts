@@ -1,7 +1,6 @@
 import type Phaser from 'phaser';
-import type { Cell, Direction } from '../../core/floorGenerator';
+import type { Cell } from '../../core/floorGenerator';
 import type { Door, Tile } from '../../core/roomGenerator';
-import type { Weapon } from '../../core/weaponModel';
 import type { Stunnable } from '../../core/stun';
 import { COLORS, TUNING } from '../config';
 
@@ -23,8 +22,6 @@ export interface EnemyContext {
   canSeePlayer(from: { x: number; y: number }): boolean;
   /** Homing enemy shots steer toward the player; `bounces` is how often it ricochets off stone. */
   fireEnemyShot(x: number, y: number, vx: number, vy: number, homing?: boolean, bounces?: number): void;
-  /** A sword arc from `from` in direction `aim`; hurts the player if they're inside it. */
-  swingAtPlayer(from: { x: number; y: number }, aim: Direction): void;
   /** World position of the room's centre. */
   roomCenter: { x: number; y: number };
   /** The current room's tiles, for enemies that plan attacks over the terrain. */
@@ -52,8 +49,6 @@ export interface Enemy extends Stunnable {
   /** Physics walkers collide with terrain; grid movers (worms) plan their own moves instead. */
   collidesWithTerrain: boolean;
   update(ctx: EnemyContext): void;
-  /** Called whenever the player attacks (used by the Shadow to mirror it). */
-  onPlayerAttack?(ctx: EnemyContext, aim: Direction, weapon: Weapon): void;
   /** Damages one part. Returns the enemies that replace this one: itself, nothing (dead), or split pieces. */
   hit(part: EnemySprite, damage: number): Enemy[];
   /**

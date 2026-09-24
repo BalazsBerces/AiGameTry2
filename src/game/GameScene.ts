@@ -26,7 +26,7 @@ import {
 } from '../core/world';
 import { COLORS, TUNING } from './config';
 import type { Enemy, EnemyContext, EnemySprite } from './entities/enemy';
-import { createShadow } from './entities/shadow';
+import { createIronMaidenBoss } from './entities/ironMaiden';
 import { createTurret } from './entities/turret';
 import { BOSS_WORM, championWorm, REGULAR_WORM, spawnWorm } from './entities/worm';
 import { createZombie } from './entities/zombie';
@@ -60,7 +60,7 @@ const ENEMY_FACTORIES: Record<EnemyType, (scene: Phaser.Scene, spawn: EnemySpawn
   turret: (scene, s, at) => createTurret(scene, at(s.cell).x, at(s.cell).y, !!s.champion),
   worm: (scene, s, at) => spawnWorm(scene, [s.cell, ...(s.tail ?? [])], at, s.champion ? championWorm(REGULAR_WORM) : REGULAR_WORM),
   wormBoss: (scene, s, at) => spawnWorm(scene, [s.cell, ...(s.tail ?? [])], at, BOSS_WORM, true),
-  shadowBoss: (scene, s, at) => createShadow(scene, at(s.cell).x, at(s.cell).y),
+  ironMaiden: (scene, s, at) => createIronMaidenBoss(scene, at(s.cell).x, at(s.cell).y),
   goblin: (scene, s, at) => createGoblin(scene, at(s.cell).x, at(s.cell).y, !!s.champion),
   seedSpitter: (scene, s, at) => createSeedSpitter(scene, at(s.cell).x, at(s.cell).y, !!s.champion),
   ghoul: (scene, s, at) => createGhoul(scene, at(s.cell).x, at(s.cell).y, !!s.champion),
@@ -272,10 +272,6 @@ export class GameScene extends Phaser.Scene {
     if (!aim || time < this.nextShotAt) return;
     const weapon = resolveWeapon(this.world.player.passives);
     this.nextShotAt = time + weapon.fireDelayMs;
-    if (this.enemies.length && time >= this.enemiesWakeAt) {
-      const ctx = this.enemyContext(time);
-      for (const e of this.enemies) e.onPlayerAttack?.(ctx, aim, weapon);
-    }
     if (weapon.mode === 'sword') {
       this.swingSword(aim, weapon.damage);
       return;
@@ -299,7 +295,7 @@ export class GameScene extends Phaser.Scene {
 
   /**
    * Draws a sword arc from `from` toward `aim` and returns a test for whether a target of the
-   * given size is inside it. Shared by the player's sword and the Shadow's mirrored one.
+   * given size is inside it.
    */
   private sweepArc(from: { x: number; y: number }, aim: Direction, color: number) {
     const { range, arcDeg, showMs } = TUNING.sword;
@@ -443,9 +439,6 @@ export class GameScene extends Phaser.Scene {
         const shot = this.add.circle(x, y, TUNING.enemyShotRadius, color).setData({ homing, bounces });
         this.enemyShots.add(shot);
         (shot.body as Phaser.Physics.Arcade.Body).setCircle(TUNING.enemyShotRadius).setVelocity(vx, vy);
-      },
-      swingAtPlayer: (from, aim) => {
-        if (this.sweepArc(from, aim, COLORS.shadowEdge)(this.player)) this.hurtPlayer();
       },
       tiles: room.layout.tiles,
       hurtPlayer: () => this.hurtPlayer(),

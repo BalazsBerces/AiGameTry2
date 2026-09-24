@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { bossForFloor } from './roomGenerator';
+import { createRng } from './rng';
 import { themeForFloor } from './themes';
 
 describe('floor themes', () => {
@@ -29,9 +30,24 @@ describe('floor themes', () => {
     expect(themeForFloor(5).name).toBe('Dungeon');
   });
 
-  it("gives each floor its theme's boss", () => {
-    expect([0, 1, 2].map((f) => themeForFloor(f).boss)).toEqual(['treantBoss', 'wormBoss', 'shadowBoss']);
-    expect([0, 1, 2].map((f) => bossForFloor(f))).toEqual(['treantBoss', 'wormBoss', 'shadowBoss']);
+  it('gives the forest the Treant, the caves the Worm boss and the dungeon a pool with the Iron Maiden', () => {
+    expect(themeForFloor(0).bosses).toEqual(['treantBoss']);
+    expect(themeForFloor(1).bosses).toEqual(['wormBoss']);
+    expect(themeForFloor(2).bosses).toContain('ironMaiden');
+  });
+
+  it("picks each floor's boss from its theme's pool", () => {
+    for (let seed = 0; seed < 20; seed++) {
+      for (const f of [0, 1, 2]) expect(themeForFloor(f).bosses).toContain(bossForFloor(f, createRng(seed)));
+    }
+  });
+
+  it('picks the same boss for the same seed', () => {
+    for (let seed = 0; seed < 20; seed++) expect(bossForFloor(2, createRng(seed))).toBe(bossForFloor(2, createRng(seed)));
+  });
+
+  it('has retired the Shadow', () => {
+    for (const f of [0, 1, 2]) expect(themeForFloor(f).bosses as readonly string[]).not.toContain('shadowBoss');
   });
 
   it('debuts the ghost in the dungeon and nowhere else', () => {

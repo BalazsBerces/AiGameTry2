@@ -7,6 +7,7 @@ import { createWorld } from './world';
 import { AXIS_DIRECTIONS, slideCrusher } from './crusher';
 import { validateRoom } from './roomValidator';
 import { GLOWSHROOM_RADIUS } from './glowshroom';
+import { themeForFloor } from './themes';
 
 const ALL_DOORS = ['up', 'down', 'left', 'right'] as const;
 const room = (seed: number, doors: readonly (typeof ALL_DOORS)[number][] = ALL_DOORS) =>
@@ -61,14 +62,23 @@ describe('generateRoom terrain', () => {
 describe('bosses per floor across whole runs', () => {
   const worlds = Array.from({ length: 40 }, (_, seed) => createWorld(seed));
 
-  it('puts the Treant on floor 1, the Worm boss on floor 2 and the Shadow on floor 3', () => {
+  const bossesOf = (world: (typeof worlds)[number]) =>
+    [...world.rooms.values()]
+      .filter((r) => r.floorRoom.kind === 'boss')
+      .sort((a, b) => a.floorIndex - b.floorIndex)
+      .map((r) => r.layout.enemies.map((e) => e.type));
+
+  it("puts the Treant on floor 1, the Worm boss on floor 2 and one of floor 3's pool on floor 3", () => {
     for (const world of worlds) {
-      const bosses = [...world.rooms.values()]
-        .filter((r) => r.floorRoom.kind === 'boss')
-        .sort((a, b) => a.floorIndex - b.floorIndex)
-        .map((r) => r.layout.enemies.map((e) => e.type));
-      expect(bosses, `seed ${world.seed}`).toEqual([['treantBoss'], ['wormBoss'], ['shadowBoss']]);
+      const [first, second, third] = bossesOf(world);
+      expect([first, second], `seed ${world.seed}`).toEqual([['treantBoss'], ['wormBoss']]);
+      expect(third.length, `seed ${world.seed}`).toBe(1);
+      expect(themeForFloor(2).bosses, `seed ${world.seed}`).toContain(third[0]);
     }
+  });
+
+  it('meets the same floor 3 boss again on the same seed', () => {
+    for (const seed of [0, 1, 2, 3, 4]) expect(bossesOf(createWorld(seed))).toEqual(bossesOf(worlds[seed]));
   });
 
   it('never spawns the retired Hive anywhere', () => {
@@ -215,34 +225,31 @@ describe('generateRoom enemies', () => {
   });
 });
 
-describe('generateRoom shadow arena (floor 3)', () => {
-  const arena = (seed: number) =>
-    generateRoom({ id: '0,0', kind: 'boss', doors: [{ side: 'up', at: { x: 1, y: 0 } }] }, 2, createRng(seed));
+describe('generateRoom Iron Maiden arena (floor 3)', () => {
+  /** Floor 3 boss rooms on the seeds that drew the Iron Maiden. */
+  const arenas = Array.from({ length: 300 }, (_, seed) =>
+    generateRoom({ id: '0,0', kind: 'boss', doors: [{ side: 'up', at: { x: 1, y: 0 } }] }, 2, createRng(seed)),
+  ).filter((a) => a.enemies[0]?.type === 'ironMaiden');
 
-  it('has pillars and stays fully connected', () => {
-    for (let seed = 0; seed < 300; seed++) {
-      const a = arena(seed);
-      expect(count(a, 'obstacle'), `seed ${seed}`).toBeGreaterThanOrEqual(6);
+  it('turns up on floor 3', () => {
+    expect(arenas.length).toBeGreaterThan(50);
+  });
+
+  it('has pillars for cover and stays fully connected', () => {
+    for (const a of arenas) {
+      expect(count(a, 'obstacle')).toBeGreaterThanOrEqual(6);
       const seen = reachable(a, a.doors[0].cell);
-      expect(seen.size, `seed ${seed}`).toBe(count(a, 'floor'));
+      expect(seen.size).toBe(count(a, 'floor'));
     }
   });
 
-  it('is not point-symmetric, so pillars block the mirrored shadow differently from the player', () => {
-    const symmetric = Array.from({ length: 100 }, (_, seed) => arena(seed)).filter((a) =>
-      a.tiles.every((row, y) => row.every((t, x) => t === a.tiles[a.height - 1 - y][a.width - 1 - x])),
-    );
-    expect(symmetric.length).toBeLessThan(5);
-  });
-
-  it('places the shadow on a floor cell mirrored across the room from the entrance', () => {
-    for (let seed = 0; seed < 300; seed++) {
-      const a = arena(seed);
-      expect(a.enemies.map((e) => e.type), `seed ${seed}`).toEqual(['shadowBoss']);
-      const s = a.enemies[0].cell;
-      expect(a.tiles[s.y][s.x], `seed ${seed}`).toBe('floor');
-      // The entrance is on the top wall, so the shadow starts in the bottom half.
-      expect(s.y, `seed ${seed}`).toBeGreaterThanOrEqual(7);
+  it('places exactly one Iron Maiden on a floor cell across the room from the entrance', () => {
+    for (const a of arenas) {
+      expect(a.enemies.map((e) => e.type)).toEqual(['ironMaiden']);
+      const m = a.enemies[0].cell;
+      expect(a.tiles[m.y][m.x]).toBe('floor');
+      // The entrance is on the top wall, so it starts in the bottom half.
+      expect(m.y).toBeGreaterThanOrEqual(7);
     }
   });
 });

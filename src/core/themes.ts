@@ -29,7 +29,8 @@ export interface FloorTheme {
   palette: Palette;
   /** Room tiles only: `wall` (an L room's missing cell) is drawn in the palette's wall colour. */
   looks: Record<Exclude<Tile, 'floor' | 'wall'>, TileLook>;
-  boss: BossType;
+  /** The floor's boss is picked from these, once per run (see `bossForFloor`). */
+  bosses: readonly BossType[];
   /** The floor's basic walker and turret: each floor's variants look and behave differently. */
   walker: EnemyType;
   turret: EnemyType;
@@ -60,7 +61,7 @@ const THEMES: readonly FloorTheme[] = [
       crystal: { name: 'mirror stone', shape: 'block', color: 0xa8d8c0, stroke: 0xe8fff0, inset: 6 },
       glowshroom: { name: 'puffball', shape: 'round', color: 0xd8c86a, stroke: 0xfff4b0, inset: 10 },
     },
-    boss: 'treantBoss',
+    bosses: ['treantBoss'],
     walker: 'goblin',
     turret: 'seedSpitter',
   },
@@ -85,7 +86,7 @@ const THEMES: readonly FloorTheme[] = [
       crystal: { name: 'crystal cluster', shape: 'block', color: 0x7fd4e0, stroke: 0xd8f8ff, inset: 5 },
       glowshroom: { name: 'glowshroom', shape: 'round', color: 0x6ae0a0, stroke: 0xd0ffe0, inset: 8 },
     },
-    boss: 'wormBoss',
+    bosses: ['wormBoss'],
     walker: 'ghoul',
     turret: 'crystalTurret',
     newEnemies: ['bat'],
@@ -110,7 +111,7 @@ const THEMES: readonly FloorTheme[] = [
       crystal: { name: 'polished mirror', shape: 'block', color: 0x9aa8c8, stroke: 0xf0f0ff, inset: 4 },
       glowshroom: { name: 'grave mould', shape: 'round', color: 0x8ab070, stroke: 0xd0f0a0, inset: 10 },
     },
-    boss: 'shadowBoss',
+    bosses: ['ironMaiden'],
     walker: 'zombie',
     turret: 'gargoyle',
     walkerHp: 5,

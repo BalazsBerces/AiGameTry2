@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createRng } from './rng';
 import { ARCHETYPES, supportsShape } from './archetypes';
 import { ENEMY_CLASS } from './enemies';
-import { generateRoom, WORM_LENGTH, type DoorSpec } from './roomGenerator';
+import { generateRoom, WORM_LENGTH, type DoorSpec, type RoomLayout } from './roomGenerator';
 import { createWorld } from './world';
 import { AXIS_DIRECTIONS, slideCrusher } from './crusher';
 import { validateRoom } from './roomValidator';
@@ -777,6 +777,30 @@ describe('composed wide rooms', () => {
         expect(generateRoom(spec, floorIndex, createRng(i)), where).toEqual(r);
       }
     }
+  });
+});
+
+describe('edge filler', () => {
+  const differences = (a: RoomLayout, b: RoomLayout) =>
+    b.tiles.flatMap((row, y) => row.flatMap((t, x) => (t !== a.tiles[y][x] ? [{ was: a.tiles[y][x], now: t }] : [])));
+
+  it('dresses a themed room on top of the very same layout, only ever on floor', () => {
+    const rooms = [
+      ...EVERY_SHAPED_DOOR_SET['2x1'].slice(0, 20).map((doors) => ({ doors, shape: '2x1' as const, archetype: undefined, theme: 'crypt', floor: 2 })),
+      ...EVERY_DOOR_SET.map((doors) => ({ doors: [...doors], shape: '1x1' as const, archetype: 'pillaredHall', theme: 'grove', floor: 0 })),
+    ];
+    let dressed = 0;
+    for (const [i, r] of rooms.entries()) {
+      const spec = { id: '0,0', kind: 'normal' as const, doors: r.doors, shape: r.shape, archetype: r.archetype };
+      const bare = generateRoom(spec, r.floor, createRng(i));
+      const themed = generateRoom({ ...spec, theme: r.theme }, r.floor, createRng(i));
+      const where = `${r.shape} ${JSON.stringify(r.doors)}`;
+      expect(themed.enemies.map((e) => e.cell), where).toEqual(bare.enemies.map((e) => e.cell));
+      const diff = differences(bare, themed);
+      for (const d of diff) expect(d.was, where).toBe('floor');
+      if (diff.length) dressed++;
+    }
+    expect(dressed / rooms.length).toBeGreaterThan(0.8);
   });
 });
 

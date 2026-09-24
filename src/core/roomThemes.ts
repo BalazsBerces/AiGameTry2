@@ -18,52 +18,63 @@ export interface RoomTheme {
   roles: Record<Role, Tile>;
   /** How much likelier each encounter (by id) is here than one left out, which counts 1. */
   encounterWeights: Readonly<Record<string, number>>;
+  /** Solid, purposeless pieces dressing the room's edges (core/filler): trees and bushes, rubble. Never thorns. */
+  filler: readonly Tile[];
 }
 
 const ROOM_THEMES: readonly RoomTheme[] = [
   {
     id: 'grove', name: 'grove', floor: 0,
     roles: { cover: 'obstacle', breakable: 'rock', pit: 'hole', hazard: 'obstacle', feature: 'obstacle' },
+    filler: ['obstacle', 'rock'],
     encounterWeights: { prowlers: 3 },
   },
   {
     id: 'marsh', name: 'marsh', floor: 0,
     roles: { cover: 'rock', breakable: 'rock', pit: 'hole', hazard: 'hole', feature: 'hole' },
+    filler: ['rock', 'obstacle'],
     encounterWeights: { ledgeSentries: 3 },
   },
   {
     id: 'bramble', name: 'bramble thicket', floor: 0,
     roles: { cover: 'rock', breakable: 'rock', pit: 'hole', hazard: 'thorn', feature: 'obstacle' },
+    filler: ['rock'],
     encounterWeights: { prowlers: 3 },
   },
   {
     id: 'grotto', name: 'crystal grotto', floor: 1,
     roles: { cover: 'obstacle', breakable: 'rock', pit: 'hole', hazard: 'crystal', feature: 'crystal' },
+    filler: ['crystal', 'obstacle'],
     encounterWeights: { ledgeSentries: 3 },
   },
   {
     id: 'hollow', name: 'mushroom hollow', floor: 1,
     roles: { cover: 'obstacle', breakable: 'rock', pit: 'hole', hazard: 'glowshroom', feature: 'glowshroom' },
+    filler: ['obstacle', 'rock'],
     encounterWeights: { prowlers: 3 },
   },
   {
     id: 'rift', name: 'rift', floor: 1,
     roles: { cover: 'rock', breakable: 'rock', pit: 'hole', hazard: 'hole', feature: 'obstacle' },
+    filler: ['obstacle', 'rock'],
     encounterWeights: { ledgeSentries: 3 },
   },
   {
     id: 'crypt', name: 'crypt', floor: 2,
     roles: { cover: 'obstacle', breakable: 'rock', pit: 'hole', hazard: 'hole', feature: 'obstacle' },
+    filler: ['rock', 'obstacle'],
     encounterWeights: { prowlers: 3 },
   },
   {
     id: 'cellblock', name: 'cellblock', floor: 2,
     roles: { cover: 'obstacle', breakable: 'rock', pit: 'hole', hazard: 'obstacle', feature: 'obstacle' },
+    filler: ['obstacle'],
     encounterWeights: { ledgeSentries: 3 },
   },
   {
     id: 'machineHall', name: 'machine hall', floor: 2,
     roles: { cover: 'obstacle', breakable: 'rock', pit: 'hole', hazard: 'hole', feature: 'obstacle' },
+    filler: ['obstacle', 'rock'],
     encounterWeights: { ledgeSentries: 3 },
   },
 ];

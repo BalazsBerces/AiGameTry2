@@ -1,14 +1,15 @@
 import { archetypeById, archetypesFor, fallbackArchetype, supportsShape } from './archetypes';
 import { missingCell, SHAPE_CELLS, type Cell, type Direction, type RoomKind, type RoomShape } from './floorGenerator';
 import { floodFill } from './grid';
-import { validateRoom } from './roomValidator';
+import { validateRoom, type Symmetry } from './roomValidator';
 import type { Passive } from './weaponModel';
 import type { Rng } from './rng';
 import { themeForFloor } from './themes';
 import { isWalkable } from './tiles';
 import type { Crusher } from './crusher';
 import { candleCells } from './candleWitch';
-import { composeRoom, composes } from './composer';
+import { composeRoom, composes, type Spot } from './composer';
+import { addFiller } from './filler';
 import { roomThemesFor } from './roomThemes';
 
 export const ROOM_WIDTH = 13;
@@ -414,6 +415,29 @@ export const placeDoors = (specs: readonly (Direction | DoorSpec)[], width: numb
     .map((d): DoorSpec => (typeof d === 'string' ? { side: d, at: { x: 0, y: 0 } } : d))
     .map((d) => ({ side: d.side, cell: doorCell(d, width, height) }));
 
+/**
+ * A normal room's tiles with its theme's edge filler added (core/filler), kept off a composed
+ * room's spawn spots. Rooms without a theme, and the empty fallback, stay as built.
+ */
+function dress(
+  spec: RoomSpec,
+  built: { tiles: Tile[][]; enemies: EnemySpawn[]; pickups: PickupSpawn[]; symmetry?: Symmetry; spots?: Spot[]; crushers?: Crusher[] },
+  doors: Door[],
+  rng: Rng,
+): Tile[][] {
+  const theme = themed(spec, built).theme;
+  if (spec.kind !== 'normal' || !spec.theme || !theme || !built.symmetry) return built.tiles;
+  const { tiles, enemies, pickups, crushers } = built;
+  return addFiller({
+    room: { tiles, doors, enemies, pickups, ...(crushers ? { crushers } : {}) },
+    symmetry: built.symmetry,
+    protect: (built.spots ?? []).map((s) => s.cell),
+    theme,
+    size: (spec.shape ?? '1x1') === '1x1' ? 'small' : 'big',
+    rng,
+  }).tiles;
+}
+
 /** The room's sub-theme: a 1x1 idea's own tag, else the one it was asked to suit. */
 function themed(spec: RoomSpec, built?: object): { theme?: string } {
   const archetype = built && 'archetype' in built ? String(built.archetype) : '';
@@ -426,7 +450,9 @@ export function generateRoom(spec: RoomSpec, floorIndex: number, rng: Rng): Room
   const doors = placeDoors(spec.doors, width, height);
   const composed = spec.kind === 'normal' && composes(spec.shape ?? '1x1');
   if (composed || archetypesFor(floorIndex, spec.kind, spec.shape ?? '1x1').length) {
-    const built = composed ? buildComposed(spec, doors, floorIndex, rng) : buildFromArchetype(spec, doors, floorIndex, rng);
+    const drawn = composed ? buildComposed(spec, doors, floorIndex, rng) : buildFromArchetype(spec, doors, floorIndex, rng);
+    // Its own stream, so dressing a room never shifts its layout or fight.
+    const built = { ...drawn, tiles: dress(spec, drawn, doors, rng.fork('filler')) };
     const pickups = built.pickups.map((p) => placeLoot(p, rng));
     if (spec.kind === 'normal') pickups.push(...rollClearDrop(built.tiles, doors, built.enemies, pickups, rng));
     const { walker, walkerHp } = themeForFloor(floorIndex);

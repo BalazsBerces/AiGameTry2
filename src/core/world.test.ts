@@ -138,6 +138,7 @@ describe('hitTile', () => {
     room.layout.tiles[3][6] = 'obstacle';
     for (let i = 0; i < 5; i++) expect(hitTile(world, room.floorRoom.id, { x: 6, y: 3 })).toBe('none');
     expect(room.layout.tiles[3][6]).toBe('obstacle');
+    room.layout.tiles[0][0] = 'floor';
     expect(hitTile(world, room.floorRoom.id, { x: 0, y: 0 })).toBe('none');
   });
 });

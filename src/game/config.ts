@@ -52,6 +52,8 @@ export const TUNING = {
   stunMark: { radius: 7, spinDegPerSec: 360 },
   /** Drifts straight at the player through any terrain; its visible/faded cycle lives in core/ghost. */
   ghost: { hp: 4, radius: 15, speed: 60 },
+  /** Small and frail; its flutter, telegraph and swoop (in tiles) live in core/bat. */
+  bat: { hp: 2, width: 26, height: 12 },
 };
 
 /** Floor, wall, door and terrain colours come from each floor's theme (core/themes). */
@@ -117,4 +119,7 @@ export const COLORS = {
   podShadow: 0x1a1208,
   sweepTelegraph: 0xd8b25a,
   sweep: 0x6a8a3a,
+  bat: 0x4a3a5c,
+  batWing: 0x1c1424,
+  batTelegraph: 0xe05a7a,
 };

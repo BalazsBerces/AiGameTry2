@@ -262,14 +262,14 @@ describe('generateRoom enemy mix per floor', () => {
     expect(sample(1).flat().some((e) => e.type === 'worm')).toBe(true);
   });
 
-  it('floor 2 (the caves) spawns ghouls, crystal turrets and worms, and no zombies or plain turrets', () => {
+  it('floor 2 (the caves) spawns ghouls, crystal turrets, worms and bats, and no zombies or plain turrets', () => {
     const types = new Set<string>();
     for (const doors of EVERY_DOOR_SET) {
       for (let seed = 0; seed < 60; seed++) {
         for (const e of generateRoom({ id: '0,0', kind: 'normal', doors: [...doors] }, 1, createRng(seed)).enemies) types.add(e.type);
       }
     }
-    expect([...types].sort()).toEqual(['crystalTurret', 'ghoul', 'worm']);
+    expect([...types].sort()).toEqual(['bat', 'crystalTurret', 'ghoul', 'worm']);
   });
 
   it('floor 3 has no worms or plain turrets, and gargoyles make up a good share of it', () => {
@@ -282,7 +282,7 @@ describe('generateRoom enemy mix per floor', () => {
   it('asks for more damage to clear a room on each later floor', () => {
     // Default hit points: zombie 3, turret 4, worm 4 segments of 2, goblin 3, seed-spitter 4, ghoul 4,
     // crystal turret 4, gargoyle 5, knight 6; a spawn's own `hp` (the dungeon's tougher zombies) overrides them.
-    const HP: Record<string, number> = { zombie: 3, turret: 4, worm: 8, goblin: 3, seedSpitter: 4, ghoul: 4, crystalTurret: 4, gargoyle: 5, knight: 6, wasp: 2, boar: 4, ghost: 4 };
+    const HP: Record<string, number> = { zombie: 3, turret: 4, worm: 8, goblin: 3, seedSpitter: 4, ghoul: 4, crystalTurret: 4, gargoyle: 5, knight: 6, wasp: 2, boar: 4, ghost: 4, bat: 2 };
     const mean = (floorIndex: number) =>
       sample(floorIndex).reduce((sum, r) => sum + r.reduce((s, e) => s + (e.hp ?? HP[e.type]), 0), 0) / 600;
     expect(mean(1)).toBeGreaterThan(mean(0) + 1);
@@ -600,7 +600,7 @@ describe('Boar Run (floor 1)', () => {
 });
 
 describe('every archetype', () => {
-  const ROSTER = [['goblin', 'seedSpitter', 'wasp', 'boar'], ['ghoul', 'crystalTurret', 'worm'], ['zombie', 'gargoyle', 'knight', 'ghost']];
+  const ROSTER = [['goblin', 'seedSpitter', 'wasp', 'boar'], ['ghoul', 'crystalTurret', 'worm', 'bat'], ['zombie', 'gargoyle', 'knight', 'ghost']];
 
   it('builds its own idea for every shape and door set it fits: deterministic, varied, within its floor roster', () => {
     for (const a of ARCHETYPES) {
@@ -649,7 +649,7 @@ describe('every archetype', () => {
 
   it.each([
     [1, ['jar', 'fourCorners', 'pillaredHall', 'sentryIsland', 'stash', 'thornMaze', 'waspNest', 'boarRun']],
-    [2, ['courtyard', 'gallery', 'serpentGarden', 'track', 'twinJars', 'vault', 'crystalGallery']],
+    [2, ['courtyard', 'gallery', 'serpentGarden', 'track', 'twinJars', 'vault', 'crystalGallery', 'batRoost']],
     [3, ['crossfire', 'fortress', 'killbox', 'minefield', 'nest', 'ruins', 'crusherCorridor', 'knightGuard', 'hauntedHall']],
   ])('gives floor %i its own set of ideas, one of them a breather that fits every door set', (floor, ids) => {
     const own = ARCHETYPES.filter((a) => a.floor === floor - 1 && a.kind === 'normal' && supportsShape(a, '1x1'));
@@ -1074,5 +1074,56 @@ describe('Crystal Gallery (floor 2)', () => {
         }
       }
     }
+  });
+});
+
+describe('Bat Roost (floor 2)', () => {
+  const roost = (seed: number, doors: readonly (typeof SIDES)[number][]) =>
+    generateRoom({ id: '0,0', kind: 'normal', doors: [...doors], archetype: 'batRoost' }, 1, createRng(seed));
+  const batsIn = (r: ReturnType<typeof roost>) => r.enemies.filter((e) => e.type === 'bat');
+
+  it('builds valid, symmetric rooms around bats and chasms, for every door set', () => {
+    const layouts = new Set<string>();
+    for (const doors of EVERY_DOOR_SET) {
+      for (let seed = 0; seed < 30; seed++) {
+        const r = roost(seed, doors);
+        const where = `seed ${seed} doors ${doors}`;
+        expect(r.archetype, where).toBe('batRoost');
+        expect(batsIn(r).length, where).toBeGreaterThanOrEqual(2);
+        expect(r.tiles.flat().filter((t) => t === 'hole').length, where).toBeGreaterThan(0);
+        expect(validateRoom(r, { axes: ['vertical', 'horizontal'] }), where).toEqual([]);
+        layouts.add(JSON.stringify([r.tiles, r.enemies]));
+      }
+    }
+    expect(layouts.size).toBeGreaterThan(3);
+  });
+
+  it('roosts every bat at the edge of a chasm, so its flutter carries it out over the drop', () => {
+    for (const doors of EVERY_DOOR_SET) {
+      for (let seed = 0; seed < 10; seed++) {
+        const r = roost(seed, doors);
+        for (const b of batsIn(r)) {
+          const nextToChasm = [-1, 0, 1].some((dy) => [-1, 0, 1].some((dx) => r.tiles[b.cell.y + dy]?.[b.cell.x + dx] === 'hole'));
+          expect(nextToChasm, `seed ${seed} doors ${doors} at ${b.cell.x},${b.cell.y}`).toBe(true);
+        }
+      }
+    }
+  });
+
+  it('is the same room for the same seed', () => {
+    expect(roost(5, ALL_DOORS)).toEqual(roost(5, ALL_DOORS));
+  });
+
+  it('lets bats loose on floor 2 only', () => {
+    const types: Set<string>[] = [new Set(), new Set(), new Set()];
+    for (const floorIndex of [0, 1, 2]) {
+      for (const doors of EVERY_DOOR_SET) {
+        for (let seed = 0; seed < 20; seed++) {
+          const r = generateRoom({ id: '0,0', kind: 'normal', doors: [...doors] }, floorIndex, createRng(seed));
+          for (const e of r.enemies) types[floorIndex].add(e.type);
+        }
+      }
+    }
+    expect(types.map((t) => t.has('bat'))).toEqual([false, true, false]);
   });
 });

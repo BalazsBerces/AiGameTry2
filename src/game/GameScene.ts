@@ -44,6 +44,7 @@ import { createBoar } from './entities/boar';
 import { isStunned } from '../core/stun';
 import { smashRock } from '../core/world';
 import { createGhost } from './entities/ghost';
+import { createBat } from './entities/bat';
 
 type Keys = Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
 type PhysicsRect = Phaser.GameObjects.Rectangle & { body: Phaser.Physics.Arcade.Body };
@@ -67,6 +68,7 @@ const ENEMY_FACTORIES: Record<EnemyType, (scene: Phaser.Scene, spawn: EnemySpawn
   wasp: (scene, s, at) => createWasp(scene, at(s.cell).x, at(s.cell).y, !!s.champion),
   boar: (scene, s, at) => createBoar(scene, at(s.cell).x, at(s.cell).y, !!s.champion),
   ghost: (scene, s, at) => createGhost(scene, at(s.cell).x, at(s.cell).y, s.cell, !!s.champion),
+  bat: (scene, s, at) => createBat(scene, at(s.cell).x, at(s.cell).y, !!s.champion),
 };
 
 type Shape = Phaser.GameObjects.Shape;

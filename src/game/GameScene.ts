@@ -735,12 +735,23 @@ export class GameScene extends Phaser.Scene {
     const playerTile = tileOf(this.player.x, this.player.y);
     const first = tileCenter(room, 0, 0);
     const last = tileCenter(room, room.layout.width - 1, room.layout.height - 1);
+    // Walkers route around rooted enemies (turrets and the like) rather than pushing into them for good.
+    const rooted = new Set(
+      this.enemies
+        .filter((e) => e.collidesWithTerrain)
+        .flatMap((e) => e.parts)
+        .filter((p) => p.active && p.body.immovable)
+        .map((p) => {
+          const c = tileOf(p.x, p.y);
+          return `${c.x},${c.y}`;
+        }),
+    );
     return {
       time,
       player: this.player,
       roomCenter: { x: (first.x + last.x) / 2, y: (first.y + last.y) / 2 },
       playerTile,
-      walkDistance: distanceField(room.layout.tiles, playerTile, isWalkable),
+      walkDistance: distanceField(room.layout.tiles, playerTile, isWalkable, (c) => rooted.has(`${c.x},${c.y}`)),
       tileOf,
       tileCenter: (tile: Cell) => tileCenter(room, tile.x, tile.y),
       isWalkable: (cell: Cell) => {

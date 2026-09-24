@@ -10,6 +10,7 @@ import type { Crusher } from './crusher';
 import { candleCells } from './candleWitch';
 import { composeRoom, composes, type Spot } from './composer';
 import { addFiller } from './filler';
+import { dressRoom, type Decor } from './dressing';
 import { roomThemesFor } from './roomThemes';
 
 export const ROOM_WIDTH = 13;
@@ -109,6 +110,8 @@ export interface RoomLayout {
   encounter?: string;
   /** Crusher blocks and their axes; each stands on a `crusher` tile, which moves with it. */
   crushers?: Crusher[];
+  /** Non-blocking set dressing on the floor, laid when the room was built (core/dressing). */
+  decor?: Decor[];
 }
 
 export type PickupType = 'heart' | 'key' | 'bomb' | 'chest' | 'lockedChest' | 'passive';
@@ -445,7 +448,14 @@ function themed(spec: RoomSpec, built?: object): { theme?: string } {
   return theme ? { theme } : {};
 }
 
+/** Builds the room, then dresses it for the art pass (core/dressing) on its own stream, never touching its tiles. */
 export function generateRoom(spec: RoomSpec, floorIndex: number, rng: Rng): RoomLayout {
+  const layout = buildRoom(spec, floorIndex, rng);
+  if (!layout.theme) return layout;
+  return { ...layout, ...dressRoom({ tiles: layout.tiles, theme: layout.theme, rng: rng.fork('dressing') }) };
+}
+
+function buildRoom(spec: RoomSpec, floorIndex: number, rng: Rng): RoomLayout {
   const { width, height } = roomSize(spec.kind, spec.shape);
   const doors = placeDoors(spec.doors, width, height);
   const composed = spec.kind === 'normal' && composes(spec.shape ?? '1x1');

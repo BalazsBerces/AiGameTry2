@@ -3,6 +3,7 @@ import { DIRECTIONS, STEP, type Cell, type Direction, type RoomKind } from '../c
 import { distanceField, lineOfSight } from '../core/grid';
 import type { ChampionDrop, EnemySpawn, EnemyType, Tile } from '../core/roomGenerator';
 import { themeForFloor, type Palette, type TileLook } from '../core/themes';
+import { roomThemeById, type DecorKind } from '../core/roomThemes';
 import { blocksShots, blocksSight, hurtsOnTouch, isWalkable } from '../core/tiles';
 import { crusherWakes, settleCrusher, slideCrusher, type Crusher } from '../core/crusher';
 import { launchVelocity, resolveWeapon, type Weapon } from '../core/weaponModel';
@@ -130,6 +131,33 @@ function drawTile(scene: Phaser.Scene, x: number, y: number, look: TileLook): Sh
   const shape = look.shape === 'round' ? scene.add.circle(x, y, size / 2, look.color) : scene.add.rectangle(x, y, size, size, look.color);
   if (look.stroke !== undefined) shape.setStrokeStyle(3, look.stroke);
   return shape;
+}
+
+/** How strongly decor placeholder marks show through: faint, so they read as mood, not as things. */
+const DECOR_ALPHA = 0.55;
+
+/**
+ * A decor placeholder: a small mark in the kind's colour, nudged off the tile's centre by its
+ * cell so a scatter of them doesn't sit on the grid. The art pass swaps these for sprites.
+ */
+function drawDecorMark(g: Phaser.GameObjects.Graphics, at: { x: number; y: number }, cell: Cell, kind: DecorKind) {
+  const x = at.x + (((cell.x * 7 + cell.y * 3) % 5) - 2) * 4;
+  const y = at.y + (((cell.x * 3 + cell.y * 5) % 5) - 2) * 4;
+  g.fillStyle(kind.color, DECOR_ALPHA).lineStyle(2, kind.color, DECOR_ALPHA);
+  switch (kind.mark) {
+    case 'dot':
+      g.fillCircle(x, y, 3).fillCircle(x + 7, y + 4, 2);
+      break;
+    case 'dash':
+      g.lineBetween(x - 6, y + 2, x + 6, y - 2);
+      break;
+    case 'cross':
+      g.lineBetween(x - 5, y - 5, x + 5, y + 5).lineBetween(x - 5, y + 5, x + 5, y - 5);
+      break;
+    case 'ring':
+      g.strokeCircle(x, y, 7);
+      break;
+  }
 }
 
 interface TrackedCrusher {
@@ -1036,6 +1064,12 @@ export class GameScene extends Phaser.Scene {
     this.add
       .rectangle(floor.x - t / 2, floor.y - t / 2, width * t, height * t, FLOOR_COLOR[room.floorRoom.kind](palette))
       .setOrigin(0);
+    const dressing = this.add.graphics();
+    const theme = roomThemeById(room.layout.theme ?? '');
+    for (const d of room.layout.decor ?? []) {
+      const kind = theme?.decor.find((k) => k.id === d.kind);
+      if (kind) drawDecorMark(dressing, tileCenter(room, d.cell.x, d.cell.y), d.cell, kind);
+    }
 
     for (let ty = -b.pad.y; ty < b.tilesH - b.pad.y; ty++) {
       for (let tx = -b.pad.x; tx < b.tilesW - b.pad.x; tx++) {

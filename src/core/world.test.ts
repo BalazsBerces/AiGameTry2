@@ -120,6 +120,18 @@ describe('room sub-themes', () => {
     expect(tally.own[1] / tally.own[0]).toBeGreaterThan(2 * (tally.elsewhere[1] / tally.elsewhere[0]));
   });
 
+  it('dresses every room with decor on its floor, the same for the same seed', () => {
+    for (const world of worlds.slice(0, 10)) {
+      for (const room of world.rooms.values()) {
+        const where = `seed ${world.seed} ${room.floorRoom.id}`;
+        expect(room.layout.decor?.length, where).toBeGreaterThan(0);
+        for (const d of room.layout.decor!) expect(room.layout.tiles[d.cell.y][d.cell.x], where).toBe('floor');
+      }
+    }
+    const decor = (seed: number) => [...createWorld(seed).rooms.values()].map((r) => r.layout.decor);
+    expect(decor(3)).toEqual(decor(3));
+  });
+
   it('gives the same themes for the same seed', () => {
     const themes = (seed: number) => [...createWorld(seed).rooms.values()].map((r) => `${r.floorRoom.id}:${r.layout.theme}`);
     expect(themes(11)).toEqual(themes(11));

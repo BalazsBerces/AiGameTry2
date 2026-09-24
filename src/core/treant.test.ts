@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Tile } from './roomGenerator';
 import { createRng } from './rng';
+import { RING } from './treantAttack';
 import { canHurtTreant, createTreant, TREANT, updateTreant, type Treant, type TreantEvent, type TreantInput } from './treant';
 
 const open = (w: number, h: number): Tile[][] => Array.from({ length: h }, () => Array<Tile>(w).fill('floor'));
@@ -186,6 +187,25 @@ describe('treant last stand', () => {
       expect(s.treant.attack).toBeUndefined();
       expect(s.treant.sweep).toBeUndefined();
     }
+  });
+
+  it('bursts up with its branch ring round it, a gap on the player, spinning faster the nearer it is to death', () => {
+    const spin = (hp: number) => {
+      let t = createTreant(0);
+      let ringFrom: number | undefined;
+      for (let time = 0; time < 1000 + TREANT.sinkMs + TREANT.markMs + RING.warnMs + 1000; time += 20) {
+        t = updateTreant(t, input(time, { hp: time < 1000 ? 17 : hp, player: { x: 12.5, y: 10.5 } })).treant;
+        if (t.ring && ringFrom === undefined) ringFrom = time;
+      }
+      return { t, ringFrom };
+    };
+    const { t, ringFrom } = spin(17);
+    expect(ringFrom).toBeDefined();
+    expect(t.ring!.centre).toEqual({ x: 12.5, y: 6.5 });
+    // The player stood straight below it: the first gap opened at 90°.
+    expect(t.ring!.offset).toBeCloseTo(Math.PI / 2);
+    expect(t.ring!.turned).toBeGreaterThan(0);
+    expect(spin(1).t.ring!.turned).toBeGreaterThan(t.ring!.turned);
   });
 
   it('can be hurt as normal before its last stand', () => {

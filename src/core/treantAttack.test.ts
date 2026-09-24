@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest';
 import type { Cell } from './floorGenerator';
 import type { Tile } from './roomGenerator';
 import {
+  advanceRing,
+  planBranchRing,
+  RING,
+  ringGaps,
+  ringHits,
   branchSweepHits,
   branchSweepPhase,
   burstSpot,
@@ -271,6 +276,63 @@ describe('branch sweep', () => {
     const sweep = planBranchSweep(treant, around(2, 0));
     expect(branchSweepHits(sweep, sweep.telegraphMs + 1, around(1.2, sweep.halfArc * 0.8))).toBe(true);
     expect(branchSweepHits(sweep, sweep.telegraphMs + 1, around(1.2, -sweep.halfArc * 0.8))).toBe(true);
+  });
+});
+
+describe('branch ring', () => {
+  const centre = { x: 12.5, y: 6.5 };
+  const deg = Math.PI / 180;
+  const around = (distance: number, angle: number) => ({ x: centre.x + Math.cos(angle) * distance, y: centre.y + Math.sin(angle) * distance });
+  // The player stands straight below the treant: on screen, angle 90°.
+  const player = around(3, 90 * deg);
+  const active = RING.warnMs;
+
+  it('opens with one of three gaps on the player, 120° apart', () => {
+    const ring = planBranchRing(centre, player, 0);
+    const gaps = ringGaps(ring).map((a) => Math.round(((a / deg) % 360) + 360) % 360).sort((a, b) => a - b);
+    expect(gaps).toEqual([90, 210, 330]);
+  });
+
+  it('hurts nothing while it is only a warning', () => {
+    const ring = planBranchRing(centre, player, 0);
+    for (let t = 0; t < RING.warnMs; t += 100) {
+      for (let a = 0; a < 360; a += 15) expect(ringHits(ring, t, around(4, a * deg)), `t ${t} a ${a}`).toBe(false);
+    }
+  });
+
+  it('then hurts everywhere outside the gaps, near or far, but not inside them', () => {
+    const ring = planBranchRing(centre, player, 0);
+    for (const gap of [90, 210, 330]) {
+      expect(ringHits(ring, active, around(2, gap * deg))).toBe(false);
+      expect(ringHits(ring, active, around(9, (gap + 15) * deg))).toBe(false);
+      expect(ringHits(ring, active, around(2, (gap + 25) * deg))).toBe(true);
+      expect(ringHits(ring, active, around(14, (gap + 60) * deg))).toBe(true);
+    }
+  });
+
+  it('turns clockwise, 25° a second at first and 40° a second at the end', () => {
+    const start = planBranchRing(centre, player, 0);
+    const slow = advanceRing(start, active + 1000, 0);
+    const fast = advanceRing(start, active + 1000, 1);
+    expect(ringGaps(slow)[0] - ringGaps(start)[0]).toBeCloseTo(25 * deg);
+    expect(ringGaps(fast)[0] - ringGaps(start)[0]).toBeCloseTo(40 * deg);
+    // The warning never turns it.
+    expect(ringGaps(advanceRing(start, active, 1))[0]).toBeCloseTo(ringGaps(start)[0]);
+    // Where the gap was is now under the branches, and a spot clockwise of it is safe.
+    expect(ringHits(slow, active + 1000, around(4, 90 * deg - 10 * deg))).toBe(true);
+    expect(ringHits(slow, active + 1000, around(4, 90 * deg + 25 * deg))).toBe(false);
+  });
+
+  it('never jumps when it speeds up: each frame turns it by no more than its top speed allows', () => {
+    let ring = planBranchRing(centre, player, 0);
+    let before = ringGaps(ring)[0];
+    for (let t = active; t < active + 5000; t += 20) {
+      ring = advanceRing(ring, t, Math.min(1, (t - active) / 3000));
+      const now = ringGaps(ring)[0];
+      expect(now - before).toBeGreaterThanOrEqual(0);
+      expect(now - before).toBeLessThanOrEqual(40 * deg * 0.02 + 1e-9);
+      before = now;
+    }
   });
 });
 

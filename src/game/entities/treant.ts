@@ -4,7 +4,12 @@ import { canHurtTreant, createTreant as createTreantBrain, TREANT, updateTreant,
 import {
   branchSweepHits,
   branchSweepPhase,
+  RING,
+  ringGaps,
+  ringHits,
+  ringWarning,
   rootEruptionAt,
+  type BranchRing,
   type BranchSweep,
   type Point,
   type SeedVolley,
@@ -38,9 +43,14 @@ export function createTreant(scene: Phaser.Scene, x: number, y: number, _cell: C
   const ground = scene.add.graphics().setDepth(1);
   const pods = scene.add.graphics().setDepth(12);
   const branches = scene.add.graphics().setDepth(9);
+  // The tree itself stands over its own branches.
+  sprite.setDepth(9.5);
+  for (const d of decor) d.shape.setDepth(9.6);
   const rng = createRng(Math.floor(Math.random() * 2 ** 31));
   let brain: Treant | undefined;
   let health = hp;
+  /** Keeps the last stand's branches to the room's floor. */
+  let ringMask: Phaser.GameObjects.Graphics | undefined;
 
   /** Tile units (10.5 is the middle of tile 10) to world pixels and back. */
   const toTiles = (ctx: EnemyContext, p: Point): Point => {
@@ -118,6 +128,45 @@ export function createTreant(scene: Phaser.Scene, x: number, y: number, _cell: C
     }
   };
 
+  /**
+   * The last stand's branches: dark cover over the whole room but for the gaps, their edges lined
+   * with thick branches. Only an outline while it is a warning. Clipped to the room's floor.
+   */
+  const drawRing = (ctx: EnemyContext, ring: BranchRing) => {
+    branches.clear();
+    if (!ringMask) {
+      const corner = ctx.tileCenter({ x: 0, y: 0 });
+      const t = TUNING.tile;
+      ringMask = scene.make.graphics({}).fillRect(corner.x - t / 2, corner.y - t / 2, ctx.tiles[0].length * t, ctx.tiles.length * t);
+      branches.setMask(ringMask.createGeometryMask());
+    }
+    const { x: cx, y: cy } = toWorld(ctx, ring.centre);
+    const reach = Math.hypot(ctx.tiles[0].length, ctx.tiles.length) * TUNING.tile;
+    const half = (RING.gapDeg / 2) * (Math.PI / 180);
+    const gaps = ringGaps(ring);
+    const warning = ringWarning(ring, ctx.time);
+    const warn = Math.min(1, (ctx.time - ring.start) / RING.warnMs);
+    gaps.forEach((gap, i) => {
+      const from = gap + half;
+      const to = (gaps[i + 1] ?? gaps[0] + 2 * Math.PI) - half;
+      if (warning) {
+        branches.fillStyle(COLORS.sweepTelegraph, 0.08 + 0.2 * warn).slice(cx, cy, reach, from, to).fillPath();
+      } else {
+        branches.fillStyle(COLORS.ringCover, 0.55).slice(cx, cy, reach, from, to).fillPath();
+        // A few boughs across the cover, turning with it.
+        for (let k = 1; k < 4; k++) {
+          const a = from + ((to - from) * k) / 4;
+          branches.lineStyle(4, COLORS.treantBark, 0.6).lineBetween(cx, cy, cx + Math.cos(a) * reach, cy + Math.sin(a) * reach);
+        }
+      }
+      for (const edge of [from, to]) {
+        branches
+          .lineStyle(warning ? 2 : 8, warning ? COLORS.sweepTelegraph : COLORS.treantBark, warning ? 0.8 : 1)
+          .lineBetween(cx, cy, cx + Math.cos(edge) * reach, cy + Math.sin(edge) * reach);
+      }
+    });
+  };
+
   /** Up out of the ground on `cell`: whoever stands there is hurt and shoved clear. */
   const burst = (ctx: EnemyContext, cell: Cell) => {
     const c = ctx.tileCenter(cell);
@@ -164,6 +213,11 @@ export function createTreant(scene: Phaser.Scene, x: number, y: number, _cell: C
       if (brain.phase === 'marked') drawMark(ctx, brain.burstAt!, (ctx.time - brain.phaseStart) / TREANT.markMs);
       return;
     }
+    if (brain.ring) {
+      drawRing(ctx, brain.ring);
+      if (ringHits(brain.ring, ctx.time, player)) ctx.hurtPlayer();
+      return;
+    }
     const { attack, sweep } = brain;
     if (attack?.kind === 'roots') {
       const { telegraph, hurting } = rootEruptionAt(attack.plan, ctx.time - attack.start);
@@ -190,6 +244,7 @@ export function createTreant(scene: Phaser.Scene, x: number, y: number, _cell: C
       ground.destroy();
       pods.destroy();
       branches.destroy();
+      ringMask?.destroy();
     }
     return remaining;
   };

@@ -2,6 +2,9 @@ import type { Cell } from './floorGenerator';
 import type { Rng } from './rng';
 import type { Door, Tile } from './roomGenerator';
 import {
+  advanceRing,
+  planBranchRing,
+  type BranchRing,
   branchSweepPhase,
   burstSpot,
   inSweepRange,
@@ -53,6 +56,8 @@ export interface Treant {
   phaseStart: number;
   /** Where it comes up for its last stand, once marked. */
   burstAt?: Cell;
+  /** Its last stand's spinning branches, once it is up. */
+  ring?: BranchRing;
   attack?: TreantAttack;
   nextAttackAt: number;
   throwSeedsNext: boolean;
@@ -123,7 +128,14 @@ function lastStand(treant: Treant, input: TreantInput): TreantStep {
     return { treant: { ...treant, phase: 'marked', phaseStart: input.time, burstAt }, events: [] };
   }
   if (treant.phase === 'marked' && since >= TREANT.markMs) {
-    return { treant: { ...treant, phase: 'lastStand', phaseStart: input.time }, events: [{ kind: 'burst', cell: treant.burstAt! }] };
+    const cell = treant.burstAt!;
+    const ring = planBranchRing({ x: cell.x + 0.5, y: cell.y + 0.5 }, input.player, input.time);
+    return { treant: { ...treant, phase: 'lastStand', phaseStart: input.time, ring }, events: [{ kind: 'burst', cell }] };
+  }
+  if (treant.phase === 'lastStand' && treant.ring) {
+    // How far through the hit points it had left for its last stand.
+    const drained = 1 - input.hp / (input.maxHp * TREANT.lastStandAt);
+    return { treant: { ...treant, ring: advanceRing(treant.ring, input.time, drained) }, events: [] };
   }
   return { treant, events: [] };
 }

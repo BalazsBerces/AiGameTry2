@@ -746,8 +746,19 @@ if (scenario === 'treant') {
   await page.waitForTimeout(700);
   await shot('treant-burst');
   console.log('burst (player shoved clear, half a heart lost)', JSON.stringify(await lastStand()), 'middle', JSON.stringify(mid));
-  await page.waitForTimeout(1500);
-  console.log('standing in its last stand', JSON.stringify(await lastStand()));
+  await page.waitForTimeout(700);
+  await shot('treant-ring-warning');
+  console.log('ring warning (no harm yet)', JSON.stringify(await lastStand()));
+  // Stand still: the gap that opened on the player turns away, and the branches start to hurt.
+  for (let i = 0; i < 8; i++) {
+    await page.waitForTimeout(500);
+    if (i === 3) await shot('treant-ring-spinning');
+    console.log(`ring t=${((i + 1) * 0.5).toFixed(1)}s`, JSON.stringify(await lastStand()));
+  }
+  await page.evaluate(`(() => { const s = ${scene()}; s.damagePart(s.enemies[0].parts[0], 17); })()`);
+  await page.waitForTimeout(300);
+  await shot('treant-dead');
+  console.log('after the killing blow', JSON.stringify({ enemies: await page.evaluate(`${scene()}.enemies.length`), cleared: await page.evaluate(`${scene()}.world.cleared.has('${id}')`) }));
 }
 
 if (scenario === 'end-race') {

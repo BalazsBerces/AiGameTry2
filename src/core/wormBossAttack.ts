@@ -11,10 +11,8 @@ export const WORM_BOSS = {
   minAttackLength: 4,
   /** Until this share of its hit points is gone, hits drain one shared pool and no segment breaks. */
   sharedHpShare: 0.2,
-  /** After a tunnel through the walls, this long before it may tunnel again. */
-  burrowCooldownMs: 4000,
   /**
-   * Rocks shaken loose as a piece tunnels, on one cooldown shared by every piece: this
+   * Rocks shaken loose as a lunge tunnels into a wall, on one cooldown shared by every piece: this
    * many, within this many tiles of the player, each marked by its shadow for `rockShadowMs`.
    */
   rockfallCooldownMs: 6000,
@@ -58,20 +56,6 @@ export const inPhaseTwo = (hp: number, maxHp: number) => hp <= maxHp / 2;
 /** The next cell from `c` along `heading`. */
 const ahead = (c: Cell, heading: Direction): Cell => ({ x: c.x + STEP[heading].x, y: c.y + STEP[heading].y });
 const outside = (tiles: Tile[][], c: Cell) => c.y < 0 || c.x < 0 || c.y >= tiles.length || c.x >= tiles[0].length;
-
-/**
- * The outer-wall cell the worm dives into on its next step, if it does: its head runs straight
- * at one of the room's four outer walls (not a doorway), the burrow cooldown is up, and the piece
- * is long enough to attack. Otherwise it crawls on and turns at the wall as usual.
- */
-export function diveCell(worm: Worm, tiles: Tile[][], doors: Door[], now: number, readyAt: number): Cell | undefined {
-  if (now < readyAt || !canAttack(worm.segments.length)) return undefined;
-  const head = worm.segments[0];
-  const wall = ahead(head, worm.heading);
-  if (!outside(tiles, wall)) return undefined;
-  if (doors.some((d) => d.side === worm.heading && d.cell.x === head.x && d.cell.y === head.y)) return undefined;
-  return wall;
-}
 
 const OPPOSITE: Record<Direction, Direction> = { up: 'down', down: 'up', left: 'right', right: 'left' };
 
@@ -123,12 +107,12 @@ export function rockfallAt(elapsedMs: number): { shadow: number; landed: boolean
 
 export interface Lunge {
   heading: Direction;
-  /** The cells the head races through, nearest first (through the walls too, if it wraps). */
+  /** The cells the head races through, nearest first (through the walls too, if it tunnels). */
   path: Cell[];
-  /** Rocks on the path it bursts straight through, smashing them: the first on each side of a wrap. */
+  /** Rocks on the path it bursts straight through, smashing them: the first on each side of the walls. */
   bursts: Cell[];
-  /** It tunnels into the outer wall at `entry` and straight out of the opposite one at `exit`. */
-  wrap?: { entry: Cell; exit: Cell };
+  /** It tunnels into the outer wall at `entry` and out of another wall at `exit`, racing on along `heading`. */
+  wrap?: { entry: Cell; exit: Cell; heading: Direction };
   /** What it runs into at the end, inside the room (rock takes a blow); none at the outer wall. */
   stop?: Cell;
 }
@@ -148,29 +132,41 @@ function straightRun(tiles: Tile[][], from: Cell, heading: Direction) {
   return { path, burst, end: at };
 }
 
-/** The outer-wall cell across the room from `entry`, on the same line. */
-function acrossFrom(tiles: Tile[][], entry: Cell, heading: Direction): Cell {
-  if (heading === 'right') return { x: -1, y: entry.y };
-  if (heading === 'left') return { x: tiles[0].length, y: entry.y };
-  if (heading === 'down') return { x: entry.x, y: -1 };
-  return { x: entry.x, y: tiles.length };
+const isDoorway = (doors: Door[], cell: Cell, side: Direction) =>
+  doors.some((d) => d.side === side && d.cell.x === cell.x && d.cell.y === cell.y);
+
+/**
+ * Where a lunge that tunnelled into the `entered` wall comes out: a random spot on one of the
+ * other three outer walls, never a doorway, with floor or rock to race on into.
+ */
+function randomExit(tiles: Tile[][], doors: Door[], entered: Direction, rng: Rng): { exit: Cell; heading: Direction } | undefined {
+  const height = tiles.length;
+  const width = tiles[0].length;
+  const edge = (side: Direction): Cell[] =>
+    side === 'up' || side === 'down'
+      ? Array.from({ length: width }, (_, x) => ({ x, y: side === 'up' ? 0 : height - 1 }))
+      : Array.from({ length: height }, (_, y) => ({ x: side === 'left' ? 0 : width - 1, y }));
+  const exits = DIRECTIONS.filter((side) => side !== entered).flatMap((side) =>
+    edge(side)
+      .filter((c) => !isDoorway(doors, c, side) && (tiles[c.y][c.x] === 'floor' || tiles[c.y][c.x] === 'rock'))
+      .map((c) => ({ exit: ahead(c, side), heading: OPPOSITE[side] })),
+  );
+  return exits.length ? rng.pick(exits) : undefined;
 }
 
 /**
  * One lunge of a rampage: straight along one of the four lines from the head (never back into
  * its own neck), over open floor, bursting through the first rock in its way, until it runs into
- * anything else. Running into an outer wall, it tunnels straight through and out of the opposite
- * wall on the same line, once, and lunges on (not through a doorway, nor into stone). It takes
- * the line that brings it closest to the player, the longer run on a tie; none if every line is
- * blocked at once.
+ * anything else. It takes the line that brings it closest to the player, the longer run on a
+ * tie; none if every line is blocked at once.
  */
-export function planLunge(tiles: Tile[][], doors: Door[], worm: Worm, player: Cell): Lunge | undefined {
+export function planLunge(tiles: Tile[][], doors: Door[], worm: Worm, player: Cell, rng: Rng): Lunge | undefined {
   const [head, neck] = worm.segments;
   const manhattan = (a: Cell) => Math.abs(a.x - player.x) + Math.abs(a.y - player.y);
   const lunges = DIRECTIONS.flatMap((heading) => {
     const first = ahead(head, heading);
     if (neck && first.x === neck.x && first.y === neck.y) return [];
-    const lunge = lungeLine(tiles, doors, head, heading);
+    const lunge = lungeFrom(tiles, doors, head, heading, rng);
     const inRoom = lunge.path.filter((c) => !outside(tiles, c));
     return inRoom.length ? [{ lunge, closest: Math.min(...inRoom.map(manhattan)) }] : [];
   });
@@ -178,35 +174,23 @@ export function planLunge(tiles: Tile[][], doors: Door[], worm: Worm, player: Ce
 }
 
 /**
- * The base burrow: a worm whose head runs straight at an outer wall (not a doorway) races
- * through it and out of the wall across the room, on the same line, and on like a lunge. None
- * unless it is headed straight into an outer wall with a way out on the other side.
+ * The lunge from `head` along `heading`: over floor, bursting through the first rock, until it
+ * runs into anything. Running into an outer wall (not a doorway) it tunnels through, once: out of
+ * a random spot on another wall, and on into the room from there.
  */
-export function planTunnel(tiles: Tile[][], doors: Door[], worm: Worm): Lunge | undefined {
-  const head = worm.segments[0];
-  if (!outside(tiles, ahead(head, worm.heading))) return undefined;
-  const lunge = lungeLine(tiles, doors, head, worm.heading);
-  return lunge.wrap ? lunge : undefined;
-}
-
-/** The lunge from `head` along `heading`: over floor, through one outer wall and out across the room, until it runs into anything. */
-function lungeLine(tiles: Tile[][], doors: Door[], head: Cell, heading: Direction): Lunge {
-  const doorway = (cell: Cell, side: Direction) => doors.some((d) => d.side === side && d.cell.x === cell.x && d.cell.y === cell.y);
+export function lungeFrom(tiles: Tile[][], doors: Door[], head: Cell, heading: Direction, rng: Rng): Lunge {
   const before = straightRun(tiles, ahead(head, heading), heading);
   let path = before.path;
   const bursts = before.burst ? [before.burst] : [];
   let end = before.end;
   let wrap: Lunge['wrap'];
-  if (outside(tiles, end)) {
-    const exit = acrossFrom(tiles, end, heading);
-    const after = straightRun(tiles, ahead(exit, heading), heading);
-    const blocked = doorway(ahead(end, OPPOSITE[heading]), heading) || doorway(ahead(exit, heading), OPPOSITE[heading]);
-    if (!blocked && after.path.length) {
-      wrap = { entry: end, exit };
-      path = [...path, end, exit, ...after.path];
-      if (after.burst) bursts.push(after.burst);
-      end = after.end;
-    }
+  const out = outside(tiles, end) && !isDoorway(doors, ahead(end, OPPOSITE[heading]), heading) ? randomExit(tiles, doors, heading, rng) : undefined;
+  if (out) {
+    const after = straightRun(tiles, ahead(out.exit, out.heading), out.heading);
+    wrap = { entry: end, exit: out.exit, heading: out.heading };
+    path = [...path, end, out.exit, ...after.path];
+    if (after.burst) bursts.push(after.burst);
+    end = after.end;
   }
   return { heading, path, bursts, wrap, stop: outside(tiles, end) ? undefined : end };
 }

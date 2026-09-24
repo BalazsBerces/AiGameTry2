@@ -407,6 +407,47 @@ describe('validateRoom crusher lanes', () => {
   });
 });
 
+describe('validateRoom in an L room', () => {
+  /**
+   * A 26x14 L without its bottom-right cell: that 13x7 corner is `wall`. Doors sit in the
+   * middle of each outer cell edge: two on the top arm, two on the left arm.
+   */
+  function lRoom(stone: [number, number][] = [], zombies: [number, number][] = [[8, 4]]) {
+    const tiles: Tile[][] = Array.from({ length: 14 }, (_, y) =>
+      Array.from({ length: 26 }, (_, x): Tile => (x >= 13 && y >= 7 ? 'wall' : 'floor')),
+    );
+    for (const [x, y] of stone) tiles[y][x] = 'obstacle';
+    const doors: Door[] = [
+      { side: 'up', cell: { x: 5, y: 0 } },
+      { side: 'right', cell: { x: 25, y: 2 } },
+      { side: 'left', cell: { x: 0, y: 11 } },
+      { side: 'down', cell: { x: 5, y: 13 } },
+    ];
+    const enemies: EnemySpawn[] = zombies.map(([x, y]) => ({ type: 'zombie', cell: { x, y } }));
+    return { tiles, doors, enemies, pickups: [] as PickupSpawn[] };
+  }
+  const lRules = (r: ReturnType<typeof lRoom>) => validateRoom(r, BOTH).map((v) => v.rule);
+  /** Stone at (3,2) mirrored along both arms; its image in the missing corner is wall anyway. */
+  const MIRRORED: [number, number][] = [[3, 2], [22, 2], [3, 11]];
+
+  it('holds each arm to its mirror image along its length, ignoring the missing corner', () => {
+    expect(lRules(lRoom(MIRRORED))).toEqual([]);
+  });
+
+  it('still rejects stone in one arm without its twin', () => {
+    expect(lRules(lRoom([...MIRRORED, [20, 4]]))).toContain('asymmetric');
+  });
+
+  it('never lets anything stand in the missing corner', () => {
+    expect(lRules(lRoom(MIRRORED, [[8, 4], [20, 10]]))).toContain('spawn-off-floor');
+  });
+
+  it('needs every door reachable across the cells, around the corner', () => {
+    const wallAcrossLeftArm = Array.from({ length: 13 }, (_, x): [number, number] => [x, 8]);
+    expect(lRules(lRoom(wallAcrossLeftArm))).toContain('door-unreachable');
+  });
+});
+
 /** Like `room`, plus `*`: a crystal. */
 function roomWithCrystals(picture: string, doors?: Direction[]) {
   const r = room(picture, doors);

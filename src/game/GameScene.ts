@@ -698,7 +698,12 @@ export class GameScene extends Phaser.Scene {
       row.forEach((tile: Tile, tx) => {
         if (isWalkable(tile)) return;
         const c = tileCenter(room, tx, ty);
-        const shape = drawTile(this, c.x, c.y, looks[tile as Exclude<Tile, 'floor'>]);
+        // An L room's missing cell: plain room wall, not terrain that can crack.
+        if (tile === 'wall') {
+          this.walls.add(this.add.rectangle(c.x, c.y, t, t, palette.wall));
+          return;
+        }
+        const shape = drawTile(this, c.x, c.y, looks[tile as Exclude<Tile, 'floor' | 'wall'>]);
         // Shot-blocking tiles are walls to physics; the rest (holes) only stop walking.
         if (!blocksShots(tile)) {
           (hurtsOnTouch(tile) ? this.thorns : this.holes).add(shape);

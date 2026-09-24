@@ -23,25 +23,40 @@ export interface FloorRoom {
   kind: RoomKind;
   /** Top-left map cell of the room. */
   cell: Cell;
-  /** Every map cell the room covers (one for most rooms, two for wide or tall ones, four for the 2x2 boss room). */
+  /** Every map cell the room covers (one for most rooms, two for wide or tall ones, four for big rooms and the boss room). */
   cells: Cell[];
   /** The block of map cells the room spans. */
   shape: RoomShape;
 }
 
-/** Room footprints in map cells, columns x rows. The boss room is always 2x2. */
-export type RoomShape = '1x1' | '2x1' | '1x2' | '2x2';
+/**
+ * Room footprints in map cells, columns x rows. The boss room is always 2x2. An L is a 2x2
+ * block missing one cell, named for the corner it leaves out (`L-br`: no bottom-right cell).
+ */
+export type RoomShape = '1x1' | '2x1' | '1x2' | '2x2' | 'L-tl' | 'L-tr' | 'L-bl' | 'L-br';
 
-/** The map cells of each shape, relative to its top-left cell. */
+/** The map cells of each shape, relative to the top-left cell of its bounding box. */
 export const SHAPE_CELLS: Record<RoomShape, readonly Cell[]> = {
   '1x1': [{ x: 0, y: 0 }],
   '2x1': [{ x: 0, y: 0 }, { x: 1, y: 0 }],
   '1x2': [{ x: 0, y: 0 }, { x: 0, y: 1 }],
   '2x2': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }],
+  'L-tl': [{ x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }],
+  'L-tr': [{ x: 0, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }],
+  'L-bl': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }],
+  'L-br': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }],
 };
 
+export const L_SHAPES: readonly RoomShape[] = ['L-tl', 'L-tr', 'L-bl', 'L-br'];
+
+/** The cell of an L's 2x2 bounding box that is not part of the room; undefined for full blocks. */
+export function missingCell(shape: RoomShape): Cell | undefined {
+  if (!L_SHAPES.includes(shape)) return undefined;
+  return { x: shape.endsWith('r') ? 1 : 0, y: shape.includes('-b') ? 1 : 0 };
+}
+
 /** Normal-room shapes the floor generator grows rooms into; 1-3 of them per floor. */
-export const GROWN_SHAPES: readonly RoomShape[] = ['2x1', '1x2'];
+export const GROWN_SHAPES: readonly RoomShape[] = ['2x1', '1x2', '2x2', ...L_SHAPES];
 export const SHAPED_ROOMS = { min: 1, max: 3 };
 
 export interface FloorLayout {
@@ -286,7 +301,7 @@ function assignSpecialRooms(req: FloorRequest, growth: Growth): FloorLayout | un
 }
 
 /**
- * Grows 1-3 normal rooms into wide or tall blocks. A room only takes free cells that touch
+ * Grows 1-3 normal rooms into wide, tall, big or L blocks. A room only takes free cells that touch
  * nothing but itself (and never the exit), so the layout stays a tree with no accidental
  * adjacency and every existing door keeps its cell. The next floor must still fit beyond the exit.
  */

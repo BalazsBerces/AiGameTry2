@@ -118,7 +118,7 @@ describe('generateFloor layout', () => {
     }
   });
 
-  it('has 1-3 shaped normal rooms on every floor, each a wide 2x1 or tall 1x2 block', () => {
+  it('has 1-3 shaped normal rooms on every floor, each a wide 2x1, tall 1x2, big 2x2 or L block', () => {
     const seen = new Set<string>();
     for (const seed of SWEEP) {
       for (const [i, floor] of chain(seed).entries()) {
@@ -129,17 +129,30 @@ describe('generateFloor layout', () => {
           expect(r.kind, `seed ${seed} ${r.id}`).toBe('normal');
           const xs = r.cells.map((c) => c.x);
           const ys = r.cells.map((c) => c.y);
-          const span = `${Math.max(...xs) - Math.min(...xs) + 1}x${Math.max(...ys) - Math.min(...ys) + 1}`;
-          expect(['2x1', '1x2'], `seed ${seed} ${r.id}`).toContain(span);
-          expect(r.cells, `seed ${seed} ${r.id}`).toHaveLength(2);
-          expect(r.shape, `seed ${seed} ${r.id}`).toBe(span);
+          const cols = Math.max(...xs) - Math.min(...xs) + 1;
+          const rows = Math.max(...ys) - Math.min(...ys) + 1;
+          const span = `${cols}x${rows}`;
+          expect(new Set(r.cells.map((c) => `${c.x},${c.y}`)).size, `seed ${seed} ${r.id}`).toBe(r.cells.length);
           expect(r.cell).toEqual({ x: Math.min(...xs), y: Math.min(...ys) });
+          if (r.cells.length === 3) {
+            // An L: three cells of a 2x2 block, named for the corner it leaves out.
+            expect(span, `seed ${seed} ${r.id}`).toBe('2x2');
+            const gap = [0, 1].flatMap((y) => [0, 1].map((x) => ({ x, y })))
+              .find((o) => !r.cells.some((c) => c.x === r.cell.x + o.x && c.y === r.cell.y + o.y))!;
+            expect(r.shape, `seed ${seed} ${r.id}`).toBe(`L-${gap.y ? 'b' : 't'}${gap.x ? 'r' : 'l'}`);
+            seen.add(r.shape);
+            continue;
+          }
+          expect(['2x1', '1x2', '2x2'], `seed ${seed} ${r.id}`).toContain(span);
+          // A full block: every cell of the span is the room's.
+          expect(r.cells, `seed ${seed} ${r.id}`).toHaveLength(cols * rows);
+          expect(r.shape, `seed ${seed} ${r.id}`).toBe(span);
           seen.add(span);
         }
         for (const r of floor.rooms.filter((room) => room.kind !== 'boss' && room.cells.length === 1)) expect(r.shape).toBe('1x1');
       }
     }
-    expect([...seen].sort()).toEqual(['1x2', '2x1']);
+    expect([...seen].sort()).toEqual(['1x2', '2x1', '2x2', 'L-bl', 'L-br', 'L-tl', 'L-tr']);
   });
 
   it('lines doors up: each door opens into the cell holding the neighbour’s facing door', () => {

@@ -110,7 +110,10 @@ function crusherLaneHolds(room: RoomToValidate, crusher: Crusher): boolean {
   });
 }
 
-/** Terrain mirrors across every declared axis; feature tiles (and their mirror images) are exempt. */
+/**
+ * Terrain mirrors across every declared axis; feature tiles (and their mirror images) are exempt.
+ * So is an L room's missing cell (`wall`) and its image: each arm mirrors along its own length.
+ */
 function isSymmetric(tiles: Tile[][], { axes, feature = [] }: Symmetry): boolean {
   if (!axes.length) return false;
   const height = tiles.length;
@@ -122,7 +125,9 @@ function isSymmetric(tiles: Tile[][], { axes, feature = [] }: Symmetry): boolean
     tiles.every((row, y) =>
       row.every((tile, x) => {
         const m = mirror({ x, y }, axis);
-        return exempt.has(key({ x, y })) || exempt.has(key(m)) || tile === tiles[m.y][m.x];
+        const image = tiles[m.y][m.x];
+        if (tile === 'wall' || image === 'wall') return true;
+        return exempt.has(key({ x, y })) || exempt.has(key(m)) || tile === image;
       }),
     ),
   );

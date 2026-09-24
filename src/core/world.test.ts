@@ -144,7 +144,10 @@ describe('bombs', () => {
 });
 
 describe('createWorld room shapes', () => {
-  const SIZE: Record<string, [number, number]> = { '1x1': [13, 7], '2x1': [26, 7], '1x2': [13, 14], '2x2': [26, 14] };
+  const SIZE: Record<string, [number, number]> = {
+    '1x1': [13, 7], '2x1': [26, 7], '1x2': [13, 14], '2x2': [26, 14],
+    'L-tl': [26, 14], 'L-tr': [26, 14], 'L-bl': [26, 14], 'L-br': [26, 14],
+  };
   /** A door's tile in world tile coordinates: the room's block origin, its wall padding, then the door cell. */
   const doorTile = (room: WorldRoom, cell: { x: number; y: number }) => {
     const pad = roomPadding(room.layout.width, room.layout.height);

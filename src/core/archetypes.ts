@@ -1,4 +1,4 @@
-import type { Cell, Direction, RoomKind, RoomShape } from './floorGenerator';
+import { L_SHAPES, missingCell, type Cell, type Direction, type RoomKind, type RoomShape } from './floorGenerator';
 import type { Rng } from './rng';
 import { PASSIVE_POOL, WORM_LENGTH, type Door, type EnemySpawn, type PickupSpawn, type Tile } from './roomGenerator';
 import type { MirrorAxis, Symmetry } from './roomValidator';
@@ -11,6 +11,8 @@ export interface ArchetypeContext {
   height: number;
   doors: Door[];
   rng: Rng;
+  /** The room's shape; an L's missing cell is walled off after the build, so nothing may stand there. */
+  shape?: RoomShape;
 }
 
 export interface ArchetypeBuild {
@@ -954,6 +956,85 @@ const boarRun: Archetype = {
   },
 };
 
+/**
+ * Big room, every floor: an arena for a set-piece battle. A pit (or a stone dais) fills the
+ * middle, pillars ring it, a pack of the floor's walkers circles the ring and its turrets hold
+ * the corners. Painted as one quarter mirrored into all four; the door columns (5, 20) and rows
+ * (2, 11) stay clear, so it fits every door set.
+ */
+const arena = (floor: number): Archetype => ({
+  id: `arena${floor + 1}`,
+  floor,
+  kind: 'normal',
+  shapes: ['2x2'],
+  fits: fitsAll,
+  build({ width, height, rng }) {
+    const axes: MirrorAxis[] = ['vertical', 'horizontal'];
+    const canvas = new Canvas(width, height, axes);
+    // The centre piece, as its top-left quarter around the middle (12..13, 6..7).
+    const centre = rng.pick([
+      [{ x: 11, y: 6 }, { x: 12, y: 6 }, { x: 12, y: 5 }],
+      [{ x: 10, y: 6 }, { x: 11, y: 6 }, { x: 12, y: 6 }, { x: 11, y: 5 }, { x: 12, y: 5 }],
+      [{ x: 12, y: 6 }],
+    ]);
+    canvas.paint(centre, rng.next() < 0.7 ? 'hole' : 'obstacle');
+    const pillars = rng.pick([[{ x: 7, y: 3 }], [{ x: 6, y: 2 }, { x: 6, y: 4 }], [{ x: 8, y: 2 }], [{ x: 7, y: 3 }, { x: 10, y: 2 }]]);
+    canvas.paint(pillars, rng.next() < 0.5 ? 'rock' : 'obstacle');
+    const blocked = new Set([...centre, ...pillars].map((c) => `${c.x},${c.y}`));
+    const spots = shuffled([{ x: 9, y: 4 }, { x: 4, y: 5 }, { x: 8, y: 5 }, { x: 9, y: 1 }], rng).filter((c) => !blocked.has(`${c.x},${c.y}`));
+    const pack = canvas.images(spots[0]);
+    // A second wave on a diagonal pair, sometimes.
+    if (rng.next() < 0.5) {
+      const second = canvas.images(spots[1]);
+      pack.push(second[0], second[second.length - 1]);
+    }
+    const corners = canvas.images(rng.pick([{ x: 1, y: 0 }, { x: 2, y: 1 }, { x: 0, y: 5 }]));
+    const turrets = rng.next() < 0.5 ? corners : [corners[0], corners[corners.length - 1]];
+    return {
+      tiles: canvas.tiles,
+      enemies: [...turretsOf(floor, turrets), ...walkersOf(floor, pack)],
+      pickups: [],
+      symmetry: { axes },
+    };
+  },
+});
+
+/**
+ * L room, every floor: an ambush around the corner. Blinds of stone or rock stand where the
+ * arms meet, and a pack of the floor's walkers waits in each arm's far end, pressed against the
+ * missing corner, out of sight of the other arm; a turret may hold the elbow's outer corner.
+ * Painted as one quarter mirrored into all four (the missing one is walled off afterwards), so
+ * each arm mirrors along its length and every orientation of the L is drawn alike. Door columns
+ * (5, 20) and rows (2, 11) stay clear, so it fits every door set.
+ */
+const ambush = (floor: number): Archetype => ({
+  id: `ambush${floor + 1}`,
+  floor,
+  kind: 'normal',
+  shapes: L_SHAPES,
+  fits: fitsAll,
+  build({ width, height, rng, shape }) {
+    const axes: MirrorAxis[] = ['vertical', 'horizontal'];
+    const canvas = new Canvas(width, height, axes);
+    const blind = rng.pick([
+      [{ x: 10, y: 4 }, { x: 11, y: 4 }, { x: 10, y: 5 }, { x: 11, y: 5 }],
+      [{ x: 10, y: 3 }, { x: 10, y: 4 }, { x: 10, y: 5 }],
+      [{ x: 9, y: 5 }, { x: 10, y: 5 }, { x: 10, y: 4 }],
+    ]);
+    canvas.paint(blind, rng.next() < 0.5 ? 'rock' : 'obstacle');
+    // Which quarter each image lands in: the elbow faces the missing cell across the room.
+    const gap = (shape && missingCell(shape)) ?? { x: 1, y: 1 };
+    const quarter = (c: Cell) => ({ x: c.x < width / 2 ? 0 : 1, y: c.y < height / 2 ? 0 : 1 });
+    const isElbow = (c: Cell) => quarter(c).x !== gap.x && quarter(c).y !== gap.y;
+    const inArmEnd = (c: Cell) => !isElbow(c) && (quarter(c).x !== gap.x || quarter(c).y !== gap.y);
+    const lurks = shuffled([{ x: 8, y: 5 }, { x: 9, y: 6 }, { x: 7, y: 6 }], rng).slice(0, rng.int(1, 2));
+    const pack = lurks.flatMap((c) => canvas.images(c)).filter(inArmEnd);
+    const enemies = walkersOf(floor, pack);
+    if (rng.next() < 0.6) enemies.push(...turretsOf(floor, canvas.images(rng.pick([{ x: 2, y: 0 }, { x: 1, y: 5 }])).filter(isElbow)));
+    return { tiles: canvas.tiles, enemies, pickups: [], symmetry: { axes } };
+  },
+});
+
 function shuffled<T>(items: readonly T[], rng: Rng): T[] {
   const out = [...items];
   for (let i = out.length - 1; i > 0; i--) {
@@ -992,6 +1073,8 @@ export const ARCHETYPES: readonly Archetype[] = [
   waspNest,
   boarRun,
   hauntedHall,
+  ...[0, 1, 2].map(arena),
+  ...[0, 1, 2].map(ambush),
 ];
 
 export const archetypeById = (id: string) => ARCHETYPES.find((a) => a.id === id);

@@ -27,7 +27,8 @@ export interface TileLook {
 export interface FloorTheme {
   name: string;
   palette: Palette;
-  looks: Record<Exclude<Tile, 'floor'>, TileLook>;
+  /** Room tiles only: `wall` (an L room's missing cell) is drawn in the palette's wall colour. */
+  looks: Record<Exclude<Tile, 'floor' | 'wall'>, TileLook>;
   boss: BossType;
   /** The floor's basic walker and turret: each floor's variants look and behave differently. */
   walker: EnemyType;

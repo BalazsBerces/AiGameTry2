@@ -1,5 +1,5 @@
 import { archetypeById, archetypesFor, fallbackArchetype, supportsShape } from './archetypes';
-import { SHAPE_CELLS, type Cell, type Direction, type RoomKind, type RoomShape } from './floorGenerator';
+import { missingCell, SHAPE_CELLS, type Cell, type Direction, type RoomKind, type RoomShape } from './floorGenerator';
 import { floodFill } from './grid';
 import { validateRoom } from './roomValidator';
 import type { Passive } from './weaponModel';
@@ -18,9 +18,11 @@ export const CELL_TILES = { w: ROOM_WIDTH + 2, h: ROOM_HEIGHT + 2 };
 /**
  * `obstacle` is stone; `rock` is the same but breaks after a few player shots; `thorn` is a
  * bush that hurts whoever walks into it; `crusher` is a block that slides when it sees the
- * player. Behaviour lives in `TILES`.
+ * player; `crystal` bounces every shot. `wall` is not part of the room at all: it fills the
+ * missing cell of an L room's box, is drawn as room wall and nothing ever enters it. Behaviour
+ * lives in `TILES`.
  */
-export type Tile = 'floor' | 'obstacle' | 'rock' | 'hole' | 'thorn' | 'crusher' | 'crystal';
+export type Tile = 'floor' | 'obstacle' | 'rock' | 'hole' | 'thorn' | 'crusher' | 'crystal' | 'wall';
 
 export interface DoorSpec {
   side: Direction;
@@ -53,6 +55,27 @@ export function roomPadding(width: number, height: number) {
   const cellsW = Math.ceil(width / ROOM_WIDTH);
   const cellsH = Math.ceil(height / ROOM_HEIGHT);
   return { x: (cellsW * CELL_TILES.w - width) / 2, y: (cellsH * CELL_TILES.h - height) / 2 };
+}
+
+/**
+ * Interior tiles outside the room: those of an L's missing map cell (its whole 15x9-tile block,
+ * clipped to the interior), so the arms meet with the corner between them filled. Never true
+ * for full blocks.
+ */
+export function outsideRoom(shape: RoomShape, width: number, height: number): (c: Cell) => boolean {
+  const gap = missingCell(shape);
+  if (!gap) return () => false;
+  const pad = roomPadding(width, height);
+  const x0 = gap.x * CELL_TILES.w - pad.x;
+  const y0 = gap.y * CELL_TILES.h - pad.y;
+  return (c) => c.x >= x0 && c.x < x0 + CELL_TILES.w && c.y >= y0 && c.y < y0 + CELL_TILES.h;
+}
+
+/** Turns every tile outside the room into `wall`, whatever was painted there. */
+function wallOff(tiles: Tile[][], shape: RoomShape): Tile[][] {
+  const outside = outsideRoom(shape, tiles[0].length, tiles.length);
+  tiles.forEach((row, y) => row.forEach((_, x) => outside({ x, y }) && (row[x] = 'wall')));
+  return tiles;
 }
 
 export interface Door {
@@ -333,11 +356,13 @@ function buildFromArchetype(spec: RoomSpec, doors: Door[], floorIndex: number, r
   const chosen = assigned ?? (fitting.length ? rng.pick(fitting) : fallback);
   for (const archetype of [chosen, fallback]) {
     for (let attempt = 0; attempt < MAX_ARCHETYPE_ATTEMPTS; attempt++) {
-      const built = archetype.build({ width, height, doors, rng });
+      const drawn = archetype.build({ width, height, doors, rng, shape });
+      const built = { ...drawn, tiles: wallOff(drawn.tiles, shape) };
       if (validateRoom({ ...built, doors }, built.symmetry).length === 0) return { ...built, archetype: archetype.id };
     }
   }
-  return { tiles: emptyTiles(width, height), enemies: [] as EnemySpawn[], pickups: [] as PickupSpawn[], archetype: fallback.id };
+  const tiles = wallOff(emptyTiles(width, height), shape);
+  return { tiles, enemies: [] as EnemySpawn[], pickups: [] as PickupSpawn[], archetype: fallback.id };
 }
 
 export function generateRoom(spec: RoomSpec, floorIndex: number, rng: Rng): RoomLayout {
@@ -358,7 +383,7 @@ export function generateRoom(spec: RoomSpec, floorIndex: number, rng: Rng): Room
   }
   // Normal and item rooms come from archetypes above; boss arenas are built here, start rooms stay empty.
   const isDoor = (c: Cell) => doors.some((d) => d.cell.x === c.x && d.cell.y === c.y);
-  let tiles = emptyTiles(width, height);
+  let tiles = wallOff(emptyTiles(width, height), spec.shape ?? '1x1');
   const terrain = spec.kind === 'boss' ? BOSS_ARENAS[bossForFloor(floorIndex)] : undefined;
   for (let attempt = 0; terrain && attempt < MAX_TERRAIN_ATTEMPTS; attempt++) {
     const candidate = emptyTiles(width, height);

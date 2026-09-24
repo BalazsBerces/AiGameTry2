@@ -66,6 +66,22 @@ describe('crusher tile', () => {
   });
 });
 
+describe('wall tile (the missing corner of an L room)', () => {
+  it('is room wall: nothing walks, flies, phases, shoots or sees through it', () => {
+    expect(isWalkable('wall')).toBe(false);
+    expect(flyersPass('wall')).toBe(false);
+    expect(phasingPasses('wall')).toBe(false);
+    expect(blocksShots('wall')).toBe(true);
+    expect(blocksSight('wall')).toBe(true);
+  });
+
+  it('never breaks and never hurts', () => {
+    expect(hitsToBreak('wall')).toBeUndefined();
+    expect(bombDestructible('wall')).toBe(false);
+    expect(hurtsOnTouch('wall')).toBe(false);
+  });
+});
+
 describe('crystal tile', () => {
   it('is a solid block: not walked, flown or seen through', () => {
     expect(isWalkable('crystal')).toBe(false);

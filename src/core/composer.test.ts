@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { composeRoom, ENCOUNTERS, LAYOUTS } from './composer';
+import { composeRoom, ENCOUNTERS, encountersFor, LAYOUTS, layoutsFor } from './composer';
 import { L_SHAPES, missingCell, SHAPE_CELLS } from './floorGenerator';
 import { createRng } from './rng';
 import { outsideRoom, placeDoors, roomSize, type DoorSpec } from './roomGenerator';
@@ -63,21 +63,21 @@ describe('composeRoom for wide rooms', () => {
   it('mixes layouts and encounters: each layout shows up with each encounter', () => {
     const wideLayouts = LAYOUTS.filter((l) => l.shapes.includes('2x1'));
     expect(wideLayouts.length).toBeGreaterThanOrEqual(2);
-    expect(ENCOUNTERS.length).toBeGreaterThanOrEqual(2);
+    expect(encountersFor(0).length).toBeGreaterThanOrEqual(2);
     const pairs = new Set<string>();
     for (let seed = 0; seed < 200; seed++) {
       const doors = wideDoors(WIDE_DOOR_SETS[seed % WIDE_DOOR_SETS.length]);
       const room = composeRoom({ shape: '2x1', doors, theme: 'bramble', floorIndex: 0, rng: createRng(seed) })!;
       pairs.add(`${room.layout} + ${room.encounter}`);
     }
-    expect(pairs.size).toBe(wideLayouts.length * ENCOUNTERS.length);
+    expect(pairs.size).toBe(wideLayouts.length * encountersFor(0).length);
   });
 
-  it('builds every theme, layout and encounter pairing validly for every door set', () => {
+  it('builds every theme, layout and encounter pairing validly for every door set', { timeout: 60_000 }, () => {
     for (const [floorIndex, themes] of FLOOR_THEMES.entries()) {
       for (const theme of themes) {
         for (const layout of LAYOUTS.filter((l) => l.shapes.includes('2x1'))) {
-          for (const encounter of ENCOUNTERS) {
+          for (const encounter of encountersFor(floorIndex)) {
             for (const [i, specs] of WIDE_DOOR_SETS.entries()) {
               const doors = wideDoors(specs);
               const where = `${theme} ${layout.id} + ${encounter.id} doors ${JSON.stringify(specs)}`;
@@ -115,16 +115,6 @@ describe('composeRoom for wide rooms', () => {
       for (const theme of themes.filter((t) => t !== 'bramble')) expect(thorns(theme, floorIndex), theme).toBe(0);
     }
   });
-
-  it('favours the encounters that suit the theme, without ruling the others out', () => {
-    const share = (theme: string, floorIndex: number) => {
-      const rooms = sample(theme, floorIndex);
-      return rooms.filter((r) => r.encounter === 'ledgeSentries').length / rooms.length;
-    };
-    // The marsh leans to sentries on the ledges, the grove to prowlers in its corners.
-    expect(share('marsh', 0)).toBeGreaterThan(2 * share('grove', 0));
-    expect(share('grove', 0)).toBeGreaterThan(0);
-  });
 });
 
 describe('composeRoom for every big shape', () => {
@@ -135,7 +125,7 @@ describe('composeRoom for every big shape', () => {
       const outside = outsideRoom(shape, roomSize('normal', shape).width, roomSize('normal', shape).height);
       for (const [floorIndex, themes] of FLOOR_THEMES.entries()) {
         for (const layout of layouts) {
-          for (const encounter of ENCOUNTERS) {
+          for (const encounter of encountersFor(floorIndex)) {
             for (const [i, specs] of doorSets(shape, 20).entries()) {
               const theme = themes[i % 3];
               const doors = doorsFor(shape, specs);
@@ -152,4 +142,60 @@ describe('composeRoom for every big shape', () => {
       }
     }
   }, 60_000);
+});
+
+describe('big-room content per floor', () => {
+  const SPECIALS = [['wasp', 'boar'], ['bat', 'worm'], ['knight', 'ghost']];
+
+  it('gives every floor about three layouts per big shape and four or more encounters', () => {
+    for (const floorIndex of [0, 1, 2]) {
+      for (const shape of BIG_SHAPES) expect(layoutsFor(shape).length, `${shape}`).toBeGreaterThanOrEqual(3);
+      expect(encountersFor(floorIndex).length, `floor ${floorIndex + 1}`).toBeGreaterThanOrEqual(4);
+    }
+  });
+
+  it("brings each floor's own enemies into its big rooms", () => {
+    for (const [floorIndex, themes] of FLOOR_THEMES.entries()) {
+      const seen = new Set<string>();
+      for (let seed = 0; seed < 300; seed++) {
+        const shape = BIG_SHAPES[seed % BIG_SHAPES.length];
+        const sets = doorSets(shape);
+        const doors = doorsFor(shape, sets[seed % sets.length]);
+        const room = composeRoom({ shape, doors, theme: themes[seed % 3], floorIndex, rng: createRng(seed) })!;
+        for (const e of room.enemies) seen.add(e.type);
+      }
+      for (const special of SPECIALS[floorIndex]) expect(seen, `floor ${floorIndex + 1}`).toContain(special);
+    }
+  });
+});
+
+describe('sub-theme encounter weights', () => {
+  const FAVOURITE: Record<string, string> = {
+    grove: 'boarCharge', marsh: 'waspSwarm', bramble: 'ambush',
+    grotto: 'ledgeSentries', hollow: 'batColony', rift: 'wormNest',
+    crypt: 'haunting', cellblock: 'knightPatrol', machineHall: 'siege',
+  };
+  const share = (encounter: string, theme: string, floorIndex: number) => {
+    let hits = 0;
+    const n = 150;
+    for (let seed = 0; seed < n; seed++) {
+      const shape = BIG_SHAPES[seed % BIG_SHAPES.length];
+      const sets = doorSets(shape);
+      const room = composeRoom({ shape, doors: doorsFor(shape, sets[seed % sets.length]), theme, floorIndex, rng: createRng(seed) })!;
+      if (room.encounter === encounter) hits++;
+    }
+    return hits / n;
+  };
+
+  it('makes each sub-theme favour its fitting fight over the rest of its floor, never ruling others out', { timeout: 60_000 }, () => {
+    for (const [floorIndex, themes] of FLOOR_THEMES.entries()) {
+      for (const theme of themes) {
+        const favourite = FAVOURITE[theme];
+        const own = share(favourite, theme, floorIndex);
+        const elsewhere = themes.filter((t) => t !== theme).map((t) => share(favourite, t, floorIndex));
+        for (const other of elsewhere) expect(own, `${theme} ${favourite}`).toBeGreaterThan(1.5 * other);
+        expect(own, theme).toBeLessThan(0.7);
+      }
+    }
+  });
 });

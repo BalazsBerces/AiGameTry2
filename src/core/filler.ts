@@ -2,7 +2,7 @@ import { Canvas } from './archetypes';
 import type { Cell } from './floorGenerator';
 import { floodFill } from './grid';
 import type { Rng } from './rng';
-import type { Tile } from './roomGenerator';
+import { ROOM_HEIGHT, type Tile } from './roomGenerator';
 import { roomThemeById } from './roomThemes';
 import { doorApproach, nearDoor, validateRoom, type RoomToValidate, type Symmetry } from './roomValidator';
 import { isWalkable } from './tiles';
@@ -78,7 +78,9 @@ export function addFiller(req: FillerRequest): { tiles: Tile[][]; symmetry: Symm
 
   /** Paints the cells (and, unless lone, their mirror images) if the room stays sound; true if it did. */
   const place = (cells: Cell[], lone = false): boolean => {
-    const all = lone ? cells : cells.flatMap((c) => mirror.images(c));
+    // Images landing in an L's walled-off corner are simply left out.
+    const all = (lone ? cells : cells.flatMap((c) => mirror.images(c))).filter((c) => tiles[c.y]?.[c.x] !== 'wall');
+    if (!all.length) return false;
     const free = (c: Cell) =>
       c.x >= 0 && c.y >= 0 && c.x < width && c.y < height && tiles[c.y][c.x] === 'floor' && !guarded.has(key(c)) && !nearDoor(room.doors, c);
     if (!all.every(free)) return false;
@@ -118,10 +120,11 @@ export function addFiller(req: FillerRequest): { tiles: Tile[][]; symmetry: Symm
     }
   }
 
-  // Runs along the long walls (every wall of a room as tall as it is wide).
-  const walls = (['up', 'down', 'left', 'right'] as const).filter((side) =>
-    side === 'up' || side === 'down' ? width >= height : height >= width,
-  );
+  // Runs along the long walls: every wall at least two map cells long, or a 1x1 room's longest.
+  const sides = ['up', 'down', 'left', 'right'] as const;
+  const wallLength = (side: (typeof sides)[number]) => (side === 'up' || side === 'down' ? width : height);
+  const long = sides.filter((side) => wallLength(side) >= 2 * ROOM_HEIGHT);
+  const walls = long.length ? long : sides.filter((side) => wallLength(side) === Math.max(width, height));
   const runs = rng.int(tuning.runs[0], tuning.runs[1]);
   for (let i = 0; i < runs; i++) {
     for (let attempt = 0; attempt < ATTEMPTS; attempt++) {

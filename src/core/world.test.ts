@@ -98,18 +98,26 @@ describe('room sub-themes', () => {
     expect(shared / pairs).toBeGreaterThan(0.5);
   });
 
-  it("composes big rooms to suit their own theme: the fight leans the theme's way", () => {
-    const sentryThemes = new Set(['marsh', 'grotto', 'rift', 'cellblock', 'machineHall']);
-    const tally = { sentry: [0, 0], prowler: [0, 0] };
+  it("composes big rooms to suit their own theme: the fight leans the theme's way", { timeout: 60_000 }, () => {
+    // Each theme's fitting fight, and how often big rooms get it in that theme versus elsewhere on its floor.
+    const FAVOURITE: Record<string, string> = {
+      grove: 'boarCharge', marsh: 'waspSwarm', bramble: 'ambush',
+      grotto: 'ledgeSentries', hollow: 'batColony', rift: 'wormNest',
+      crypt: 'haunting', cellblock: 'knightPatrol', machineHall: 'siege',
+    };
+    const tally = { own: [0, 0], elsewhere: [0, 0] };
     for (let seed = 0; seed < 150; seed++) {
-      for (const room of createWorld(seed).rooms.values()) {
-        if (room.floorRoom.shape === '1x1' || room.floorRoom.kind !== 'normal') continue;
-        const lean = tally[sentryThemes.has(room.layout.theme!) ? 'sentry' : 'prowler'];
-        lean[0]++;
-        if (room.layout.encounter === 'ledgeSentries') lean[1]++;
+      const big = [...createWorld(seed).rooms.values()].filter((r) => r.floorRoom.shape !== '1x1' && r.floorRoom.kind === 'normal');
+      for (const room of big) {
+        for (const [theme, favourite] of Object.entries(FAVOURITE)) {
+          if (!FLOOR_THEMES[room.floorIndex].includes(theme)) continue;
+          const side = tally[room.layout.theme === theme ? 'own' : 'elsewhere'];
+          side[0]++;
+          if (room.layout.encounter === favourite) side[1]++;
+        }
       }
     }
-    expect(tally.sentry[1] / tally.sentry[0]).toBeGreaterThan(2 * (tally.prowler[1] / tally.prowler[0]));
+    expect(tally.own[1] / tally.own[0]).toBeGreaterThan(2 * (tally.elsewhere[1] / tally.elsewhere[0]));
   });
 
   it('gives the same themes for the same seed', () => {

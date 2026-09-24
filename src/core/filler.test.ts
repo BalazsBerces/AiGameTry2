@@ -4,7 +4,7 @@ import { composeRoom } from './composer';
 import type { Cell } from './floorGenerator';
 import { addFiller } from './filler';
 import { createRng } from './rng';
-import { placeDoors, type DoorSpec, type Tile } from './roomGenerator';
+import { placeDoors, roomSize, type DoorSpec, type Tile } from './roomGenerator';
 import { doorApproach, validateRoom, type Symmetry, type RoomToValidate } from './roomValidator';
 import { floodFill } from './grid';
 import { isWalkable } from './tiles';
@@ -30,15 +30,26 @@ interface Case {
   where: string;
 }
 
-/** Composed wide rooms, every floor and theme, a spread of door sets. */
+/** A door in the top-left map cell of each shape, on a wall every shape has there. */
+const BIG_SHAPES = ['2x1', '1x2', '2x2', 'L-tl', 'L-tr', 'L-bl', 'L-br'] as const;
+const doorsOf = (shape: (typeof BIG_SHAPES)[number], seed: number) => {
+  const { width, height } = roomSize('normal', shape);
+  if (shape === '2x1') return placeDoors(WIDE_DOOR_SETS[seed % WIDE_DOOR_SETS.length], width, height);
+  // Every L but the one missing its top-left cell has that cell; that one opens off its top-right.
+  const at = shape === 'L-tl' ? { x: 1, y: 0 } : { x: 0, y: 0 };
+  return placeDoors([{ side: 'up', at }], width, height);
+};
+
+/** Composed big rooms of every shape, every floor and theme. */
 function bigRooms(): Case[] {
   const cases: Case[] = [];
   for (const [floorIndex, themes] of FLOOR_THEMES.entries()) {
     for (const theme of themes) {
-      for (let seed = 0; seed < 15; seed++) {
-        const doors = placeDoors(WIDE_DOOR_SETS[(seed * 7 + floorIndex) % WIDE_DOOR_SETS.length], 26, 7);
-        const c = composeRoom({ shape: '2x1', doors, theme, floorIndex, rng: createRng(seed) })!;
-        cases.push({ room: { ...c, doors }, symmetry: c.symmetry, protect: c.spots.map((s) => s.cell), theme, size: 'big', where: `${theme} ${c.layout} seed ${seed}` });
+      for (let seed = 0; seed < 14; seed++) {
+        const shape = BIG_SHAPES[seed % BIG_SHAPES.length];
+        const doors = doorsOf(shape, seed * 7 + floorIndex);
+        const c = composeRoom({ shape, doors, theme, floorIndex, rng: createRng(seed) })!;
+        cases.push({ room: { ...c, doors }, symmetry: c.symmetry, protect: c.spots.map((s) => s.cell), theme, size: 'big', where: `${shape} ${theme} ${c.layout} seed ${seed}` });
       }
     }
   }

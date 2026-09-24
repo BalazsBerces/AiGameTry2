@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
-import { currentFloorIndex, minimapRooms } from '../core/world';
+import { currentFloorIndex, minimapRooms, roomLabel } from '../core/world';
 import { PASSIVE_POOL } from '../core/roomGenerator';
 import type { PassiveLevels } from '../core/weaponModel';
 import { COLORS } from './config';
+import { CELL_PX_H, LABEL_STRIP_H } from './geometry';
 import type { GameScene } from './GameScene';
 
 const HEART = { size: 18, gap: 6, x: 14, y: 14 };
@@ -18,6 +19,7 @@ export class HudScene extends Phaser.Scene {
   private floorText!: Phaser.GameObjects.Text;
   private keysText!: Phaser.GameObjects.Text;
   private bombsText!: Phaser.GameObjects.Text;
+  private roomText!: Phaser.GameObjects.Text;
 
   constructor() {
     super('hud');
@@ -45,6 +47,10 @@ export class HudScene extends Phaser.Scene {
     this.floorText = this.add
       .text(x + MAP.w, MAP.margin + MAP.h + 4, '', { fontFamily: 'monospace', fontSize: '14px', color: COLORS.text })
       .setOrigin(1, 0);
+    // The current room's layout, in the strip under the playfield, so bad ones can be named.
+    this.roomText = this.add
+      .text(this.scale.width / 2, CELL_PX_H + LABEL_STRIP_H / 2, '', { fontFamily: 'monospace', fontSize: '12px', color: COLORS.text })
+      .setOrigin(0.5);
   }
 
   update() {
@@ -53,6 +59,7 @@ export class HudScene extends Phaser.Scene {
     this.drawPassives(world.player.passives);
     this.drawMinimap(world);
     this.floorText.setText(`FLOOR ${currentFloorIndex(world) + 1}`);
+    this.roomText.setText(roomLabel(world.rooms.get(world.currentRoomId)!));
     this.keysText.setText(`x ${world.player.keys}`);
     this.bombsText.setText(`x ${world.player.bombs}`);
   }

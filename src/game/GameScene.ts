@@ -49,7 +49,7 @@ import { createCrystalTurret } from './entities/crystalTurret';
 import { reflectOff, ricochet } from '../core/ricochet';
 import { createGargoyle } from './entities/gargoyle';
 import { createTreant } from './entities/treant';
-import { doorCorridor, mapCellAt, roomBlock, tileAt, tileCenter } from './geometry';
+import { CELL_PX_H, CELL_PX_W, doorCorridor, mapCellAt, roomBlock, tileAt, tileCenter } from './geometry';
 import { createGoblin } from './entities/goblin';
 import { createSeedSpitter } from './entities/seedSpitter';
 import { createKnight } from './entities/knight';
@@ -287,6 +287,8 @@ export class GameScene extends Phaser.Scene {
     this.itemLockoutUntil = 0;
     this.showPickups();
 
+    // The playfield is one map cell; the label strip under it belongs to the HUD.
+    this.cameras.main.setViewport(0, 0, CELL_PX_W, CELL_PX_H);
     this.cameras.main.setBackgroundColor(themeForFloor(start.floorIndex).palette.background);
     this.followInside(start);
     this.scene.launch('hud');

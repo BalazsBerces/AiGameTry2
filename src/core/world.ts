@@ -333,6 +333,12 @@ export function minimapRooms(world: World): { room: WorldRoom; visited: boolean;
 
 export const currentFloorIndex = (world: World) => world.rooms.get(world.currentRoomId)!.floorIndex;
 
+/** The room's kind and the idea it was built from (a boss arena's boss), for playtest reports: `normal · pillarHall`. */
+export function roomLabel({ floorRoom, layout }: WorldRoom) {
+  const idea = floorRoom.kind === 'boss' ? layout.enemies[0]?.type : layout.archetype;
+  return idea ? `${floorRoom.kind} · ${idea}` : floorRoom.kind;
+}
+
 /**
  * Generates the whole run up front: three floors, each growing from the cell behind the
  * previous boss room's exit. Every floor and room has its own RNG stream.

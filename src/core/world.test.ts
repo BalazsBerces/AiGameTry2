@@ -8,6 +8,7 @@ import {
   enterRoom,
   hitTile,
   placeBomb,
+  roomLabel,
   shownPickups,
   smashRock,
   sproutTile,
@@ -20,6 +21,25 @@ import { CELL_TILES, PASSIVE_POOL, roomPadding } from './roomGenerator';
 
 const firstNormalRoom = (world: ReturnType<typeof createWorld>) =>
   [...world.rooms.values()].find((r) => r.floorRoom.kind === 'normal')!;
+
+describe('roomLabel', () => {
+  it("names a normal room by its kind and the idea it was built from", () => {
+    const room = firstNormalRoom(createWorld(1));
+    room.layout.archetype = 'pillarHall';
+    expect(roomLabel(room)).toBe('normal · pillarHall');
+  });
+
+  it('names a boss arena by the boss waiting in it', () => {
+    const room = [...createWorld(1).rooms.values()].find((r) => r.floorRoom.kind === 'boss')!;
+    room.layout.enemies = [{ type: 'ironMaiden', cell: { x: 6, y: 3 } }];
+    expect(roomLabel(room)).toBe('boss · ironMaiden');
+  });
+
+  it('names the empty start room by its kind alone', () => {
+    const world = createWorld(1);
+    expect(roomLabel(world.rooms.get(world.currentRoomId)!)).toBe('start');
+  });
+});
 
 describe('hitTile', () => {
   it('breaks a rock on the third player hit, leaving floor behind', () => {

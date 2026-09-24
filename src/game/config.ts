@@ -37,7 +37,7 @@ export const TUNING = {
   gargoyle: { hp: 5, size: 34, shotSpeed: 250 },
   /** Touching a thorn bush: half a heart to the player; walker damage and i-frames are placeholders. */
   thorn: { playerDamage: 1, walkerDamage: 1, walkerInvincibleMs: 600 },
-  /** `restMs`: pause between root eruptions. Root timing itself lives in core/treantAttack. */
+  /** `restMs`: pause between attacks. Root and seed-pod timing itself lives in core/treantAttack. */
   treant: { radius: 46, hp: 70, restMs: 700 },
   hive: { radius: 40, hp: 60, spiralDelayMs: 150, spiralStep: 0.32, shotSpeed: 170, summonEveryMs: 5000, maxSummoned: 3 },
   /** A woken crusher shudders for `windupMs`, then slides `msPerTile` per tile; it can wake again `cooldownMs` after settling. */
@@ -113,4 +113,8 @@ export const COLORS = {
   stunMark: 0xffe066,
   ghost: 0xd8e8f0,
   ghostEdge: 0x7fa8c8,
+  seedPod: 0x8a6a2a,
+  podShadow: 0x1a1208,
+  sweepTelegraph: 0xd8b25a,
+  sweep: 0x6a8a3a,
 };

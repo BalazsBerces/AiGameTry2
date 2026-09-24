@@ -1,6 +1,6 @@
 import type Phaser from 'phaser';
 import type { Cell, Direction } from '../../core/floorGenerator';
-import type { Tile } from '../../core/roomGenerator';
+import type { Door, Tile } from '../../core/roomGenerator';
 import type { Weapon } from '../../core/weaponModel';
 import type { Stunnable } from '../../core/stun';
 import { COLORS, TUNING } from '../config';
@@ -33,6 +33,13 @@ export interface EnemyContext {
   hurtPlayer(): void;
   /** A charging boar ran into this tile: rock there breaks for good (core/world `smashRock`). */
   smashRock(tile: Cell): void;
+  /** The current room's doors (attacks that reshape terrain keep their approaches clear). */
+  doors: Door[];
+  /**
+   * A seed pod comes down on `cell`: it sprouts `tile` there for good (the world's tiles change),
+   * or, if the player is standing on it, bursts on them instead. True if it sprouted.
+   */
+  landSeedPod(cell: Cell, tile: 'rock' | 'thorn'): boolean;
 }
 
 /**

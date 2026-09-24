@@ -18,6 +18,7 @@ import {
   placeBomb,
   roomAtCell,
   shownPickups,
+  sproutTile,
   touchPickup,
   type World,
   type WorldPickup,
@@ -416,6 +417,8 @@ export class GameScene extends Phaser.Scene {
       smashRock: (cell: Cell) => {
         if (smashRock(this.world, room.floorRoom.id, cell)) this.removeTerrain(room.floorRoom.id, cell);
       },
+      doors: room.layout.doors,
+      landSeedPod: (cell, tile) => this.landSeedPod(room, cell, tile),
     };
   }
 
@@ -776,5 +779,28 @@ export class GameScene extends Phaser.Scene {
         c.readyAt = this.time.now + cooldownMs;
       },
     });
+  }
+
+  /** A Treant seed pod lands: it bursts on a player standing there, otherwise sprouts rock or thorn for good. */
+  private landSeedPod(room: WorldRoom, cell: Cell, tile: 'rock' | 'thorn'): boolean {
+    const roomId = room.floorRoom.id;
+    const c = tileCenter(room, cell.x, cell.y);
+    const reach = (TUNING.tile + TUNING.playerSize) / 2;
+    if (Math.abs(this.player.x - c.x) < reach && Math.abs(this.player.y - c.y) < reach) {
+      this.hurtPlayer();
+      return false;
+    }
+    if (!sproutTile(this.world, roomId, cell, tile)) return false;
+    const shape = drawTile(this, c.x, c.y, themeForFloor(room.floorIndex).looks[tile]);
+    if (!blocksShots(tile)) {
+      this.thorns.add(shape);
+    } else {
+      shape.setData({ roomId, tile: cell });
+      this.walls.add(shape);
+      this.terrain.set(`${roomId}|${cell.x},${cell.y}`, shape);
+    }
+    shape.setScale(0.2);
+    this.tweens.add({ targets: shape, scale: 1, duration: 180, ease: 'Back.easeOut' });
+    return true;
   }
 }

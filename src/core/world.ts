@@ -214,6 +214,18 @@ export function smashRock(world: World, roomId: string, cell: Cell): boolean {
   return true;
 }
 
+/**
+ * A seed pod landed on `cell` and sprouts `tile` there. Only floor can sprout; like a broken
+ * rock, the change is the world's and lasts for the rest of the run. True if it sprouted.
+ */
+export function sproutTile(world: World, roomId: string, cell: Cell, tile: 'rock' | 'thorn'): boolean {
+  const tiles = world.rooms.get(roomId)?.layout.tiles;
+  if (tiles?.[cell.y]?.[cell.x] !== 'floor') return false;
+  tiles[cell.y][cell.x] = tile;
+  world.tileHits.delete(`${roomId}|${cell.x},${cell.y}`);
+  return true;
+}
+
 /** Spends a bomb if the player has one; true if one was placed. */
 export function placeBomb(world: World): boolean {
   if (world.player.bombs <= 0) return false;

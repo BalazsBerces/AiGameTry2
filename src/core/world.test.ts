@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { validateRoom } from './roomValidator';
-import { createWorld, detonateBomb, hitTile, placeBomb, shownPickups, smashRock, touchPickup, type WorldRoom } from './world';
+import { createWorld, detonateBomb, hitTile, placeBomb, shownPickups, smashRock, sproutTile, touchPickup, type WorldRoom } from './world';
 import { archetypeById, supportsShape } from './archetypes';
 import { CELL_TILES, roomPadding } from './roomGenerator';
 
@@ -53,6 +53,41 @@ describe('smashRock', () => {
     tiles[1][3] = 'floor';
     for (const x of [1, 2, 3]) expect(smashRock(world, room.floorRoom.id, { x, y: 1 })).toBe(false);
     expect(tiles[1].slice(1, 4)).toEqual(['obstacle', 'hole', 'floor']);
+  });
+});
+
+describe('sproutTile', () => {
+  it('grows a seed pod into rock that stays in the room until it is broken', () => {
+    const world = createWorld(1);
+    const room = firstNormalRoom(world);
+    room.layout.tiles[3][6] = 'floor';
+    expect(sproutTile(world, room.floorRoom.id, { x: 6, y: 3 }, 'rock')).toBe(true);
+    expect(world.rooms.get(room.floorRoom.id)!.layout.tiles[3][6]).toBe('rock');
+    let result = hitTile(world, room.floorRoom.id, { x: 6, y: 3 });
+    expect(result).toBe('damaged');
+    while (result === 'damaged') result = hitTile(world, room.floorRoom.id, { x: 6, y: 3 });
+    expect(result).toBe('broken');
+    expect(room.layout.tiles[3][6]).toBe('floor');
+  });
+
+  it('grows a thorn bush on floor', () => {
+    const world = createWorld(1);
+    const room = firstNormalRoom(world);
+    room.layout.tiles[2][4] = 'floor';
+    expect(sproutTile(world, room.floorRoom.id, { x: 4, y: 2 }, 'thorn')).toBe(true);
+    expect(room.layout.tiles[2][4]).toBe('thorn');
+  });
+
+  it('only sprouts on floor inside the room', () => {
+    const world = createWorld(1);
+    const room = firstNormalRoom(world);
+    room.layout.tiles[3][6] = 'hole';
+    room.layout.tiles[3][7] = 'obstacle';
+    expect(sproutTile(world, room.floorRoom.id, { x: 6, y: 3 }, 'rock')).toBe(false);
+    expect(sproutTile(world, room.floorRoom.id, { x: 7, y: 3 }, 'thorn')).toBe(false);
+    expect(sproutTile(world, room.floorRoom.id, { x: -1, y: 3 }, 'rock')).toBe(false);
+    expect(room.layout.tiles[3][6]).toBe('hole');
+    expect(room.layout.tiles[3][7]).toBe('obstacle');
   });
 });
 

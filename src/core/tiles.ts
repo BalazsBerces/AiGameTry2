@@ -86,6 +86,17 @@ export const TILES: Record<Tile, TileProps> = {
     reflectsShots: false,
     bombDestructible: false,
   },
+  /** Outside the room: the missing cell of an L, drawn and solid as room wall. */
+  wall: {
+    walkable: false,
+    blocksShots: true,
+    blocksSight: true,
+    flyersPass: false,
+    phasingPasses: false,
+    hurtsOnTouch: false,
+    reflectsShots: false,
+    bombDestructible: false,
+  },
 };
 
 export const isWalkable = (tile: Tile) => TILES[tile].walkable;

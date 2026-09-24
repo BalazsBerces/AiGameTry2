@@ -460,13 +460,41 @@ const DOOR_SLOTS: Record<'1x1' | '2x1' | '1x2' | '2x2', DoorSpec[]> = {
 };
 const subsets = <T,>(items: T[]) =>
   Array.from({ length: (1 << items.length) - 1 }, (_, m) => items.filter((_, i) => (m + 1) & (1 << i)));
+
+/** The three cells of each L, named for the cell of the 2x2 block it leaves out. */
+const L_CELLS = {
+  'L-tl': [{ x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }],
+  'L-tr': [{ x: 0, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }],
+  'L-bl': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }],
+  'L-br': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }],
+} as const;
+type LShape = keyof typeof L_CELLS;
+const L_SHAPES = Object.keys(L_CELLS) as LShape[];
+/** An L's door slots: every side of its cells facing out of the 2x2 block (inner sides face the missing cell). */
+const lSlots = (shape: LShape): DoorSpec[] =>
+  L_CELLS[shape].flatMap((at) =>
+    SIDES.filter((side) => {
+      const n = { x: at.x + STEP_OF[side].x, y: at.y + STEP_OF[side].y };
+      return n.x < 0 || n.y < 0 || n.x > 1 || n.y > 1;
+    }).map((side) => ({ side, at })),
+  );
+/** Interior tiles of the cell an L leaves out: a 13x7 quarter of its 26x14 box. */
+const missingQuarter = (shape: LShape) => {
+  const out = { x: shape.endsWith('l') ? 0 : 13, y: shape.includes('-t') ? 0 : 7 };
+  return (c: { x: number; y: number }) => c.x >= out.x && c.x < out.x + 13 && c.y >= out.y && c.y < out.y + 7;
+};
+
 const EVERY_SHAPED_DOOR_SET = {
   '1x1': subsets(DOOR_SLOTS['1x1']),
   '2x1': subsets(DOOR_SLOTS['2x1']),
   '1x2': subsets(DOOR_SLOTS['1x2']),
   '2x2': subsets(DOOR_SLOTS['2x2']),
+  ...(Object.fromEntries(L_SHAPES.map((s) => [s, subsets(lSlots(s))])) as Record<LShape, DoorSpec[][]>),
 };
-const SHAPE_SIZE = { '1x1': [13, 7], '2x1': [26, 7], '1x2': [13, 14], '2x2': [26, 14] };
+const SHAPE_SIZE = {
+  '1x1': [13, 7], '2x1': [26, 7], '1x2': [13, 14], '2x2': [26, 14],
+  'L-tl': [26, 14], 'L-tr': [26, 14], 'L-bl': [26, 14], 'L-br': [26, 14],
+};
 
 describe('The Jar (floor 1)', () => {
   const jar = (seed: number, doors: readonly (typeof SIDES)[number][]) =>
@@ -563,7 +591,8 @@ describe('every archetype', () => {
       const layouts = new Set<string>();
       for (const shape of a.shapes ?? ['1x1' as const]) {
         // Shaped rooms have many more door sets: a few fresh seeds each still covers every one.
-        const seeds = shape === '1x1' ? 25 : 3;
+        // Big and L rooms have dozens of door sets or more: one fresh seed each is plenty.
+        const seeds = shape === '1x1' ? 25 : EVERY_SHAPED_DOOR_SET[shape].length > 60 ? 1 : 3;
         const doorSets = EVERY_SHAPED_DOOR_SET[shape].filter((d) => a.fits(d.map((door) => door.side)));
         for (const [i, doors] of doorSets.entries()) {
           const first = shape === '1x1' ? 0 : i * seeds;
@@ -577,6 +606,14 @@ describe('every archetype', () => {
             if (a.kind === 'normal') expect(r.enemies.length, where).toBeGreaterThan(0);
             expect(generateRoom(spec, a.floor, createRng(seed)), where).toEqual(r);
             for (const e of r.enemies) expect(ROSTER[a.floor], where).toContain(e.type);
+            // Whatever the idea painted, an L's missing cell is wall and nothing stands in it.
+            if (shape in L_CELLS) {
+              const out = missingQuarter(shape as LShape);
+              const misplaced = r.tiles.flatMap((row, y) => row.flatMap((t, x) => ((t === 'wall') !== out({ x, y }) ? [`${x},${y}`] : [])));
+              expect(misplaced, where).toEqual([]);
+            }
+            const spawns = [...r.enemies.flatMap((e) => [e.cell, ...(e.tail ?? [])]), ...r.pickups.map((p) => p.cell)];
+            expect(spawns.filter((c) => r.tiles[c.y][c.x] !== 'floor'), where).toEqual([]);
             for (const w of r.enemies.filter((e) => e.type === 'worm')) {
               const chain = [w.cell, ...(w.tail ?? [])];
               expect(chain, where).toHaveLength(WORM_LENGTH);
@@ -592,8 +629,8 @@ describe('every archetype', () => {
     }
   }, 30_000);
 
-  it.each([0, 1, 2])('gives floor %i a wide, a tall and a big idea, one of each fitting every door set', (floorIndex) => {
-    for (const shape of ['2x1', '1x2', '2x2'] as const) {
+  it.each([0, 1, 2])('gives floor %i a wide, a tall, a big and an L idea, one of each fitting every door set', (floorIndex) => {
+    for (const shape of ['2x1', '1x2', '2x2', ...L_SHAPES] as const) {
       const own = ARCHETYPES.filter((a) => a.floor === floorIndex && a.kind === 'normal' && a.shapes?.includes(shape));
       expect(own.some((a) => EVERY_DOOR_SET.every((d) => a.fits(d))), shape).toBe(true);
       for (const doors of EVERY_SHAPED_DOOR_SET[shape].slice(0, 20)) {
@@ -798,6 +835,51 @@ describe('generateRoom', () => {
     expect(big.doors.find((d) => d.side === 'left')?.cell).toEqual({ x: 0, y: 9 + 4 - 2 });
     expect(big.doors.find((d) => d.side === 'right')?.cell).toEqual({ x: 25, y: 4 - 2 });
     expect(big.enemies.length).toBeGreaterThan(0);
+  });
+
+  it('builds an L room in its 26x14 box, with doors on its cells’ outer walls and its missing cell walled off', () => {
+    const l = generateRoom(
+      {
+        id: '0,0',
+        kind: 'normal',
+        shape: 'L-br',
+        doors: [
+          { side: 'up', at: { x: 1, y: 0 } },
+          { side: 'right', at: { x: 1, y: 0 } },
+          { side: 'left', at: { x: 0, y: 1 } },
+          { side: 'down', at: { x: 0, y: 1 } },
+        ],
+      },
+      0,
+      createRng(1),
+    );
+    expect([l.width, l.height]).toEqual([26, 14]);
+    // Laid out like the big room: doors on the centre column / row of their 15x9-tile cell.
+    expect(l.doors.find((d) => d.side === 'up')?.cell).toEqual({ x: 15 + 7 - 2, y: 0 });
+    expect(l.doors.find((d) => d.side === 'right')?.cell).toEqual({ x: 25, y: 4 - 2 });
+    expect(l.doors.find((d) => d.side === 'left')?.cell).toEqual({ x: 0, y: 9 + 4 - 2 });
+    expect(l.doors.find((d) => d.side === 'down')?.cell).toEqual({ x: 7 - 2, y: 13 });
+    // The arms meet with the corner between them filled: no wall ring between the cells.
+    expect([l.tiles[6][12], l.tiles[6][13], l.tiles[7][12]].includes('wall')).toBe(false);
+    expect(l.tiles[7][13]).toBe('wall');
+    expect(l.tiles[13][25]).toBe('wall');
+    expect(l.enemies.length).toBeGreaterThan(0);
+  });
+
+  it('keeps every L walled off in its missing cell, with its doors reachable around the corner', () => {
+    for (const shape of L_SHAPES) {
+      for (let floor = 0; floor < 3; floor++) {
+        const doors = lSlots(shape);
+        const r = generateRoom({ id: '0,0', kind: 'normal', shape, doors }, floor, createRng(floor));
+        const where = `${shape} floor ${floor}`;
+        const out = missingQuarter(shape);
+        r.tiles.forEach((row, y) => row.forEach((t, x) => expect(t === 'wall', `${where} ${x},${y}`).toBe(out({ x, y }))));
+        expect(r.doors, where).toHaveLength(6);
+        for (const d of r.doors) expect(out(d.cell), `${where} door ${JSON.stringify(d)}`).toBe(false);
+        const open = reachable(r, r.doors[0].cell);
+        for (const d of r.doors) expect(open.has(`${d.cell.x},${d.cell.y}`), `${where} door ${JSON.stringify(d)}`).toBe(true);
+      }
+    }
   });
 
   it('places doors at the middle of their wall', () => {

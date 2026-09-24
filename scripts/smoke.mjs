@@ -253,7 +253,8 @@ if (scenario === 'worm-boss') {
   const hitPart = (enemy, part, times) =>
     page.evaluate(`(() => { const s = ${scene()}; const p = s.enemies[${enemy}]?.parts[${part}];
       for (let i = 0; i < ${times} && p; i++) s.damagePart(p, 1); })()`);
-  await page.waitForTimeout(1500);
+  // Segments inside the wall can't be hit: wait for the whole worm to be out.
+  for (let i = 0; i < 40 && (await status()).hidden.some((n) => n > 0); i++) await page.waitForTimeout(250);
   for (const part of [9, 4]) await hitPart(0, part, 3);
   console.log('after splitting', JSON.stringify(await status()));
   for (let i = 0; i < 12; i++) {

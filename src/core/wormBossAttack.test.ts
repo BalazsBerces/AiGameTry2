@@ -1,15 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import type { Cell } from './floorGenerator';
+import { STEP, type Cell, type Direction } from './floorGenerator';
 import type { Tile } from './roomGenerator';
 import { createRng } from './rng';
-import { burrowAt, canAttack, inPhaseTwo, planBurrow, spitWave, WORM_BOSS } from './wormBossAttack';
+import { burrowAt, canAttack, diveCell, inPhaseTwo, planExit, spitWave, WORM_BOSS } from './wormBossAttack';
+import { createWorm } from './wormChain';
 
 /** ASCII fixture: `.` floor, `#` stone, `r` rock. */
 const grid = (rows: string[]): Tile[][] =>
   rows.map((row) => [...row].map((ch): Tile => (ch === '#' ? 'obstacle' : ch === 'r' ? 'rock' : 'floor')));
 const key = (c: Cell) => `${c.x},${c.y}`;
-const manhattan = (a: Cell, b: Cell) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
-const chebyshev = (a: Cell, b: Cell) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
 
 /** A worm-arena-like fixture: rock walls every third row and column, some broken through. */
 const maze = grid([
@@ -24,75 +23,127 @@ const maze = grid([
   '..r..r..r..r..',
 ]);
 
-describe('worm boss burrow', () => {
-  it('surfaces two to four tiles from the player, on floor or rock, never on the room edge', () => {
-    for (let seed = 0; seed < 40; seed++) {
-      const player = { x: 3 + (seed % 8), y: 2 + (seed % 5) };
-      const { surface } = planBurrow(maze, { x: 0, y: 0 }, player, createRng(seed));
-      expect(manhattan(surface, player), `seed ${seed}`).toBeGreaterThanOrEqual(2);
-      expect(manhattan(surface, player), `seed ${seed}`).toBeLessThanOrEqual(4);
-      expect(['floor', 'rock']).toContain(maze[surface.y][surface.x]);
-      expect(surface.x > 0 && surface.y > 0 && surface.x < 13 && surface.y < 8, `seed ${seed}`).toBe(true);
+const worm = (cells: [number, number][], heading: Direction) => createWorm(cells.map(([x, y]) => ({ x, y })), heading);
+/** A four-segment worm lying along row `y`, head at `x`, heading right. */
+const rightward = (x: number, y: number) => worm([[x, y], [x - 1, y], [x - 2, y], [x - 3, y]], 'right');
+
+describe('worm boss dive', () => {
+  const open = grid(['........', '........', '....#...', '...r....', '........']);
+  const ready = { now: 5000, readyAt: 4000 };
+
+  it('dives into the outer wall its head runs straight at, once the cooldown is up', () => {
+    const at = diveCell(rightward(7, 1), open, [], ready.now, ready.readyAt);
+    expect(at).toEqual({ x: 8, y: 1 });
+  });
+
+  it('dives into each of the four outer walls', () => {
+    expect(diveCell(worm([[0, 1], [1, 1], [2, 1], [3, 1]], 'left'), open, [], 5000, 0)).toEqual({ x: -1, y: 1 });
+    expect(diveCell(worm([[2, 0], [2, 1], [2, 2], [2, 3]], 'up'), open, [], 5000, 0)).toEqual({ x: 2, y: -1 });
+    expect(diveCell(worm([[1, 4], [1, 3], [1, 2], [1, 1]], 'down'), open, [], 5000, 0)).toEqual({ x: 1, y: 5 });
+  });
+
+  it('keeps crawling while the cooldown is running', () => {
+    expect(diveCell(rightward(7, 1), open, [], 3999, 4000)).toBeUndefined();
+  });
+
+  it('never dives when it only brushes along a wall', () => {
+    // Running along the top edge: the wall is beside it, not ahead.
+    expect(diveCell(rightward(5, 0), open, [], 5000, 0)).toBeUndefined();
+  });
+
+  it('never dives into rock or stone inside the room', () => {
+    expect(diveCell(rightward(3, 2), open, [], 5000, 0)).toBeUndefined();
+    expect(diveCell(rightward(2, 3), open, [], 5000, 0)).toBeUndefined();
+  });
+
+  it('never dives with fewer than four segments', () => {
+    expect(diveCell(worm([[7, 1], [6, 1], [5, 1]], 'right'), open, [], 5000, 0)).toBeUndefined();
+  });
+
+  it('never dives into a doorway', () => {
+    expect(diveCell(rightward(7, 1), open, [{ side: 'right', cell: { x: 7, y: 1 } }], 5000, 0)).toBeUndefined();
+  });
+});
+
+describe('worm boss exit', () => {
+  const width = maze[0].length;
+  const height = maze.length;
+  const inRoom = (c: Cell) => c.x >= 0 && c.y >= 0 && c.x < width && c.y < height;
+
+  it('comes out of a spot in one of the outer walls, never a corner', () => {
+    const sides = new Set<string>();
+    for (let seed = 0; seed < 60; seed++) {
+      const { exit, heading } = planExit(maze, [], createRng(seed));
+      expect(inRoom(exit), `seed ${seed}`).toBe(false);
+      const front = { x: exit.x + STEP[heading].x, y: exit.y + STEP[heading].y };
+      expect(inRoom(front), `seed ${seed}`).toBe(true);
+      sides.add(heading);
+    }
+    expect([...sides].sort()).toEqual(['down', 'left', 'right', 'up']);
+  });
+
+  it('marks a lane of three cells running straight into the room from the exit', () => {
+    for (let seed = 0; seed < 30; seed++) {
+      const { exit, heading, lane } = planExit(maze, [], createRng(seed));
+      expect(lane.map(key)).toEqual(
+        [1, 2, 3].map((i) => key({ x: exit.x + STEP[heading].x * i, y: exit.y + STEP[heading].y * i })),
+      );
     }
   });
 
-  it('digs an unbroken tunnel from where it dives to where it surfaces', () => {
-    const head = { x: 1, y: 7 };
-    const { tunnel, surface } = planBurrow(maze, head, { x: 10, y: 2 }, createRng(3));
-    expect(key(tunnel[0])).toBe(key(head));
-    expect(key(tunnel[tunnel.length - 1])).toBe(key(surface));
-    for (let i = 1; i < tunnel.length; i++) expect(manhattan(tunnel[i], tunnel[i - 1])).toBe(1);
+  it('breaks exactly the rocks in its lane', () => {
+    for (let seed = 0; seed < 30; seed++) {
+      const { lane, breaks } = planExit(maze, [], createRng(seed));
+      expect(breaks.map(key).sort()).toEqual(lane.filter((c) => maze[c.y][c.x] === 'rock').map(key).sort());
+    }
   });
 
-  it('breaks exactly the rocks along the tunnel and around the exit', () => {
-    const plan = planBurrow(maze, { x: 1, y: 7 }, { x: 10, y: 2 }, createRng(3));
-    const onTunnel = plan.tunnel.filter((c) => maze[c.y][c.x] === 'rock');
-    const aroundExit = maze.flatMap((row, y) =>
-      row.flatMap((t, x) => (t === 'rock' && chebyshev({ x, y }, plan.surface) <= 1 ? [{ x, y }] : [])),
-    );
-    const expected = new Set([...onTunnel, ...aroundExit].map(key));
-    expect(new Set(plan.breaks.map(key))).toEqual(expected);
-  });
-
-  it('drops rocks around the exit, never on the exit itself or on stone', () => {
-    const tiles = grid(['..........', '..........', '....#.....', '..........', '..........', '..........']);
-    for (let seed = 0; seed < 20; seed++) {
-      const plan = planBurrow(tiles, { x: 0, y: 5 }, { x: 5, y: 1 }, createRng(seed));
-      expect(plan.rockfall.length).toBeGreaterThan(0);
-      for (const c of plan.rockfall) {
-        expect(chebyshev(c, plan.surface)).toBeGreaterThanOrEqual(1);
-        expect(chebyshev(c, plan.surface)).toBeLessThanOrEqual(2);
-        expect(tiles[c.y]?.[c.x]).toBe('floor');
-      }
+  it('never comes out into stone or through a doorway', () => {
+    const tiles = grid(['#.....', '#.....', '#.....', '......']);
+    const door = { side: 'right' as const, cell: { x: 5, y: 1 } };
+    for (let seed = 0; seed < 60; seed++) {
+      const { lane, exit } = planExit(tiles, [door], createRng(seed));
+      for (const c of lane) expect(tiles[c.y][c.x], `seed ${seed}`).not.toBe('obstacle');
+      expect(key(exit), `seed ${seed}`).not.toBe('6,1');
     }
   });
 });
 
 describe('worm boss burrow timeline', () => {
-  const plan = planBurrow(maze, { x: 1, y: 7 }, { x: 10, y: 2 }, createRng(3));
-  const { surfaceTelegraphMs, eruptMs, rockTelegraphMs, rockHurtMs } = WORM_BOSS;
+  const plan = planExit(maze, [], createRng(3));
+  const { undergroundMs, exitWarningMs, burstMs } = WORM_BOSS;
   const keys = (cells: Cell[]) => cells.map(key).sort();
 
-  it('stays underground while the exit is marked, hurting no one', () => {
-    const now = burrowAt(plan, surfaceTelegraphMs - 1);
-    expect(now.underground).toBe(true);
-    expect(keys(now.warning)).toEqual([key(plan.surface)]);
+  it('rumbles first, marking nothing and hurting no one', () => {
+    const now = burrowAt(plan, undergroundMs - exitWarningMs - 1);
+    expect(now.phase).toBe('rumbling');
+    expect(now.marked).toEqual([]);
     expect(now.hurting).toEqual([]);
   });
 
-  it('bursts out at the marked exit, which hurts, while the falling rocks are marked', () => {
-    const now = burrowAt(plan, surfaceTelegraphMs + 1);
-    expect(now.underground).toBe(false);
-    expect(keys(now.hurting)).toEqual([key(plan.surface)]);
-    expect(keys(now.warning)).toEqual(keys(plan.rockfall));
+  it('then marks the lane in front of the exit, still hurting no one', () => {
+    for (const t of [undergroundMs - exitWarningMs, undergroundMs - 1]) {
+      const now = burrowAt(plan, t);
+      expect(now.phase).toBe('warning');
+      expect(keys(now.marked)).toEqual(keys(plan.lane));
+      expect(now.hurting).toEqual([]);
+    }
   });
 
-  it('then brings the rocks down on their marked cells, and is over once they land', () => {
-    const landing = burrowAt(plan, surfaceTelegraphMs + rockTelegraphMs + 1);
-    expect(keys(landing.hurting)).toEqual(keys(plan.rockfall));
-    expect(landing.over).toBe(false);
-    expect(eruptMs).toBeLessThanOrEqual(rockTelegraphMs);
-    expect(burrowAt(plan, surfaceTelegraphMs + rockTelegraphMs + rockHurtMs + 1).over).toBe(true);
+  it('bursts out through the lane, which hurts for a moment', () => {
+    for (const t of [undergroundMs, undergroundMs + burstMs - 1]) {
+      const now = burrowAt(plan, t);
+      expect(now.phase).toBe('bursting');
+      expect(keys(now.hurting)).toEqual(keys(plan.lane));
+      expect(now.marked).toEqual([]);
+    }
+  });
+
+  it('is over once the burst has passed', () => {
+    const now = burrowAt(plan, undergroundMs + burstMs);
+    expect(now.phase).toBe('over');
+    expect(now.marked).toEqual([]);
+    expect(now.hurting).toEqual([]);
   });
 });
 

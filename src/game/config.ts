@@ -174,6 +174,7 @@ export const COLORS = {
   batTelegraph: 0xe05a7a,
   burrowWarning: 0xd8a860,
   fallingRock: 0x8a7458,
+  wormHole: 0x14100c,
   maidenIron: 0x5c6068,
   maidenRivets: 0xb8bcc4,
   maidenInside: 0x7a1c20,

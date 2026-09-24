@@ -1,28 +1,25 @@
 import { ring } from './bulletPatterns';
 import { STEP, type Cell, type Direction } from './floorGenerator';
-import type { Tile } from './roomGenerator';
+import type { Door, Tile } from './roomGenerator';
+import type { Worm } from './wormChain';
 import type { Rng } from './rng';
 
 /** Worm boss numbers; placeholders for playtest tuning. */
 export const WORM_BOSS = {
   /** Shorter split pieces only crawl. */
   minAttackLength: 4,
-  /** How far from the player (in steps) it may surface. */
-  surfaceDistance: { min: 2, max: 4 },
-  /** Rocks come down this many tiles around the exit. */
-  rockfallRadius: 2,
-  rockfallCount: 7,
-  /** How long the exit is marked before it bursts out. */
-  surfaceTelegraphMs: 1100,
-  /** How long bursting out hurts on the exit cell. */
-  eruptMs: 350,
-  /** Falling rocks: marked from the moment it bursts out, then hurt for a moment as they land. */
-  rockTelegraphMs: 800,
-  rockHurtMs: 300,
+  /** After it bursts out, this long before it may dive into a wall again. */
+  burrowCooldownMs: 4000,
+  /** From the last segment going under to bursting back out. */
+  undergroundMs: 1500,
+  /** The last stretch underground, while the exit lane is marked. */
+  exitWarningMs: 1000,
+  /** How long bursting out hurts along the lane. */
+  burstMs: 350,
+  /** How many cells in front of the exit are marked and hurt as it bursts out. */
+  laneLength: 3,
   /** The spit wave runs down the body one segment per this long. */
   spitGapMs: 70,
-  /** Each piece that can attack alternates spitting and burrowing, one attack per this long. */
-  attackEveryMs: 3000,
   /** In phase two it steps this much more often (a factor on its step time). */
   phaseTwoStepFactor: 0.65,
 };
@@ -33,75 +30,60 @@ export const canAttack = (length: number) => length >= WORM_BOSS.minAttackLength
 /** Phase two: the whole worm, all its pieces together, is down to half its hit points. */
 export const inPhaseTwo = (hp: number, maxHp: number) => hp <= maxHp / 2;
 
-export interface Burrow {
-  /** Where the head bursts out. */
-  surface: Cell;
-  /** The cells it tunnels through, from where it dived to `surface`. */
-  tunnel: Cell[];
-  /** Rock it breaks for good: along the tunnel and around the exit. */
-  breaks: Cell[];
-  /** Cells rocks fall on around the exit when it bursts out. */
-  rockfall: Cell[];
-}
-
-const manhattan = (a: Cell, b: Cell) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
-const chebyshev = (a: Cell, b: Cell) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
-/** Ground it can dig through or come up in: floor, or rock it will break. */
+/** Ground it can burst out through: floor, or rock it will smash. */
 const diggable = (tile: Tile | undefined) => tile === 'floor' || tile === 'rock';
+/** The next cell from `c` along `heading`. */
+const ahead = (c: Cell, heading: Direction): Cell => ({ x: c.x + STEP[heading].x, y: c.y + STEP[heading].y });
+const outside = (tiles: Tile[][], c: Cell) => c.y < 0 || c.x < 0 || c.y >= tiles.length || c.x >= tiles[0].length;
 
-function shuffled<T>(items: readonly T[], rng: Rng): T[] {
-  const out = [...items];
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = rng.int(0, i);
-    [out[i], out[j]] = [out[j], out[i]];
-  }
-  return out;
+/**
+ * The outer-wall cell the worm dives into on its next step, if it does: its head runs straight
+ * at one of the room's four outer walls (not a doorway), the burrow cooldown is up, and the piece
+ * is long enough to attack. Otherwise it crawls on and turns at the wall as usual.
+ */
+export function diveCell(worm: Worm, tiles: Tile[][], doors: Door[], now: number, readyAt: number): Cell | undefined {
+  if (now < readyAt || !canAttack(worm.segments.length)) return undefined;
+  const head = worm.segments[0];
+  const wall = ahead(head, worm.heading);
+  if (!outside(tiles, wall)) return undefined;
+  if (doors.some((d) => d.side === worm.heading && d.cell.x === head.x && d.cell.y === head.y)) return undefined;
+  return wall;
 }
 
-/** A straight-legged path from `from` to `to`, one leg along each axis, picked at random. */
-function tunnelBetween(from: Cell, to: Cell, rng: Rng): Cell[] {
-  const path = [{ ...from }];
-  const at = { ...from };
-  const legs: ('x' | 'y')[] = rng.next() < 0.5 ? ['x', 'y'] : ['y', 'x'];
-  for (const axis of legs) {
-    while (at[axis] !== to[axis]) {
-      at[axis] += Math.sign(to[axis] - at[axis]);
-      path.push({ ...at });
-    }
-  }
-  return path;
+const OPPOSITE: Record<Direction, Direction> = { up: 'down', down: 'up', left: 'right', right: 'left' };
+
+export interface BurrowExit {
+  /** The outer-wall cell it bursts out of. */
+  exit: Cell;
+  /** The way into the room from the exit. */
+  heading: Direction;
+  /** The cells in front of the exit, nearest first: marked, then hurt as it bursts through. */
+  lane: Cell[];
+  /** Rock in the lane, smashed as it bursts out. */
+  breaks: Cell[];
 }
 
 /**
- * The worm dives at `head` and comes up near the player: a spot two to four steps from them,
- * on ground it can dig, off the room's edge. It breaks the rock along its tunnel and around
- * the exit, and rocks rain down on cells around the exit.
+ * Where a burrowing worm comes back out: a random spot on any of the room's outer walls whose
+ * lane runs over floor or rock (never stone or a hole), away from the doorways.
  */
-export function planBurrow(tiles: Tile[][], head: Cell, player: Cell, rng: Rng): Burrow {
+export function planExit(tiles: Tile[][], doors: Door[], rng: Rng): BurrowExit {
   const height = tiles.length;
   const width = tiles[0].length;
-  const inside: Cell[] = [];
-  for (let y = 1; y < height - 1; y++) for (let x = 1; x < width - 1; x++) if (diggable(tiles[y][x])) inside.push({ x, y });
-  const { min, max } = WORM_BOSS.surfaceDistance;
-  const near = inside.filter((c) => manhattan(c, player) >= min && manhattan(c, player) <= max);
-  const surface = near.length
-    ? rng.pick(near)
-    : inside.sort((a, b) => Math.abs(manhattan(a, player) - min) - Math.abs(manhattan(b, player) - min))[0] ?? head;
-  const tunnel = tunnelBetween(head, surface, rng);
-  const isRock = (c: Cell) => tiles[c.y]?.[c.x] === 'rock';
-  const seen = new Set<string>();
-  const breaks = [...tunnel, ...inside.filter((c) => chebyshev(c, surface) <= 1)].filter((c) => {
-    const k = `${c.x},${c.y}`;
-    if (!isRock(c) || seen.has(k)) return false;
-    seen.add(k);
-    return true;
+  const edges: { cell: Cell; side: Direction }[] = [];
+  for (let x = 0; x < width; x++) edges.push({ cell: { x, y: 0 }, side: 'up' }, { cell: { x, y: height - 1 }, side: 'down' });
+  for (let y = 0; y < height; y++) edges.push({ cell: { x: 0, y }, side: 'left' }, { cell: { x: width - 1, y }, side: 'right' });
+  const exits = edges.flatMap(({ cell, side }): BurrowExit[] => {
+    if (doors.some((d) => d.side === side && d.cell.x === cell.x && d.cell.y === cell.y)) return [];
+    const heading = OPPOSITE[side];
+    const lane = Array.from({ length: WORM_BOSS.laneLength }, (_, i) => ({
+      x: cell.x + STEP[heading].x * i,
+      y: cell.y + STEP[heading].y * i,
+    }));
+    if (!lane.every((c) => diggable(tiles[c.y]?.[c.x]))) return [];
+    return [{ exit: ahead(cell, side), heading, lane, breaks: lane.filter((c) => tiles[c.y][c.x] === 'rock') }];
   });
-  const ring = inside.filter((c) => {
-    const d = chebyshev(c, surface);
-    return d >= 1 && d <= WORM_BOSS.rockfallRadius;
-  });
-  const rockfall = shuffled(ring, rng).slice(0, WORM_BOSS.rockfallCount);
-  return { surface, tunnel, breaks, rockfall };
+  return rng.pick(exits);
 }
 
 export interface SpitShot {
@@ -126,21 +108,20 @@ export function spitWave(segments: Cell[], heading: Direction): SpitShot[] {
 }
 
 export interface BurrowState {
-  /** Still under the ground: it can't be hit and hurts no one by touch. */
-  underground: boolean;
+  phase: 'rumbling' | 'warning' | 'bursting' | 'over';
   /** Cells marked as about to hurt. */
-  warning: Cell[];
+  marked: Cell[];
   hurting: Cell[];
-  over: boolean;
 }
 
-/** Where a burrow stands `elapsedMs` after the dive: the exit is marked, bursts, then the rocks fall. */
-export function burrowAt(burrow: Burrow, elapsedMs: number): BurrowState {
-  const { surfaceTelegraphMs, eruptMs, rockTelegraphMs, rockHurtMs } = WORM_BOSS;
-  if (elapsedMs < surfaceTelegraphMs) return { underground: true, warning: [burrow.surface], hurting: [], over: false };
-  const since = elapsedMs - surfaceTelegraphMs;
-  const erupting = since < eruptMs ? [burrow.surface] : [];
-  if (since < rockTelegraphMs) return { underground: false, warning: burrow.rockfall, hurting: erupting, over: false };
-  if (since < rockTelegraphMs + rockHurtMs) return { underground: false, warning: [], hurting: burrow.rockfall, over: false };
-  return { underground: false, warning: [], hurting: [], over: true };
+/**
+ * Where a burrow stands `elapsedMs` after the last segment went under: it rumbles, then the exit
+ * lane is marked, then it bursts out and the lane hurts for a moment.
+ */
+export function burrowAt(plan: BurrowExit, elapsedMs: number): BurrowState {
+  const { undergroundMs, exitWarningMs, burstMs } = WORM_BOSS;
+  if (elapsedMs < undergroundMs - exitWarningMs) return { phase: 'rumbling', marked: [], hurting: [] };
+  if (elapsedMs < undergroundMs) return { phase: 'warning', marked: plan.lane, hurting: [] };
+  if (elapsedMs < undergroundMs + burstMs) return { phase: 'bursting', marked: [], hurting: plan.lane };
+  return { phase: 'over', marked: [], hurting: [] };
 }

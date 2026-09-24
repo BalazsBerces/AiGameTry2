@@ -680,7 +680,7 @@ export class GameScene extends Phaser.Scene {
     steer(this.shots, (shot) => {
       // A boomerang on its way back is headed for the player, not for enemies.
       if (this.legOf(shot.getData('flight') as Flight | undefined, time) === 'back') return undefined;
-      const visible = parts.filter((p) => clearShot(shot, p));
+      const visible = parts.filter((p) => p.visible && clearShot(shot, p));
       return visible.length ? visible.reduce((best, p) => (dist(shot, p) < dist(shot, best) ? p : best)) : undefined;
     });
     steer(this.enemyShots, () => this.player);

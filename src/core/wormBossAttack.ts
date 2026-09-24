@@ -16,6 +16,9 @@ export const WORM_BOSS = {
   exitWarningMs: 1000,
   /** How long bursting out hurts along the lane. */
   burstMs: 350,
+  /** While a piece is underground the screen shakes lightly: asked for this long, every frame, at this strength. */
+  rumbleMs: 120,
+  rumbleIntensity: 0.003,
   /** How many cells in front of the exit are marked and hurt as it bursts out. */
   laneLength: 3,
   /** The spit wave runs down the body one segment per this long. */
@@ -117,6 +120,8 @@ export interface BurrowState {
   /** Cells marked as about to hurt. */
   marked: Cell[];
   hurting: Cell[];
+  /** The exit wall spot, cracking while its lane is marked. */
+  crack?: Cell;
 }
 
 /**
@@ -126,7 +131,7 @@ export interface BurrowState {
 export function burrowAt(plan: BurrowExit, elapsedMs: number): BurrowState {
   const { undergroundMs, exitWarningMs, burstMs } = WORM_BOSS;
   if (elapsedMs < undergroundMs - exitWarningMs) return { phase: 'rumbling', marked: [], hurting: [] };
-  if (elapsedMs < undergroundMs) return { phase: 'warning', marked: plan.lane, hurting: [] };
+  if (elapsedMs < undergroundMs) return { phase: 'warning', marked: plan.lane, hurting: [], crack: plan.exit };
   if (elapsedMs < undergroundMs + burstMs) return { phase: 'bursting', marked: [], hurting: plan.lane };
   return { phase: 'over', marked: [], hurting: [] };
 }

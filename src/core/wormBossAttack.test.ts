@@ -161,6 +161,12 @@ describe('worm boss burrow timeline', () => {
     }
   });
 
+  it('cracks the exit wall spot while the lane is marked, and only then', () => {
+    expect(burrowAt(plan, undergroundMs - exitWarningMs - 1).crack).toBeUndefined();
+    for (const t of [undergroundMs - exitWarningMs, undergroundMs - 1]) expect(burrowAt(plan, t).crack).toEqual(plan.exit);
+    expect(burrowAt(plan, undergroundMs).crack).toBeUndefined();
+  });
+
   it('bursts out through the lane, which hurts for a moment', () => {
     for (const t of [undergroundMs, undergroundMs + burstMs - 1]) {
       const now = burrowAt(plan, t);

@@ -821,6 +821,8 @@ export class GameScene extends Phaser.Scene {
         const [ux, uy] = d > 0 ? [dx / d, dy / d] : [0, 1];
         this.player.body.reset(from.x + ux * distance, from.y + uy * distance);
       },
+      // Not forced: a shake already running is left to finish.
+      shakeCamera: (ms, intensity) => this.cameras.main.shake(ms, intensity, false),
     };
   }
 

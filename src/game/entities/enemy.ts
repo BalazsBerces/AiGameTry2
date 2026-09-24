@@ -44,6 +44,11 @@ export interface EnemyContext {
   crushSprout(cell: Cell): void;
   /** Moves the player straight away from `from` until they are `distance` px from it (if nearer). */
   pushPlayerOut(from: { x: number; y: number }, distance: number): void;
+  /**
+   * Shakes the screen for `ms` (`intensity` as a fraction of the view). Asking again while a
+   * shake runs doesn't stack or restart it, so several enemies can ask every frame.
+   */
+  shakeCamera(ms: number, intensity: number): void;
 }
 
 /**

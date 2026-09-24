@@ -105,9 +105,21 @@ function tickHazards(ctx: EnemyContext, shared: WormBossShared) {
       g.fillStyle(COLORS.fallingRock, 1).fillCircle(p.x, p.y, t * 0.38);
       g.lineStyle(3, COLORS.burrowWarning, 1).strokeCircle(p.x, p.y, t * 0.38);
     }
+    if (now.crack) drawCrack(g, ctx.tileCenter(now.crack), t);
     if (now.hurting.some((c) => sameCell(c, ctx.playerTile))) ctx.hurtPlayer();
     return now.phase !== 'over';
   });
+  // Something is moving under the arena: one light rumble, however many pieces are down there.
+  const underground = shared.hazards.some((h) => ['rumbling', 'warning'].includes(burrowAt(h.plan, ctx.time - h.start).phase));
+  if (underground) ctx.shakeCamera(WORM_BOSS.rumbleMs, WORM_BOSS.rumbleIntensity);
+}
+
+/** Jagged cracks spreading from the middle of the wall tile at `at`. */
+function drawCrack(g: Phaser.GameObjects.Graphics, at: { x: number; y: number }, t: number) {
+  g.lineStyle(3, COLORS.wormHole, 1);
+  for (const branch of [[[0, 0], [-0.12, -0.18], [-0.05, -0.3], [-0.2, -0.42]], [[0, 0], [0.16, 0.05], [0.26, -0.1], [0.42, -0.04]], [[0, 0], [-0.04, 0.2], [-0.2, 0.3], [-0.16, 0.44]]]) {
+    g.strokePoints(branch.map(([dx, dy]) => ({ x: at.x + dx * t, y: at.y + dy * t })));
+  }
 }
 
 /** A dark hole in the wall at `wall`, with rubble on the floor in front of it (`inward` points into the room). */

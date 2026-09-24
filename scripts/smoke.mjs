@@ -239,6 +239,7 @@ if (scenario === 'worm-boss') {
       pieces: s.enemies.map((e) => e.parts.length),
       hidden: s.enemies.map((e) => e.parts.filter((p) => !p.visible).length),
       enemyShots: s.enemyShots.getChildren().length,
+      shaking: s.cameras.main.shakeEffect.isRunning,
     }; })()`);
   const rocksAtStart = await rocks();
   console.log('rocks at start', rocksAtStart, await status());
@@ -249,6 +250,12 @@ if (scenario === 'worm-boss') {
     if ([3, 7, 9, 13].includes(i)) await shot(`worm-boss-${i}`);
   }
   console.log('rocks broken so far', rocksAtStart - (await rocks()));
+  // Wait for it to be all the way under, then catch the exit cracking over its marked lane.
+  const allUnder = ({ pieces, hidden }) => pieces.length > 0 && pieces.every((n, k) => hidden[k] === n);
+  for (let i = 0; i < 100 && !allUnder(await status()); i++) await page.waitForTimeout(100);
+  await page.waitForTimeout(800);
+  console.log('under', JSON.stringify(await status()));
+  await shot('worm-boss-crack');
   // Knock it to half its hit points by killing segments in the middle, splitting it.
   const hitPart = (enemy, part, times) =>
     page.evaluate(`(() => { const s = ${scene()}; const p = s.enemies[${enemy}]?.parts[${part}];

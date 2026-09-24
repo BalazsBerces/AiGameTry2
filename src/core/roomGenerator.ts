@@ -118,7 +118,19 @@ export interface PickupSpawn {
   visible?: boolean;
 }
 
-export const PASSIVE_POOL: readonly Passive[] = ['homing', 'fireRate', 'sword', 'triple', 'pierce', 'ricochet', 'spectral', 'boomerang'];
+export const PASSIVE_POOL: readonly Passive[] = [
+  'homing',
+  'fireRate',
+  'sword',
+  'triple',
+  'pierce',
+  'ricochet',
+  'spectral',
+  'boomerang',
+  'poison',
+  'chain',
+  'freeze',
+];
 
 export type EnemyType =
   | 'zombie'

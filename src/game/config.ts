@@ -72,6 +72,9 @@ export const PASSIVE_NAMES: Record<Passive, string> = {
   ricochet: 'Ricochet',
   spectral: 'Spectral',
   boomerang: 'Boomerang',
+  poison: 'Poison',
+  chain: 'Chain lightning',
+  freeze: 'Freeze',
 };
 
 /** Floor, wall, door and terrain colours come from each floor's theme (core/themes). */
@@ -104,6 +107,9 @@ export const COLORS = {
     ricochet: 0x7fd4a0,
     spectral: 0xb89aff,
     boomerang: 0xd8a24a,
+    poison: 0x7ad84a,
+    chain: 0xfff27a,
+    freeze: 0x9ae4ff,
   } as Record<Passive, number>,
   heartEmpty: 0x3a1c20,
   text: '#e8d7b0',

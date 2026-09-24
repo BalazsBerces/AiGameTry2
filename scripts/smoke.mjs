@@ -787,6 +787,64 @@ if (scenario === 'shot-passives') {
   console.log('blade waves after their life (expect 0):', await shots());
 }
 
+if (scenario === 'onhit-passives') {
+  // In the (empty) start room: frozen 50 HP zombies above the player, shots fired straight up.
+  const T = (x, y) => ({ x: (x + 1.5) * 48, y: (y + 1.5) * 48 });
+  const setup = (passives, zombies) =>
+    page.evaluate(`(() => { const s = ${scene()};
+      for (const e of s.enemies) for (const p of e.parts) p.destroy();
+      s.enemies = [];
+      s.shots.clear(true, true);
+      s.world.player.passives = ${JSON.stringify(passives)};
+      s.player.body.reset(${T(6, 5).x}, ${T(6, 5).y});
+      s.invincibleUntil = Infinity;
+      const room = s.world.rooms.get('0,0');
+      s.spawnEnemies({ ...room, layout: { ...room.layout, enemies: ${JSON.stringify(zombies)}.map((c) => ({ type: 'zombie', cell: c, hp: 50 })) } });
+      s.enemiesWakeAt = Infinity;
+      s.nextShotAt = 0;
+      s.__hits = [];
+      if (!s.__origDamage) s.__origDamage = s.damagePart.bind(s);
+      s.damagePart = (part, dmg) => { s.__hits.push([s.enemies.findIndex((e) => e.parts.includes(part)), Math.round(dmg * 100) / 100]); return s.__origDamage(part, dmg); };
+    })()`);
+  const tap = async (key = 'ArrowUp') => {
+    await page.keyboard.down(key);
+    await page.waitForTimeout(40);
+    await page.keyboard.up(key);
+  };
+  const hits = () => page.evaluate(`${scene()}.__hits`);
+
+  await setup({ poison: 1 }, [{ x: 6, y: 2 }]);
+  await tap();
+  await page.waitForTimeout(1300);
+  await shot('02-poison');
+  await page.waitForTimeout(2500);
+  console.log('one poisoned hit, then ~3.5s (expect a 1 hit, then 0.3 ticks that stop):', JSON.stringify(await hits()));
+
+  // Lightning jumps from the last enemy it reached: a line two tiles apart carries it along; x=0 is out of reach.
+  await setup({ chain: 2 }, [{ x: 6, y: 2 }, { x: 8, y: 2 }, { x: 10, y: 2 }, { x: 12, y: 2 }, { x: 0, y: 0 }]);
+  await tap();
+  await page.waitForTimeout(80);
+  await shot('03-chain');
+  await page.waitForTimeout(500);
+  console.log('upgraded chain lightning (expect enemy 0 hit for 1, then three others for 0.5, never enemy 4 far away):', JSON.stringify(await hits()));
+
+  await setup({ freeze: 1 }, [{ x: 6, y: 2 }]);
+  await page.evaluate(`${scene()}.hitRng = { next: () => 0 }`);
+  await tap();
+  await page.waitForTimeout(400);
+  console.log('freeze with a sure roll: stunned (expect true):', await page.evaluate(`${scene()}.enemies[0].stunnedUntil > ${scene()}.time.now`));
+  await setup({ freeze: 1 }, [{ x: 6, y: 2 }]);
+  await page.evaluate(`${scene()}.hitRng = { next: () => 0.99 }`);
+  await tap();
+  await page.waitForTimeout(400);
+  console.log('freeze with a failed roll: stunned (expect false):', await page.evaluate(`(${scene()}.enemies[0].stunnedUntil ?? 0) > ${scene()}.time.now`));
+
+  await setup({ sword: 1, poison: 1 }, [{ x: 6, y: 4 }]);
+  await tap();
+  await page.waitForTimeout(1200);
+  console.log('sword + poison: a 3 hit, then poison ticks (expect 3 then 0.3s):', JSON.stringify(await hits()));
+}
+
 if (scenario === 'boss-upgrade') {
   // With homing at level 1, kill the floor 1 boss: homing should go up to level 2, with a message and a HUD ring.
   const id = await page.evaluate(`[...${scene()}.world.rooms.values()].find((r) => r.floorIndex === 0 && r.floorRoom.kind === 'boss').floorRoom.id`);

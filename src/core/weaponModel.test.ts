@@ -36,6 +36,42 @@ describe('resolveWeapon', () => {
   });
 });
 
+describe('resolveWeapon on-hit passives', () => {
+  it('has no on-hit effects without them', () => {
+    expect(resolveWeapon({})).toMatchObject({ poison: undefined, chain: undefined, freeze: undefined });
+  });
+
+  it('poison lasts longer and stacks higher once upgraded', () => {
+    const one = resolveWeapon({ poison: 1 }).poison!;
+    const two = resolveWeapon({ poison: 2 }).poison!;
+    expect(one.damagePerTick).toBeGreaterThan(0);
+    expect(two.durationMs).toBeGreaterThan(one.durationMs);
+    expect(two.maxStacks).toBeGreaterThan(one.maxStacks);
+  });
+
+  it('chain lightning jumps once at half damage, two more times once upgraded', () => {
+    expect(resolveWeapon({ chain: 1 }).chain).toMatchObject({ jumps: 1, damageFactor: 0.5 });
+    expect(resolveWeapon({ chain: 2 }).chain).toMatchObject({ jumps: 3, damageFactor: 0.5 });
+  });
+
+  it('freeze is likelier once upgraded', () => {
+    expect(resolveWeapon({ freeze: 2 }).freeze!.chance).toBeGreaterThan(resolveWeapon({ freeze: 1 }).freeze!.chance);
+  });
+
+  it('works on sword swings as well as shots', () => {
+    expect(resolveWeapon({ sword: 1, poison: 1, chain: 1, freeze: 1 })).toMatchObject({
+      mode: 'sword',
+      poison: expect.any(Object),
+      chain: expect.any(Object),
+      freeze: expect.any(Object),
+    });
+  });
+
+  it('does not make the sword throw blade waves on its own', () => {
+    expect(resolveWeapon({ sword: 1, poison: 1, chain: 1, freeze: 1 }).bladeWave).toBe(false);
+  });
+});
+
 describe('resolveWeapon shot passives', () => {
   it('plain shots fly alone, stop at what they hit, and never come back', () => {
     expect(resolveWeapon({})).toMatchObject({

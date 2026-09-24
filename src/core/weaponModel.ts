@@ -1,11 +1,23 @@
 import { STEP, type Direction } from './floorGenerator';
+import type { PoisonRules } from './onHit';
 
 export interface Vec {
   x: number;
   y: number;
 }
 
-export type Passive = 'homing' | 'fireRate' | 'sword' | 'triple' | 'pierce' | 'ricochet' | 'spectral' | 'boomerang';
+export type Passive =
+  | 'homing'
+  | 'fireRate'
+  | 'sword'
+  | 'triple'
+  | 'pierce'
+  | 'ricochet'
+  | 'spectral'
+  | 'boomerang'
+  | 'poison'
+  | 'chain'
+  | 'freeze';
 
 /** Passives that shape a projectile's flight: with the sword, any of them makes it throw a blade wave. */
 const SHOT_MODIFIERS: readonly Passive[] = ['homing', 'triple', 'pierce', 'ricochet', 'spectral', 'boomerang'];
@@ -41,6 +53,12 @@ export interface Weapon {
   boomerang?: { outMs: number; returnSpeedFactor: number; returnDamageFactor: number };
   /** Sword swings also throw a short-lived projectile that carries the shot passives. */
   bladeWave: boolean;
+  /** On-hit effects, for shots and sword swings alike (core/onHit). */
+  poison?: PoisonRules;
+  /** Lightning jumps `jumps` times, each within `range` tiles, at `damageFactor` of the hit. */
+  chain?: { jumps: number; range: number; damageFactor: number };
+  /** Each hit stuns its target for `stunMs` with this chance. */
+  freeze?: { chance: number; stunMs: number };
 }
 
 /** Weapon numbers; placeholders for playtest tuning. Level-2 values are indexed by level. */
@@ -57,6 +75,12 @@ export const WEAPON = {
   triple: { shots: { 1: 3, 2: 5 }, spreadDeg: 14, damageFactor: 0.75 },
   ricochetBounces: { 1: 2, 2: 4 },
   boomerang: { outMs: 420, returnSpeedFactor: { 1: 1, 2: 1.5 }, returnDamageFactor: { 1: 1, 2: 2 } },
+  poison: {
+    1: { damagePerTick: 0.3, tickMs: 500, durationMs: 3000, maxStacks: 3 },
+    2: { damagePerTick: 0.3, tickMs: 500, durationMs: 5000, maxStacks: 6 },
+  } as Record<PassiveLevel, PoisonRules>,
+  chain: { jumps: { 1: 1, 2: 3 }, range: 3.5, damageFactor: 0.5 },
+  freeze: { chance: { 1: 0.15, 2: 0.3 }, stunMs: 1200 },
 };
 
 /** Everything the player's passives, at their levels, make of their attack. Pickup order never matters. */
@@ -89,6 +113,9 @@ export function resolveWeapon(passives: PassiveLevels): Weapon {
         }
       : undefined,
     bladeWave,
+    poison: passives.poison ? WEAPON.poison[passives.poison] : undefined,
+    chain: passives.chain ? { jumps: WEAPON.chain.jumps[passives.chain], range: WEAPON.chain.range, damageFactor: WEAPON.chain.damageFactor } : undefined,
+    freeze: passives.freeze ? { chance: WEAPON.freeze.chance[passives.freeze], stunMs: WEAPON.freeze.stunMs } : undefined,
   };
 }
 

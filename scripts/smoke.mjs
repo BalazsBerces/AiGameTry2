@@ -261,12 +261,10 @@ if (scenario === 'worm-boss') {
   }
   console.log('head during the rampage', trail.join(' '));
   console.log('rocks broken so far', rocksAtStart - (await rocks()));
-  // Wait for it to be all the way under, then catch the exit cracking over its marked lane.
-  const allUnder = ({ pieces, hidden }) => pieces.length > 0 && pieces.every((n, k) => hidden[k] === n);
-  for (let i = 0; i < 100 && !allUnder(await status()); i++) await page.waitForTimeout(100);
-  await page.waitForTimeout(800);
-  console.log('under', JSON.stringify(await status()));
-  await shot('worm-boss-crack');
+  // Catch it tunnelling: part of it hidden in the walls as it races through and out across the room.
+  for (let i = 0; i < 150 && !(await status()).hidden.some((n) => n > 0); i++) await page.waitForTimeout(50);
+  console.log('tunnelling', JSON.stringify(await status()));
+  await shot('worm-boss-tunnel');
   // Knock it to half its hit points by killing segments in the middle, splitting it.
   const hitPart = (enemy, part, times) =>
     page.evaluate(`(() => { const s = ${scene()}; const p = s.enemies[${enemy}]?.parts[${part}];

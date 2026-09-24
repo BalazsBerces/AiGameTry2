@@ -172,7 +172,6 @@ export const COLORS = {
   bat: 0x4a3a5c,
   batWing: 0x1c1424,
   batTelegraph: 0xe05a7a,
-  burrowWarning: 0xd8a860,
   fallingRock: 0x8a7458,
   wormHole: 0x14100c,
   wormEgg: 0xe8dcc0,

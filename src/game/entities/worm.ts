@@ -7,18 +7,16 @@ import {
   absorbHit,
   bossCrawl,
   breakOut,
-  burrowAt,
   canAttack,
   diveCell,
   inPhaseTwo,
-  planExit,
+  planTunnel,
   planLunge,
   planRockfall,
   rockfallAt,
   sharedPool,
   spitWave,
   WORM_BOSS,
-  type BurrowExit,
   type Lunge,
 } from '../../core/wormBossAttack';
 import { hitsToBreak } from '../../core/tiles';
@@ -67,8 +65,8 @@ const inRoom = (ctx: EnemyContext, c: Cell) => c.y >= 0 && c.x >= 0 && c.y < ctx
 
 /**
  * What every piece of the worm boss shares: its hit points (phase two is judged on the whole
- * worm), the burrows under way (drawn, and hurting, once a frame) and the holes its burrows
- * leave in the walls, which stay for the whole fight.
+ * worm), the rocks it shakes loose, the rampage clock, and the holes its tunnels leave in the
+ * walls, which stay for the whole fight.
  */
 interface WormBossShared {
   maxHp: number;
@@ -78,7 +76,6 @@ interface WormBossShared {
   pool: number;
   /** Once it has split in two, a kill only shortens a piece. */
   split: boolean;
-  hazards: { plan: BurrowExit; start: number }[];
   /** Rocks falling (each landing as a rock tile), and when the next fall may start. */
   rocks: { cells: Cell[]; start: number }[];
   nextRockfallAt: number;
@@ -87,7 +84,7 @@ interface WormBossShared {
   /** Every piece rampages together: a round starts each time the shared clock comes round. */
   rampageRound: number;
   nextRampageAt: number;
-  /** Lane marks and bursts, redrawn every frame. */
+  /** Falling rocks' shadows, redrawn every frame. */
   ground: Phaser.GameObjects.Graphics;
   /** Hole-and-rubble decals, each drawn once. */
   holes: Phaser.GameObjects.Graphics;
@@ -100,17 +97,15 @@ interface WormBossShared {
 
 interface BossPiece {
   shared: WormBossShared;
-  /** When it may next dive into a wall; 0 until its first update. */
+  /** When it may next tunnel through the walls; 0 until its first update. */
   readyAt: number;
-  /** The outer-wall cell it is slithering into, one segment per step. */
-  diving?: Cell;
-  /** Set once it is all under the ground, until it bursts out. */
-  burrow?: { plan: BurrowExit; start: number };
-  /** Coming out of the exit: steps taken so far, and whether each segment spits as it leaves the wall. */
-  emerging?: { exit: Cell; steps: number; spit: boolean };
+  /** Racing through the walls and out across the room (core/wormBossAttack `planTunnel`). */
+  tunnel?: Lunge;
+  /** Phase two: the exit hole it tunnelled out of; each segment spits as it leaves it. */
+  spitFrom?: Cell;
   /** When it next drops an egg (core/wormBrood); off while it can't. */
   nextEggAt?: number;
-  /** The last rampage round it has joined (or sat out, too short); one busy in the walls joins once it is out. */
+  /** The last rampage round it has joined (or sat out, too short); one mid-tunnel joins once through. */
   rampageRound: number;
   rampage?: Rampage;
 }
@@ -133,28 +128,12 @@ interface WormState {
   boss?: BossPiece;
 }
 
-/** Draws the boss's lane marks and bursts, and hurts the player in a bursting lane; once per frame, whichever piece asks first. */
-function tickHazards(ctx: EnemyContext, shared: WormBossShared) {
+/** Draws falling rocks' shadows and lands them; once per frame, whichever piece asks first. */
+function tickRocks(ctx: EnemyContext, shared: WormBossShared) {
   if (shared.tickedAt === ctx.time) return;
   shared.tickedAt = ctx.time;
   const t = TUNING.tile;
   const g = shared.ground.clear();
-  shared.hazards = shared.hazards.filter((h) => {
-    const now = burrowAt(h.plan, ctx.time - h.start);
-    for (const c of now.marked) {
-      const p = ctx.tileCenter(c);
-      g.fillStyle(COLORS.burrowWarning, 0.25).fillRect(p.x - t / 2 + 4, p.y - t / 2 + 4, t - 8, t - 8);
-      g.lineStyle(2, COLORS.burrowWarning, 0.8).strokeRect(p.x - t / 2 + 4, p.y - t / 2 + 4, t - 8, t - 8);
-    }
-    for (const c of now.hurting) {
-      const p = ctx.tileCenter(c);
-      g.fillStyle(COLORS.fallingRock, 1).fillCircle(p.x, p.y, t * 0.38);
-      g.lineStyle(3, COLORS.burrowWarning, 1).strokeCircle(p.x, p.y, t * 0.38);
-    }
-    if (now.crack) drawCrack(g, ctx.tileCenter(now.crack), t);
-    if (now.hurting.some((c) => sameCell(c, ctx.playerTile))) ctx.hurtPlayer();
-    return now.phase !== 'over';
-  });
   const onWorm = (c: Cell) => [...shared.bodies.values()].some((body) => body.some((b) => sameCell(b, c)));
   shared.rocks = shared.rocks.filter((fall) => {
     const { shadow, landed } = rockfallAt(ctx.time - fall.start);
@@ -171,20 +150,12 @@ function tickHazards(ctx: EnemyContext, shared: WormBossShared) {
   });
 }
 
-/** Jagged cracks spreading from the middle of the wall tile at `at`. */
-function drawCrack(g: Phaser.GameObjects.Graphics, at: { x: number; y: number }, t: number) {
-  g.lineStyle(3, COLORS.wormHole, 1);
-  for (const branch of [[[0, 0], [-0.12, -0.18], [-0.05, -0.3], [-0.2, -0.42]], [[0, 0], [0.16, 0.05], [0.26, -0.1], [0.42, -0.04]], [[0, 0], [-0.04, 0.2], [-0.2, 0.3], [-0.16, 0.44]]]) {
-    g.strokePoints(branch.map(([dx, dy]) => ({ x: at.x + dx * t, y: at.y + dy * t })));
-  }
-}
-
-/** Its going under shakes rocks loose over the player, if the shared rockfall cooldown is up. */
-function shakeRocksLoose(ctx: EnemyContext, shared: WormBossShared, plan: BurrowExit) {
+/** Its tunnelling shakes rocks loose over the player, if the shared rockfall cooldown is up; none land on `avoid`. */
+function shakeRocksLoose(ctx: EnemyContext, shared: WormBossShared, avoid: Cell[]) {
   if (ctx.time < shared.nextRockfallAt) return;
   shared.nextRockfallAt = ctx.time + WORM_BOSS.rockfallCooldownMs;
-  const avoid = [...[...shared.bodies.values()].flat(), ...plan.lane];
-  shared.rocks.push({ cells: planRockfall(ctx.tiles, ctx.playerTile, avoid, ctx.doors, shared.rng), start: ctx.time });
+  const cells = planRockfall(ctx.tiles, ctx.playerTile, [...[...shared.bodies.values()].flat(), ...avoid], ctx.doors, shared.rng);
+  shared.rocks.push({ cells, start: ctx.time });
 }
 
 /** A dark hole in the wall at `wall`, with rubble on the floor in front of it (`inward` points into the room). */
@@ -204,33 +175,20 @@ function drawHole(ctx: EnemyContext, shared: WormBossShared, wall: Cell, inward:
   }
 }
 
-/** A worm moving cell by cell per WormChain; its parts glide between cells. The boss also burrows through the walls. */
+/** A worm moving cell by cell per WormChain; its parts glide between cells. The boss also tunnels through the walls and rampages. */
 function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Enemy {
   const recolor = () => state.parts.forEach((p, i) => p.setFillStyle(i === 0 ? style.headColor : style.bodyColor));
   recolor();
 
-  /** A segment is out of sight and out of reach inside the wall; it shows while gliding in or out, until the whole piece is under. */
-  const hideInWalls = (ctx: EnemyContext, before: Cell[], underground: boolean) => {
+  /** A segment is out of sight and out of reach inside the wall; it shows while gliding in or out. */
+  const hideInWalls = (ctx: EnemyContext, before: Cell[]) => {
     state.worm.segments.forEach((c, i) => {
-      const shown = !underground && (inRoom(ctx, c) || (!!before[i] && inRoom(ctx, before[i])));
+      const shown = inRoom(ctx, c) || (!!before[i] && inRoom(ctx, before[i]));
       state.parts[i].setVisible(shown);
       state.parts[i].body.enable = shown;
     });
   };
-
-  /** Bursts out of the planned exit: smashes the rock in the lane and lines up in the hole to slither out. */
-  const burstOut = (ctx: EnemyContext, b: BossPiece, plan: BurrowExit) => {
-    for (const c of plan.breaks) ctx.smashRock(c);
-    drawHole(ctx, b.shared, plan.exit, plan.heading);
-    state.worm = createWorm(state.worm.segments.map(() => plan.exit), plan.heading);
-    const at = ctx.tileCenter(plan.exit);
-    for (const p of state.parts) p.body.reset(at.x, at.y);
-    b.burrow = undefined;
-    // Phase two: it comes out spitting.
-    b.emerging = { exit: plan.exit, steps: 0, spit: inPhaseTwo(b.shared.hp, b.shared.maxHp) };
-    b.readyAt = ctx.time + WORM_BOSS.burrowCooldownMs;
-    state.nextStepAt = ctx.time;
-  };
+  const inWalls = (ctx: EnemyContext) => state.worm.segments.some((c) => !inRoom(ctx, c));
 
   /** Phase two: drops an egg from its tail now and then, while it is all out of the walls. */
   const layEggs = (ctx: EnemyContext, b: BossPiece) => {
@@ -238,7 +196,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
     const tail = segments[segments.length - 1];
     const tick = broodTick(b.nextEggAt, ctx.time, {
       length: segments.length,
-      aboveGround: !b.burrow && !b.diving && !b.emerging && !b.rampage && ctx.isWalkable(tail),
+      aboveGround: !b.tunnel && !b.rampage && !inWalls(ctx) && ctx.isWalkable(tail),
       phaseTwo: inPhaseTwo(b.shared.hp, b.shared.maxHp),
       brood: b.shared.brood.filter((parts) => parts.some((p) => p.active)).length,
     });
@@ -246,7 +204,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
     if (tick.lay) ctx.spawnEnemy(wormEgg(scene, ctx, b.shared, tail));
   };
 
-  /** Starts a rampage round on the shared clock; this piece joins it once it is out of the walls, if it is long enough. */
+  /** Starts a rampage round on the shared clock; this piece joins it once through any tunnel, if it is long enough. */
   const joinRampage = (ctx: EnemyContext, b: BossPiece) => {
     const { shared } = b;
     if (shared.nextRampageAt === 0) shared.nextRampageAt = ctx.time + WORM_BOSS.rampageEveryMs;
@@ -254,12 +212,26 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
       shared.rampageRound++;
       shared.nextRampageAt = ctx.time + WORM_BOSS.rampageEveryMs;
     }
-    if (b.rampageRound === shared.rampageRound || b.burrow || b.diving || b.emerging) return;
+    if (b.rampageRound === shared.rampageRound || b.tunnel) return;
     b.rampageRound = shared.rampageRound;
     if (!canAttack(state.parts.length)) return;
-    // A late joiner (it was in the walls) keeps a full cooldown before the next round.
+    // A late joiner (it was tunnelling) keeps a full cooldown before the next round.
     shared.nextRampageAt = Math.max(shared.nextRampageAt, ctx.time + WORM_BOSS.rampageEveryMs);
     b.rampage = { phase: 'charging', until: ctx.time + WORM_BOSS.rampageChargeMs, lunges: 0 };
+  };
+
+  /**
+   * Before a lunge's (or tunnel's) next step: it smashes a rock it bursts through, and once it is
+   * out of room and its last glide is done, slams into whatever is ahead. True when it is over.
+   */
+  const dashOver = (ctx: EnemyContext, lunge: Lunge): boolean => {
+    const next = lunge.path[0];
+    if (next && lunge.bursts.some((c) => sameCell(c, next)) && ctx.time >= state.nextStepAt) ctx.smashRock(next);
+    if (next && (!inRoom(ctx, next) || ctx.isWalkable(next))) return false;
+    if (ctx.time < state.nextStepAt) return false;
+    const hit = next ?? lunge.stop;
+    if (hit && ctx.tiles[hit.y]?.[hit.x] === 'rock') ctx.chipRock(hit, hitsToBreak('rock')! * WORM_BOSS.lungeRockShare);
+    return true;
   };
 
   /** A lunge is over (it ran into something, or had nowhere to go): pause for the next, or lie dazed after the last. */
@@ -275,15 +247,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
   const updateRampage = (ctx: EnemyContext, b: BossPiece, r: Rampage): boolean => {
     const head = state.parts[0];
     if (r.phase === 'lunging') {
-      const { path, stop, bursts } = r.lunge!;
-      const next = path[0];
-      // It bursts straight through the first rock in its way (on each side of the walls).
-      if (next && bursts.some((c) => sameCell(c, next)) && ctx.time >= state.nextStepAt) ctx.smashRock(next);
-      if (next && (!inRoom(ctx, next) || ctx.isWalkable(next))) return false;
-      // Out of room: it slams into whatever is ahead once its last glide is done.
-      if (ctx.time < state.nextStepAt) return false;
-      const hit = path[0] ?? stop;
-      if (hit && ctx.tiles[hit.y]?.[hit.x] === 'rock') ctx.chipRock(hit, hitsToBreak('rock')! * WORM_BOSS.lungeRockShare);
+      if (!dashOver(ctx, r.lunge!)) return false;
       endLunge(ctx, r);
     }
     if (ctx.time < r.until) {
@@ -301,6 +265,8 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
     head.setScale(1);
     if (r.phase === 'dazed') {
       b.rampage = undefined;
+      // The cooldown runs from the end of a rampage, not its start.
+      b.shared.nextRampageAt = Math.max(b.shared.nextRampageAt, ctx.time + WORM_BOSS.rampageEveryMs);
       state.nextStepAt = ctx.time;
       return false;
     }
@@ -315,27 +281,38 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
     return false;
   };
 
-  /** Runs the boss's burrow; true while the piece is under the ground and must not move. */
+  /** Runs its tunnel through the walls: starts one when its head runs at an outer wall, ends it once it has run into something. */
+  const updateTunnel = (ctx: EnemyContext, b: BossPiece) => {
+    if (b.tunnel) {
+      if (!dashOver(ctx, b.tunnel)) return;
+      b.tunnel = undefined;
+      b.readyAt = ctx.time + WORM_BOSS.burrowCooldownMs;
+      return;
+    }
+    if (inWalls(ctx) || !diveCell(state.worm, ctx.tiles, ctx.doors, ctx.time, b.readyAt)) return;
+    const tunnel = planTunnel(ctx.tiles, ctx.doors, state.worm);
+    if (!tunnel) return;
+    b.tunnel = tunnel;
+    // Phase two: it comes out spitting.
+    if (inPhaseTwo(b.shared.hp, b.shared.maxHp)) b.spitFrom = tunnel.wrap!.exit;
+    shakeRocksLoose(ctx, b.shared, tunnel.path);
+  };
+
+  /** Runs the boss; true while the piece holds still. */
   const updateBoss = (ctx: EnemyContext, b: BossPiece): boolean => {
-    tickHazards(ctx, b.shared);
+    tickRocks(ctx, b.shared);
     if (b.readyAt === 0) b.readyAt = ctx.time + WORM_BOSS.burrowCooldownMs;
     joinRampage(ctx, b);
     if (b.rampage) return updateRampage(ctx, b, b.rampage);
     layEggs(ctx, b);
-    if (!b.burrow) return false;
-    const { phase } = burrowAt(b.burrow.plan, ctx.time - b.burrow.start);
-    if (phase === 'rumbling' || phase === 'warning') {
-      for (const p of state.parts) p.body.setVelocity(0, 0);
-      return true;
-    }
-    burstOut(ctx, b, b.burrow.plan);
+    updateTunnel(ctx, b);
     return false;
   };
 
-  /** The boss's next step: into the wall while diving (starting a dive when the rule says so), else a crawl like any worm. */
+  /** The boss's next step: along its lunge or tunnel, else a crawl like any worm's. */
   const bossStep = (ctx: EnemyContext, b: BossPiece): Worm => {
     const { worm } = state;
-    const lunge = b.rampage?.lunge;
+    const lunge = b.rampage?.lunge ?? b.tunnel;
     if (lunge) {
       const next = lunge.path.shift()!;
       // Tunnelling through the walls leaves a hole at each end.
@@ -343,41 +320,25 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
       if (lunge.wrap && sameCell(next, lunge.wrap.exit)) drawHole(ctx, b.shared, next, lunge.heading);
       return createWorm([next, ...worm.segments.slice(0, -1)], lunge.heading);
     }
-    if (!b.diving && !b.emerging) {
-      b.diving = diveCell(worm, ctx.tiles, ctx.doors, ctx.time, b.readyAt);
-      if (b.diving) drawHole(ctx, b.shared, b.diving, OPPOSITE[worm.heading]);
-    }
-    if (b.diving) return createWorm([b.diving, ...worm.segments.slice(0, -1)], worm.heading);
-    // It slithers straight out along its lane before it starts turning again.
-    const straight = b.emerging && b.emerging.steps < WORM_BOSS.laneLength;
-    if (b.emerging) b.emerging.steps++;
     const rock = breakOut(worm, ctx.tiles);
     if (rock) ctx.smashRock(rock);
-    return bossCrawl(worm, ctx.tiles, state.rng, straight ? 0 : undefined);
+    return bossCrawl(worm, ctx.tiles, state.rng);
   };
 
-  /** After a boss step: it goes under once the whole body is in the wall; in phase two each segment spits as it leaves the exit. */
-  const afterBossStep = (ctx: EnemyContext, b: BossPiece, before: Cell[]) => {
+  /** After a boss step, in phase two: each segment spits out both flanks as it leaves the exit hole. */
+  const spitOut = (ctx: EnemyContext, b: BossPiece, before: Cell[]) => {
+    const exit = b.spitFrom;
+    if (!exit) return;
     const after = state.worm.segments;
-    if (b.diving && after.every((c) => sameCell(c, b.diving!))) {
-      b.burrow = { plan: planExit(ctx.tiles, ctx.doors, b.shared.holeCells, b.shared.rng), start: ctx.time };
-      b.shared.hazards.push(b.burrow);
-      b.diving = undefined;
-      shakeRocksLoose(ctx, b.shared, b.burrow.plan);
-      return;
-    }
-    const e = b.emerging;
-    if (!e) return;
-    if (e.spit) {
-      const speed = TUNING.wormBoss.shotSpeed;
-      const wave = spitWave(after, state.worm.heading);
-      after.forEach((c, i) => {
-        if (!sameCell(before[i], e.exit) || sameCell(c, e.exit)) return;
-        const at = ctx.tileCenter(c);
-        for (const a of wave[i].angles) ctx.fireEnemyShot(at.x, at.y, Math.cos(a) * speed, Math.sin(a) * speed);
-      });
-    }
-    if (!after.some((c) => sameCell(c, e.exit))) b.emerging = undefined;
+    const speed = TUNING.wormBoss.shotSpeed;
+    const wave = spitWave(after, state.worm.heading);
+    after.forEach((c, i) => {
+      if (!sameCell(before[i], exit) || sameCell(c, exit)) return;
+      const at = ctx.tileCenter(c);
+      for (const a of wave[i].angles) ctx.fireEnemyShot(at.x, at.y, Math.cos(a) * speed, Math.sin(a) * speed);
+    });
+    // Done once the whole body is through (the head may not have reached the hole yet).
+    if (!after.some((c) => sameCell(c, exit)) && !b.tunnel?.path.some((c) => sameCell(c, exit))) b.spitFrom = undefined;
   };
 
   const enemy: Enemy = {
@@ -388,7 +349,8 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
       if (state.boss && updateBoss(ctx, state.boss)) return;
       if (ctx.time < state.nextStepAt) return;
       const phaseTwo = state.boss && inPhaseTwo(state.boss.shared.hp, state.boss.shared.maxHp);
-      const stepMs = state.boss?.rampage?.lunge ? WORM_BOSS.lungeStepMs : style.stepMs * (phaseTwo ? WORM_BOSS.phaseTwoStepFactor : 1);
+      const dashing = state.boss && (state.boss.rampage?.lunge ?? state.boss.tunnel);
+      const stepMs = dashing ? WORM_BOSS.lungeStepMs : style.stepMs * (phaseTwo ? WORM_BOSS.phaseTwoStepFactor : 1);
       if (state.nextStepAt === 0) state.nextStepAt = ctx.time;
       state.nextStepAt = nextStepDue(state.nextStepAt, ctx.time, stepMs);
       // Snap to the cells reached, then glide toward the next ones over one step.
@@ -407,8 +369,8 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
         return;
       }
       if (state.boss) {
-        afterBossStep(ctx, state.boss, before);
-        hideInWalls(ctx, before, !!state.boss.burrow);
+        spitOut(ctx, state.boss, before);
+        hideInWalls(ctx, before);
       }
       const seconds = stepMs / 1000;
       state.worm.segments.forEach((c, i) => {
@@ -524,19 +486,18 @@ function splitAt(worm: Worm, index: number): WormPiece[] {
 }
 
 /**
- * A piece left after a kill: one whose head is already in the wall keeps diving, one still in the
- * exit hole keeps coming out, and a rampage goes on in every piece. The piece that keeps the head
- * (`front`) carries on its lunge; a back half starts its own lunge at once.
+ * A piece left after a kill: the one that keeps the head (`front`) races on through its tunnel,
+ * and a rampage goes on in every piece, a back half starting its own lunge at once.
  */
 function splitPiece(parent: BossPiece, worm: Worm, front: boolean): BossPiece {
-  const { diving, emerging, rampage } = parent;
+  const { tunnel, spitFrom, rampage } = parent;
   return {
     shared: parent.shared,
     readyAt: parent.readyAt,
     nextEggAt: parent.nextEggAt,
     rampageRound: parent.rampageRound,
-    diving: diving && sameCell(worm.segments[0], diving) ? diving : undefined,
-    emerging: emerging && worm.segments.some((c) => sameCell(c, emerging.exit)) ? { ...emerging } : undefined,
+    tunnel: front && tunnel ? { ...tunnel, path: [...tunnel.path] } : undefined,
+    spitFrom: spitFrom && worm.segments.some((c) => sameCell(c, spitFrom)) ? spitFrom : undefined,
     rampage: rampage && carryRampage(rampage, front),
   };
 }
@@ -572,7 +533,6 @@ export function spawnWorm(
         pieces: 1,
         pool: sharedPool(cells.length * style.segmentHp),
         split: false,
-        hazards: [],
         rocks: [],
         nextRockfallAt: 0,
         bodies: new Map(),

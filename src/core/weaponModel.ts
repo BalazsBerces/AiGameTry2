@@ -90,7 +90,8 @@ export const WEAPON = {
   /** Fire-rate passive: multiplies the delay between attacks and their damage (shots and sword). */
   fireRateDelayFactor: 0.4,
   fireRateDamageFactor: { 1: 0.5, 2: 0.75 },
-  triple: { shots: { 1: 3, 2: 5 }, spreadDeg: 14, damageFactor: 0.75 },
+  /** Triple shot: its fan of shots, each a little weaker, fired more slowly (`delayFactor` on the delay between shots). */
+  triple: { shots: { 1: 3, 2: 5 }, spreadDeg: 14, damageFactor: 0.75, delayFactor: 1.5 },
   ricochetBounces: { 1: 2, 2: 4 },
   boomerang: { outMs: 420, returnSpeedFactor: { 1: 1, 2: 1.5 }, returnDamageFactor: { 1: 1, 2: 2 } },
   poison: {
@@ -113,6 +114,7 @@ export function resolveWeapon(passives: PassiveLevels, statUps: StatUps = {}): W
       WEAPON.minFireDelayMs,
       (sword ? WEAPON.swordDelayMs : WEAPON.shotDelayMs) *
         (fast ? WEAPON.fireRateDelayFactor : 1) *
+        (triple && !sword ? WEAPON.triple.delayFactor : 1) *
         WEAPON.rateUpDelayFactor ** (statUps.rate ?? 0),
     ),
     damage:

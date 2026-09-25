@@ -162,6 +162,13 @@ describe('resolveWeapon shot passives', () => {
     expect(resolveWeapon({ triple: 2 })).toMatchObject({ shots: 5, damage: one.damage });
   });
 
+  it('triple shot fires more slowly, upgraded or not, but leaves the sword’s pace alone', () => {
+    expect(resolveWeapon({ triple: 1 }).fireDelayMs).toBe(495);
+    expect(resolveWeapon({ triple: 2 }).fireDelayMs).toBe(495);
+    expect(resolveWeapon({ triple: 1, fireRate: 1 }).fireDelayMs).toBeCloseTo(198);
+    expect(resolveWeapon({ sword: 1, triple: 1 }).fireDelayMs).toBe(450);
+  });
+
   it('piercing passes through enemies, and through rock too once upgraded', () => {
     expect(resolveWeapon({ pierce: 1 })).toMatchObject({ piercesEnemies: true, piercesTerrain: false });
     expect(resolveWeapon({ pierce: 2 })).toMatchObject({ piercesEnemies: true, piercesTerrain: true });

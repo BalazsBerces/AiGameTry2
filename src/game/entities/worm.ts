@@ -10,6 +10,7 @@ import {
   canAttack,
   halfPools,
   inPhaseTwo,
+  lungeCracks,
   planLunge,
   planRockfall,
   rockfallAt,
@@ -110,6 +111,8 @@ interface Rampage {
   until: number;
   lunges: number;
   lunge?: Lunge;
+  /** The next lunge, planned as the pause before it starts and shown as a crack along its path; null if it has nowhere to go. */
+  next?: Lunge | null;
 }
 
 interface WormState {
@@ -149,6 +152,22 @@ function shakeRocksLoose(ctx: EnemyContext, shared: WormBossShared, avoid: Cell[
   shared.nextRockfallAt = ctx.time + WORM_BOSS.rockfallCooldownMs;
   const cells = planRockfall(ctx.tiles, ctx.playerTile, [...[...shared.bodies.values()].flat(), ...avoid], ctx.doors, shared.rng);
   shared.rocks.push({ cells, start: ctx.time });
+}
+
+/**
+ * A crack across the tile at `at`, running along `heading`: jagged, the same for a cell every
+ * frame. On the room's floor it warns of a lunge; on a wall spot, of where one will burst out.
+ */
+function drawCrack(g: Phaser.GameObjects.Graphics, at: { x: number; y: number }, cell: Cell, heading: Direction) {
+  const t = TUNING.tile;
+  const along = STEP[heading];
+  const side = { x: -along.y, y: along.x };
+  const wobble = ((cell.x * 7 + cell.y * 13) % 3) - 1;
+  const points = [-0.5, -0.2, 0.15, 0.5].map((u, i) => {
+    const off = (i % 2 ? 0.12 : -0.06) * t + wobble * 0.04 * t;
+    return { x: at.x + along.x * u * t + side.x * off, y: at.y + along.y * u * t + side.y * off };
+  });
+  g.lineStyle(2, COLORS.wormHole, 0.85).strokePoints(points);
 }
 
 /** A dark hole in the wall at `wall`, with rubble on the floor in front of it (`inward` points into the room). */
@@ -226,12 +245,31 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
   };
 
   /** A lunge is over (it ran into something, or had nowhere to go): pause for the next, or lie dazed after the last. */
-  const endLunge = (ctx: EnemyContext, r: Rampage) => {
+  const endLunge = (ctx: EnemyContext, b: BossPiece, r: Rampage) => {
     r.lunge = undefined;
     r.lunges++;
     const last = r.lunges >= WORM_BOSS.rampageLunges;
     r.phase = last ? 'dazed' : 'pausing';
     r.until = ctx.time + (last ? WORM_BOSS.rampageDazeMs : WORM_BOSS.lungePauseMs);
+    if (!last) planNext(ctx, b, r);
+  };
+
+  /** Plans the next lunge at the start of the pause before it, at the player as they stand now. */
+  const planNext = (ctx: EnemyContext, b: BossPiece, r: Rampage) => {
+    r.next = planLunge(ctx.tiles, ctx.doors, state.worm, ctx.playerTile, b.shared.rng) ?? null;
+  };
+
+  /** The warning before a lunge: a crack racing along its path from the head through the pause. */
+  const drawLungeCrack = (ctx: EnemyContext, b: BossPiece, r: Rampage) => {
+    const lunge = r.next;
+    if (!lunge) return;
+    const progress = 1 - (r.until - ctx.time) / WORM_BOSS.lungePauseMs;
+    // Out of the far wall it runs the new way.
+    const { wrap } = lunge;
+    const exitAt = wrap ? lunge.path.findIndex((c) => sameCell(c, wrap.exit)) : Infinity;
+    lungeCracks(lunge, progress).forEach((c, i) =>
+      drawCrack(b.shared.ground, ctx.tileCenter(c), c, wrap && i >= exitAt ? wrap.heading : lunge.heading),
+    );
   };
 
   /** Runs a rampage; true while the piece holds still (charging, pausing, dazed). */
@@ -239,10 +277,13 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
     const head = state.parts[0];
     if (r.phase === 'lunging') {
       if (!dashOver(ctx, r.lunge!)) return false;
-      endLunge(ctx, r);
+      endLunge(ctx, b, r);
     }
+    // The first lunge is planned as the charge-up's last stretch begins, like a pause.
+    if (r.phase === 'charging' && r.next === undefined && ctx.time >= r.until - WORM_BOSS.lungePauseMs) planNext(ctx, b, r);
     if (ctx.time < r.until) {
       for (const p of state.parts) p.body.setVelocity(0, 0);
+      drawLungeCrack(ctx, b, r);
       if (r.phase === 'charging') {
         // The one warning: its head swells and throbs while the body shudders.
         head.setScale(1.15 + 0.2 * Math.abs(Math.sin(ctx.time / 70)));
@@ -261,9 +302,10 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
       state.nextStepAt = ctx.time;
       return false;
     }
-    const lunge = planLunge(ctx.tiles, ctx.doors, state.worm, ctx.playerTile, b.shared.rng);
+    const lunge = r.next === undefined ? planLunge(ctx.tiles, ctx.doors, state.worm, ctx.playerTile, b.shared.rng) : r.next;
+    r.next = undefined;
     if (!lunge) {
-      endLunge(ctx, r);
+      endLunge(ctx, b, r);
       return true;
     }
     r.phase = 'lunging';
@@ -503,9 +545,10 @@ function splitPiece(parent: BossPiece, worm: Worm, front: boolean): BossPiece {
 }
 
 function carryRampage(r: Rampage, front: boolean): Rampage {
-  if (front) return { ...r, lunge: r.lunge && { ...r.lunge, path: [...r.lunge.path] } };
-  // A back half cut off mid-lunge picks its own line straight away.
-  return r.lunge ? { ...r, phase: 'pausing', until: 0, lunge: undefined } : { ...r };
+  const copy = (lunge: Lunge) => ({ ...lunge, path: [...lunge.path] });
+  if (front) return { ...r, lunge: r.lunge && copy(r.lunge), next: r.next && copy(r.next) };
+  // A back half plans its own lunges (straight away, if cut off mid-lunge).
+  return r.lunge ? { ...r, phase: 'pausing', until: 0, lunge: undefined, next: undefined } : { ...r, next: undefined };
 }
 
 export function spawnWorm(

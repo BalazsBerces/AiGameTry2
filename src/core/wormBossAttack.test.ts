@@ -9,6 +9,7 @@ import {
   canAttack,
   halfPools,
   inPhaseTwo,
+  lungeCracks,
   lungeFrom,
   planLunge,
   planRockfall,
@@ -196,6 +197,17 @@ describe('worm boss rampage lunges through the walls', () => {
 
   it('never tunnels through a doorway on the way in', () => {
     expect(lungeFrom(open, [{ side: 'right', cell: { x: 5, y: 1 } }], { x: 4, y: 1 }, 'right', createRng(1)).wrap).toBeUndefined();
+  });
+});
+
+describe('worm boss lunge warning', () => {
+  const lunge = lungeFrom(grid(['......', '......']), [], { x: 0, y: 0 }, 'right', createRng(0));
+
+  it('cracks the ground along the path from the head outward, all of it by the time it lunges', () => {
+    expect(lunge.path.length).toBeGreaterThan(4);
+    expect(lungeCracks(lunge, 0)).toEqual(lunge.path.slice(0, 1));
+    expect(lungeCracks(lunge, 0.5)).toEqual(lunge.path.slice(0, Math.ceil(lunge.path.length / 2)));
+    expect(lungeCracks(lunge, 1)).toEqual(lunge.path);
   });
 });
 

@@ -5,11 +5,12 @@ import type { Door, Tile } from './roomGenerator';
 
 /** The worm boss's phase-one eggs; placeholders for playtest tuning. */
 export const WORM_BROOD = {
-  /** Before it splits, it lobs this many eggs out of its head this often... */
-  lobEveryMs: 5000,
+  /** Before it splits, it lobs this many eggs this often... */
+  lobEveryMs: 10000,
   eggsPerLob: 2,
-  /** ...coming down this many tiles (8-way) around the player, after flying this long. */
-  lobSpread: 2,
+  /** ...each from one of its segments, coming down this far (in tiles, 8-way) from it, after flying this long. */
+  lobMinSpread: 2,
+  lobSpread: 3,
   flightMs: 900,
   /** An egg hatches this long after it lands, wobbling for the last `wobbleMs`. */
   hatchMs: 4000,
@@ -45,18 +46,34 @@ export function broodTick(nextLobAt: number | undefined, now: number, piece: Bro
 }
 
 /**
- * Where a lob of `count` eggs comes down: around the player like a Treant's seed pods
- * (core/lobLanding), never on `taken` (the worm's body, eggs already down). An egg may land in a
- * narrow way: it is shot open or hatches soon, so it never cuts anything off for good.
+ * A lob of `count` eggs, each thrown from a random segment of the worm's `body` (core/lobLanding)
+ * to open floor `lobMinSpread`-`lobSpread` tiles from it, never that near any other segment, the
+ * player's tile or `taken` (eggs already down or on their way). A segment with nowhere to throw
+ * to passes to another. An egg may land in a narrow way: it is shot open or hatches soon, so it
+ * never cuts anything off for good.
  */
-export function planEggLob(tiles: Tile[][], doors: Door[], player: Cell, taken: Cell[], count: number, rng: Rng): Cell[] {
-  return planLandings(tiles, doors, player, rng, {
-    spread: WORM_BROOD.lobSpread,
-    count,
-    keepOff: (c) => taken.some((b) => b.x === c.x && b.y === c.y),
-    lands: () => 'rock',
-    openAround: false,
-  }).map(({ cell }) => cell);
+export function planEggLob(tiles: Tile[][], doors: Door[], body: Cell[], player: Cell, taken: Cell[], count: number, rng: Rng): { from: Cell; cell: Cell }[] {
+  const same = (a: Cell) => (b: Cell) => a.x === b.x && a.y === b.y;
+  const nearWorm = (c: Cell) => body.some((b) => Math.max(Math.abs(c.x - b.x), Math.abs(c.y - b.y)) < WORM_BROOD.lobMinSpread);
+  const eggs: { from: Cell; cell: Cell }[] = [];
+  for (let i = 0; i < count; i++) {
+    const throwers = [...body];
+    while (throwers.length) {
+      const from = throwers.splice(rng.int(0, throwers.length - 1), 1)[0];
+      const [landing] = planLandings(tiles, doors, from, rng, {
+        spread: WORM_BROOD.lobSpread,
+        minSpread: WORM_BROOD.lobMinSpread,
+        count: 1,
+        keepOff: (c) => nearWorm(c) || same(player)(c) || taken.some(same(c)) || eggs.some((e) => same(c)(e.cell)),
+        lands: () => 'rock',
+        openAround: false,
+      });
+      if (!landing) continue;
+      eggs.push({ from, cell: landing.cell });
+      break;
+    }
+  }
+  return eggs;
 }
 
 /** Where an egg laid at `laidAt` stands at `now`. */

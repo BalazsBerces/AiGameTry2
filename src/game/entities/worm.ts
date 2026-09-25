@@ -95,8 +95,8 @@ interface WormBossShared {
   holeCells: Cell[];
   /** The parts of each egg and hatchling from before its split; one counts while any of its parts lives. */
   brood: EnemySprite[][];
-  /** Eggs in the air, lobbed from where its head was at `start`; they count toward the brood. */
-  lobs: { from: { x: number; y: number }; cells: Cell[]; start: number }[];
+  /** Eggs in the air, each lobbed at `start` from where one of its segments was; they count toward the brood. */
+  lobs: { eggs: { from: { x: number; y: number }; cell: Cell }[]; start: number }[];
   /** Eggs in flight, over everything, redrawn every frame. */
   air: Phaser.GameObjects.Graphics;
   /** Its health bar (core/bossBar), kept up to date in place: the scene shows this very object. */
@@ -174,23 +174,23 @@ function tickGround(scene: Phaser.Scene, ctx: EnemyContext, shared: WormBossShar
 }
 
 /**
- * Eggs arc from where the head was to their cells like a Treant's seed pods, each landing spot
- * shadowed until it comes down; there it lands, harmless, as an egg.
+ * Eggs arc from the segments that threw them to their cells like a Treant's seed pods, each
+ * landing spot shadowed until it comes down; there it lands, harmless, as an egg.
  */
 function flyEggs(scene: Phaser.Scene, ctx: EnemyContext, shared: WormBossShared) {
   const air = shared.air.clear();
   shared.lobs = shared.lobs.filter((lob) => {
     const k = (ctx.time - lob.start) / WORM_BROOD.flightMs;
     if (k >= 1) {
-      for (const cell of lob.cells) ctx.spawnEnemy(wormEgg(scene, ctx, shared, cell));
+      for (const { cell } of lob.eggs) ctx.spawnEnemy(wormEgg(scene, ctx, shared, cell));
       return false;
     }
-    for (const cell of lob.cells) {
+    for (const { from, cell } of lob.eggs) {
       const p = ctx.tileCenter(cell);
       shared.ground.fillStyle(COLORS.podShadow, 0.2 + 0.4 * k).fillEllipse(p.x, p.y + 6, 12 + 26 * k, 6 + 12 * k);
       const lift = Math.sin(Math.PI * k) * TUNING.tile * 2.5;
-      const x = lob.from.x + (p.x - lob.from.x) * k;
-      const y = lob.from.y + (p.y - lob.from.y) * k - lift;
+      const x = from.x + (p.x - from.x) * k;
+      const y = from.y + (p.y - from.y) * k - lift;
       air.fillStyle(COLORS.wormEgg, 1).fillEllipse(x, y, 16, 20);
       air.lineStyle(2, COLORS.wormBossBody, 1).strokeEllipse(x, y, 16, 20);
     }
@@ -266,11 +266,11 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
   };
   const inWalls = (ctx: EnemyContext) => state.worm.segments.some((c) => !inRoom(ctx, c));
 
-  /** Before its split: lobs eggs out of its head around the player now and then, while it is all out of the walls. */
+  /** Before its split: lobs eggs around itself, from any of its segments, now and then, while it is all out of the walls. */
   const lobEggs = (ctx: EnemyContext, b: BossPiece) => {
     const { shared } = b;
     const living = shared.brood.filter((parts) => parts.some((p) => p.active));
-    const inFlight = shared.lobs.flatMap((lob) => lob.cells);
+    const inFlight = shared.lobs.flatMap((lob) => lob.eggs.map(({ cell }) => cell));
     const tick = broodTick(b.nextEggAt, ctx.time, {
       split: b.pool !== undefined,
       aboveGround: !b.rampage && !inWalls(ctx),
@@ -278,11 +278,13 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
     });
     b.nextEggAt = tick.nextLobAt;
     if (!tick.eggs) return;
-    // Never onto the worm, an egg on its way down, or anything of the brood already there.
-    const taken = [...[...shared.bodies.values()].flat(), ...inFlight, ...living.flat().filter((p) => p.active).map((p) => ctx.tileOf(p.x, p.y))];
-    const cells = planEggLob(ctx.tiles, ctx.doors, ctx.playerTile, taken, tick.eggs, shared.rng);
-    const head = state.parts[0];
-    if (cells.length) shared.lobs.push({ from: { x: head.x, y: head.y }, cells, start: ctx.time });
+    // Never onto an egg on its way down, or anything of the brood already there.
+    const taken = [...inFlight, ...living.flat().filter((p) => p.active).map((p) => ctx.tileOf(p.x, p.y))];
+    const eggs = planEggLob(ctx.tiles, ctx.doors, state.worm.segments, ctx.playerTile, taken, tick.eggs, shared.rng).map(({ from, cell }) => {
+      const part = state.parts[state.worm.segments.findIndex((c) => sameCell(c, from))];
+      return { from: { x: part.x, y: part.y }, cell };
+    });
+    if (eggs.length) shared.lobs.push({ eggs, start: ctx.time });
   };
 
   /** Starts a rampage round on the shared clock; this piece joins it if it is long enough. */

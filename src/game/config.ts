@@ -21,6 +21,7 @@ export const TUNING = {
   /** Orbital orbs: how far out and how fast they circle, and what they do to an enemy part they touch (at most every `hitEveryMs`). */
   orbital: { radius: 46, size: 9, degPerSec: 210, damage: 0.8, hitEveryMs: 350 },
   invincibleMs: 1000,
+  /** Enemies in a room just entered hold still this long after the camera has slid in. */
   enemyWakeMs: 500,
   /** After a chest opens, items can't be picked up for this long. */
   chestLockoutMs: 450,

@@ -106,9 +106,9 @@ interface BossPiece {
   rampage?: Rampage;
 }
 
-/** A rampage: charge up, then lunges (each with a pause after it), then dazed. */
+/** A rampage: charge up, then lunges with a pause between each; over as the last one ends. */
 interface Rampage {
-  phase: 'charging' | 'lunging' | 'pausing' | 'dazed';
+  phase: 'charging' | 'lunging' | 'pausing' | 'over';
   /** When a charge, pause or daze ends. */
   until: number;
   lunges: number;
@@ -260,14 +260,14 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
     return true;
   };
 
-  /** A lunge is over (it ran into something, or had nowhere to go): pause for the next, or lie dazed after the last. */
+  /** A lunge is over (it ran into something, or had nowhere to go): pause for the next, or end the rampage after the last. */
   const endLunge = (ctx: EnemyContext, b: BossPiece, r: Rampage) => {
     r.lunge = undefined;
     r.crack = undefined;
     r.lunges++;
     const last = r.lunges >= WORM_BOSS.rampageLunges;
-    r.phase = last ? 'dazed' : 'pausing';
-    r.until = ctx.time + (last ? WORM_BOSS.rampageDazeMs : WORM_BOSS.lungePauseMs);
+    r.phase = last ? 'over' : 'pausing';
+    r.until = ctx.time + (last ? 0 : WORM_BOSS.lungePauseMs);
     if (!last) planNext(ctx, b, r);
   };
 
@@ -292,7 +292,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
     if (tip) drawCrack(g, ctx.tileCenter(tip.cell), tip.cell, along(whole.length), tip.share);
   };
 
-  /** Runs a rampage; true while the piece holds still (charging, pausing, dazed). */
+  /** Runs a rampage; true while the piece holds still (charging, pausing). */
   const updateRampage = (ctx: EnemyContext, b: BossPiece, r: Rampage): boolean => {
     const head = state.parts[0];
     if (r.phase === 'lunging') {
@@ -318,7 +318,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
       return true;
     }
     head.setScale(1);
-    if (r.phase === 'dazed') {
+    if (r.phase === 'over') {
       b.rampage = undefined;
       // The cooldown runs from the end of a rampage, not its start.
       b.shared.nextRampageAt = Math.max(b.shared.nextRampageAt, ctx.time + WORM_BOSS.rampageEveryMs);

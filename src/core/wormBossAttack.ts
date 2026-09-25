@@ -21,8 +21,7 @@ export const WORM_BOSS = {
   rockShadowMs: 1000,
   /**
    * Every piece rampages together, first this long into the fight and then this long after each
-   * rampage ends: it charges up, then lunges this many times, pausing between lunges, and lies
-   * dazed at the end.
+   * rampage ends: it charges up, then lunges this many times, pausing between lunges.
    */
   rampageEveryMs: 12000,
   rampageChargeMs: 1200,
@@ -31,7 +30,6 @@ export const WORM_BOSS = {
   /** The warning crack flows out along a lunge's path one cell per this long, from the start of the pause before it. */
   crackStepMs: 25,
   lungePauseMs: 350,
-  rampageDazeMs: 1000,
   /** A lunge into rock takes this share of its hit points. */
   lungeRockShare: 0.5,
   /** The spit wave runs down the body one segment per this long. */

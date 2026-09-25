@@ -49,11 +49,11 @@ export const TUNING = {
    */
   bossBar: { width: 360, height: 10, gapPx: 10, entryMs: 700, snapFlashMs: 110, crumbleMs: 700, rageFlashMs: 160, heartbeatMs: 900 },
   /**
-   * The worm boss's flesh burst, by size: `chunks` of flesh (each `chunkPx` across) and `drops` of
-   * dark blood flung up to `reachTiles`, leaving a splat `splatTiles` across. Chunks fly and bounce
+   * The worm boss's shell burst, by size: `chunks` shards of shell (each `chunkPx` across) and `drops`
+   * of ichor flung up to `reachTiles`, leaving a splat `splatTiles` across. Shards fly and bounce
    * over `flightMs`, lie `restMs`, then fade over `fadeMs`. A split's raw ends spurt every `spurtEveryMs`.
    */
-  fleshBurst: {
+  shellBurst: {
     pop: { chunks: 6, drops: 7, chunkPx: [6, 10], reachTiles: 1.1, splatTiles: 0.55 },
     head: { chunks: 16, drops: 20, chunkPx: [9, 16], reachTiles: 2.1, splatTiles: 1.1 },
     split: { chunks: 13, drops: 20, chunkPx: [8, 14], reachTiles: 1.8, splatTiles: 0.95 },
@@ -223,11 +223,11 @@ export const COLORS = {
   fallingRock: 0x8a7458,
   wormHole: 0x14100c,
   wormEgg: 0xe8dcc0,
-  /** The flesh burst's droplets, and the splat it leaves on the floor. */
-  wormBlood: 0x2a0806,
-  wormSplat: 0x4a0e0a,
-  /** Raw flesh inside the worm boss, paler than its skin. */
-  wormFlesh: 0xd0685a,
+  /** The burst's droplets of orange ichor, and the splat it leaves on the floor. */
+  wormIchor: 0xf08a1c,
+  wormIchorSplat: 0xb8620e,
+  /** The pale rim along a shard of the worm boss's shell. */
+  wormChitinEdge: 0xf0c8a0,
   maidenIron: 0x5c6068,
   maidenRivets: 0xb8bcc4,
   maidenInside: 0x7a1c20,

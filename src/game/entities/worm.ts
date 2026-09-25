@@ -32,7 +32,7 @@ import {
 import type { BarHalf, BossBarSnapshot } from '../../core/bossBar';
 import { hitsToBreak } from '../../core/tiles';
 import { COLORS, TUNING } from '../config';
-import { fleshBurst, shakeScreen, spray } from '../fleshBurst';
+import { shellBurst, shakeScreen, spray } from '../shellBurst';
 import { championBoost, championColor, flash, singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
 
 export interface WormStyle {
@@ -99,7 +99,7 @@ interface WormBossShared {
   nextRampageAt: number;
   /** Falling rocks' shadows, redrawn every frame. */
   ground: Phaser.GameObjects.Graphics;
-  /** Floor decals, each drawn once and kept for the whole fight: holes and rubble, and flesh splats. */
+  /** Floor decals, each drawn once and kept for the whole fight: holes and rubble, and ichor splats. */
   marks: Phaser.GameObjects.Graphics;
   holeCells: Cell[];
   /** The parts of each egg and hatchling from before its split; one counts while any of its parts lives. */
@@ -454,7 +454,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
     const twitch = 5;
     part.body.reset(part.x + (Math.random() - 0.5) * twitch, part.y + (Math.random() - 0.5) * twitch);
     if (ctx.time < (b.nextSpurtAt ?? 0)) return;
-    b.nextSpurtAt = ctx.time + TUNING.fleshBurst.spurtEveryMs * (0.6 + Math.random() * 0.8);
+    b.nextSpurtAt = ctx.time + TUNING.shellBurst.spurtEveryMs * (0.6 + Math.random() * 0.8);
     spray(scene, part, 2 + Math.floor(Math.random() * 3));
   };
 
@@ -541,7 +541,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
 
   /**
    * A dead piece blows apart (core/wormBossAttack `deathChain`): it lies still where it died while
-   * its segments pop one by one from its tail, each in a small flesh burst, the head last in the
+   * its segments pop one by one from its tail, each in a small shell burst, the head last in the
    * big one; then it is out of the fight, and with the last piece the fight is over.
    */
   const blowApart = (ctx: EnemyContext, b: BossPiece, dying: Dying) => {
@@ -553,7 +553,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
     for (const { segment, big } of deathChain(state.parts.length).pops.slice(dying.popped, popped.length)) {
       const part = state.parts[segment];
       // Out of sight in a wall, it goes quietly.
-      if (part.visible) fleshBurst(scene, part, big ? 'head' : 'pop', big ? style.headColor : style.bodyColor, b.shared.marks);
+      if (part.visible) shellBurst(scene, part, big ? 'head' : 'pop', big ? style.headColor : style.bodyColor, b.shared.marks);
       part.setVisible(false);
       part.body.enable = false;
       shakeScreen(scene, big ? 'head' : 'pop');
@@ -710,7 +710,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
       return [enemy];
     }
     // It tears apart: the segment hit bursts, and the screen shakes.
-    fleshBurst(scene, part, 'split', style.bodyColor, shared.marks);
+    shellBurst(scene, part, 'split', style.bodyColor, shared.marks);
     shakeScreen(scene, 'split');
     part.destroy();
     shared.bodies.delete(state);
@@ -749,7 +749,7 @@ function tethered(enemy: Enemy, shared: WormBossShared): Enemy {
         enemy.update(ctx);
         return;
       }
-      for (const p of brood.parts) if (p.active && p.visible) fleshBurst(shared.scene, p, 'pop', p.fillColor);
+      for (const p of brood.parts) if (p.active && p.visible) shellBurst(shared.scene, p, 'pop', p.fillColor);
       ctx.removeEnemy(brood);
     },
     hit: (part, damage) => enemy.hit(part, damage).map((e) => (e === enemy ? brood : tethered(e, shared))),
@@ -793,7 +793,7 @@ const fightOver = (shared: WormBossShared) => shared.pieces === 0 && shared.corp
 function endFight(shared: WormBossShared) {
   shared.ground.destroy();
   shared.air.destroy();
-  shared.scene.tweens.add({ targets: shared.marks, alpha: 0, delay: TUNING.fleshBurst.restMs, duration: 1200, onComplete: () => shared.marks.destroy() });
+  shared.scene.tweens.add({ targets: shared.marks, alpha: 0, delay: TUNING.shellBurst.restMs, duration: 1200, onComplete: () => shared.marks.destroy() });
 }
 
 /** A regular worm splits wherever a segment dies: the pieces in front of and behind it. */

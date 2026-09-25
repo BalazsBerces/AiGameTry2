@@ -856,12 +856,12 @@ export class GameScene extends Phaser.Scene {
       },
       canSeePlayer: (from) =>
         lineOfSight(room.layout.tiles, this.toTileUnits(room, from), this.toTileUnits(room, this.player), blocksSight),
-      fireEnemyShot: (x, y, vx, vy, homing = false, bounces = 0) => {
+      fireEnemyShot: (x, y, vx, vy, homing = false, bounces = 0, radius = TUNING.enemyShotRadius) => {
         const color = bounces > 0 ? COLORS.crystalShot : COLORS.enemyShot;
         // Drawn over the Candle Witch's dark, so shots can always be dodged.
-        const shot = this.add.circle(x, y, TUNING.enemyShotRadius, color).setData({ homing, bounces }).setDepth(DARK_DEPTH + 2);
+        const shot = this.add.circle(x, y, radius, color).setData({ homing, bounces }).setDepth(DARK_DEPTH + 2);
         this.enemyShots.add(shot);
-        (shot.body as Phaser.Physics.Arcade.Body).setCircle(TUNING.enemyShotRadius).setVelocity(vx, vy);
+        (shot.body as Phaser.Physics.Arcade.Body).setCircle(radius).setVelocity(vx, vy);
       },
       tiles: room.layout.tiles,
       hurtPlayer: () => this.hurtPlayer(),

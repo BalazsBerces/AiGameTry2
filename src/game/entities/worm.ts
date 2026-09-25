@@ -406,12 +406,12 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
   const fireSpit = (ctx: EnemyContext, b: BossPiece) => {
     const spit = b.spit;
     if (!spit) return;
-    const speed = TUNING.wormBoss.shotSpeed;
+    const { shotSpeed: speed, shotRadius } = TUNING.wormBoss;
     while (spit.fired < spit.shots.length && spit.shots[spit.fired].atMs <= ctx.time - spit.start) {
       const shot = spit.shots[spit.fired++];
       const part = state.parts[shot.segment];
       if (!part?.active || !part.visible) continue;
-      for (const a of shot.angles) ctx.fireEnemyShot(part.x, part.y, Math.cos(a) * speed, Math.sin(a) * speed);
+      for (const a of shot.angles) ctx.fireEnemyShot(part.x, part.y, Math.cos(a) * speed, Math.sin(a) * speed, false, 0, shotRadius);
     }
     if (spit.fired >= spit.shots.length) b.spit = undefined;
   };

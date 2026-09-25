@@ -24,8 +24,11 @@ export interface EnemyContext {
   isWalkable(tile: Cell): boolean;
   /** Obstacles block sight; holes do not. */
   canSeePlayer(from: { x: number; y: number }): boolean;
-  /** Homing enemy shots steer toward the player; `bounces` is how often it ricochets off stone. */
-  fireEnemyShot(x: number, y: number, vx: number, vy: number, homing?: boolean, bounces?: number): void;
+  /**
+   * Homing enemy shots steer toward the player; `bounces` is how often it ricochets off stone;
+   * `radius` is its size, and its hitbox's (TUNING.enemyShotRadius if left out).
+   */
+  fireEnemyShot(x: number, y: number, vx: number, vy: number, homing?: boolean, bounces?: number, radius?: number): void;
   /** World position of the room's centre. */
   roomCenter: { x: number; y: number };
   /** The current room's tiles, for enemies that plan attacks over the terrain. */

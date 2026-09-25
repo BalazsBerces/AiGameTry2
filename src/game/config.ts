@@ -31,7 +31,19 @@ export const TUNING = {
   bomb: { fuseMs: 1500, enemyDamage: 6, playerDamage: 2, radius: 12 },
   worm: { segmentSize: 30, segmentHp: 2, stepMs: 300 },
   /** Hit points of the whole worm, however long; its attacks and their timing live in core/wormBossAttack. */
-  wormBoss: { segmentSize: 38, hp: 50, stepMs: 230, shotSpeed: 155 },
+  wormBoss: { segmentSize: 38, hp: 80, stepMs: 230, shotSpeed: 155 },
+  /**
+   * The worm boss's roar (its length lives in core/wormBossAttack): the head swells to `headScale`
+   * and throbs, and rings spread from it, each `ringMs` long, `ringEveryMs` apart, out to `ringTiles`.
+   * Player shots that strike it bounce back up to `bounceTiles` over `bounceMs`, then plop over `plopMs`.
+   */
+  wormRoar: { headScale: 1.6, ringMs: 900, ringEveryMs: 700, ringTiles: 3.5, bounceTiles: 1, bounceMs: 200, plopMs: 280 },
+  /**
+   * The worm boss's health bar in the strip under the playfield: it fills in over `entryMs`, rips
+   * over `tearMs` leaving a `gapPx` gap, and a dead piece crumbles over `crumbleMs`. Once enraged
+   * it flashes white for `rageFlashMs`, then throbs once every `heartbeatMs`.
+   */
+  bossBar: { width: 360, height: 10, gapPx: 10, entryMs: 700, tearMs: 300, crumbleMs: 700, rageFlashMs: 160, heartbeatMs: 900 },
   /** Its walk/open cycle, stomps, volleys, spikes and chains live in core/ironMaiden. */
   ironMaiden: { hp: 60, width: 40, height: 46, speed: 70, shotSpeed: 175 },
   /** Candles, patterns, relighting and the dark live in core/candleWitch. */
@@ -103,6 +115,10 @@ export const COLORS = {
   wormBody: 0xb0703a,
   wormBossHead: 0xe0453a,
   wormBossBody: 0x9c2f2a,
+  bossBarTrack: 0x1c1410,
+  /** Saturated, so it stands apart from the worm's brick-red body colour the bar starts in. */
+  bossBarRage: 0xd81420,
+  bossBarFlash: 0xffffff,
   champion: 0xf2b632,
   enemyShot: 0xff6b5a,
   lockedDoor: 0x3a2515,

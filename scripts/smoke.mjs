@@ -1220,5 +1220,83 @@ if (scenario === 'bombs') {
   await shot('04-hud');
 }
 
+if (scenario === 'worm-bar') {
+  // The worm boss's health bar: it fills in, rips at the split, the last half roars (shots bounce off), throbs red, crumbles.
+  const id = await page.evaluate(`[...${scene()}.world.rooms.values()].find((r) => r.floorIndex === 1 && r.floorRoom.kind === 'boss').floorRoom.id`);
+  await page.evaluate(`(() => { const s = ${scene()};
+    for (const e of s.enemies) for (const p of e.parts) p.destroy();
+    s.enemies = [];
+    s.invincibleUntil = Infinity;
+    const room = s.world.rooms.get('${id}');
+    const door = room.layout.doors[0];
+    s.player.body.reset(room.floorRoom.cell.x * 720 + (door.cell.x + 1.5) * 48, room.floorRoom.cell.y * 432 + (door.cell.y + 1.5) * 48);
+    s.enterRoom(room, s.time.now);
+  })()`);
+  const bar = () => page.evaluate(`(() => { const s = ${scene()}; const b = s.bossBar; return {
+    bar: b && JSON.parse(JSON.stringify(b)), label: window.game.scene.getScene('hud').roomText.visible,
+    pieces: s.enemies.filter((e) => e.parts[0]?.width === 38).map((e) => e.parts.length),
+    headScale: s.enemies.filter((e) => e.parts[0]?.width === 38).map((e) => Math.round(e.parts[0].scale * 100) / 100),
+  }; })()`);
+  await page.waitForTimeout(250);
+  await shot('bar-01-filling');
+  await page.waitForTimeout(700);
+  await shot('bar-02-full');
+  console.log('entered', JSON.stringify(await bar()));
+  const boss = `${scene()}.enemies.filter((e) => e.parts[0]?.width === 38)`;
+  const allOut = `${boss}.every((e) => e.parts.every((p) => p.body.enable))`;
+  for (let i = 0; i < 80 && !(await page.evaluate(allOut)); i++) await page.waitForTimeout(100);
+  await page.evaluate(`(() => { const s = ${scene()}; const p = ${boss}[0].parts[9]; for (let i = 0; i < 11; i++) s.damagePart(p, 1); })()`);
+  await page.waitForTimeout(120);
+  await shot('bar-03-tearing');
+  await page.waitForTimeout(400);
+  await shot('bar-04-torn');
+  console.log('after split', JSON.stringify(await bar()));
+  // Kill the back half off; the front one is left for its last stand.
+  for (let i = 0; i < 200 && (await page.evaluate(`${boss}.length`)) > 1; i++) {
+    await page.evaluate(`(() => { const s = ${scene()}; const e = ${boss}[1]; const p = e?.parts.find((p) => p.body.enable); if (p) s.damagePart(p, 1); })()`);
+    await page.waitForTimeout(20);
+  }
+  await page.waitForTimeout(200);
+  await shot('bar-05-half-crumbling');
+  console.log('one half dead', JSON.stringify(await bar()));
+  for (let i = 0; i < 100 && !(await page.evaluate(`${boss}[0]?.invulnerable?.()`)); i++) await page.waitForTimeout(100);
+  console.log('roaring:', await page.evaluate(`${boss}[0]?.invulnerable?.()`));
+  // Stand by it, so the camera shows the roar.
+  await page.evaluate(`(() => { const s = ${scene()}; const h = ${boss}[0].parts[2]; s.player.body.reset(h.x - 110, h.y); })()`);
+  await page.waitForTimeout(500);
+  await shot('bar-06-roar');
+  // Hit it every way while it roars: nothing should change.
+  const hp = () => page.evaluate(`${scene()}.bossBar.halves.map((h) => h.pool)`);
+  const before = await hp();
+  await page.evaluate(`(() => { const s = ${scene()}; const part = ${boss}[0].parts[2];
+    s.damagePart(part, 5);
+    s.strike(part, 5);
+    for (let i = 0; i < 4; i++) {
+      const shot = s.add.circle(part.x - 60 + i * 5, part.y - 40, 7, 0xfff2a8);
+      s.physics.add.existing(shot);
+      shot.body.setVelocity(420, 280);
+      s.hitEnemy(shot, part);
+    }
+  })()`);
+  await page.waitForTimeout(90);
+  await shot('bar-07-bounce');
+  console.log('pools before', JSON.stringify(before), 'after hits while roaring', JSON.stringify(await hp()));
+  await page.waitForTimeout(250);
+  await shot('bar-08-plop');
+  for (let i = 0; i < 40 && (await page.evaluate(`${boss}[0]?.invulnerable?.()`)); i++) await page.waitForTimeout(100);
+  await page.waitForTimeout(600);
+  await shot('bar-09-rage');
+  console.log('after roar', JSON.stringify(await bar()));
+  for (let i = 0; i < 300 && (await page.evaluate(`${boss}.length`)) > 0; i++) {
+    await page.evaluate(`(() => { const s = ${scene()}; const e = ${boss}[0]; const p = e?.parts.find((p) => p.body.enable); if (p) s.damagePart(p, 1); })()`);
+    await page.waitForTimeout(20);
+  }
+  await page.waitForTimeout(150);
+  await shot('bar-10-crumble');
+  await page.waitForTimeout(1000);
+  console.log('dead', JSON.stringify(await bar()));
+  await shot('bar-11-label-back');
+}
+
 console.log(errors.length ? `ERRORS:\n${errors.join('\n')}` : 'no console errors');
 await browser.close();

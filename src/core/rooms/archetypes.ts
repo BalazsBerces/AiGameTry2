@@ -1,6 +1,6 @@
 import { type Cell, type Direction, type RoomKind, type RoomShape } from '../map/floorGenerator';
 import type { Rng } from '../rng';
-import { WORM_LENGTH, type Door, type EnemySpawn, type PickupSpawn, type Tile } from './roomGenerator';
+import type { Door, EnemySpawn, PickupSpawn, Tile } from './roomGenerator';
 import type { MirrorAxis, Symmetry } from './roomValidator';
 import { themeForFloor } from '../map/themes';
 import type { Crusher } from '../obstacles/crusher';
@@ -265,13 +265,6 @@ const sentryIsland: Archetype = {
   },
 };
 
-/** A worm lying along `chain`, head first. */
-const worm = (chain: Cell[]): EnemySpawn => ({ type: 'worm', cell: chain[0], tail: chain.slice(1) });
-
-/** `length` cells in a row from `from`, stepping by `dx`: a worm lying straight. */
-const straight = (from: Cell, dx: number, length = WORM_LENGTH): Cell[] =>
-  Array.from({ length }, (_, i) => ({ x: from.x + dx * i, y: from.y }));
-
 /** The caves' own walker (ghouls) and turret (crystal turrets), from floor 2's theme. */
 const caveWalkers = (cells: Cell[]): EnemySpawn[] => cells.map((cell) => ({ type: themeForFloor(1).walker, cell }));
 const caveTurret = (cell: Cell): EnemySpawn => ({ type: themeForFloor(1).turret, cell });
@@ -279,9 +272,12 @@ const caveTurret = (cell: Cell): EnemySpawn => ({ type: themeForFloor(1).turret,
 /** Point-mirror through the room centre: where the second of a pair of worms lies. */
 const opposite = (c: Cell, width: number, height: number): Cell => ({ x: width - 1 - c.x, y: height - 1 - c.y });
 
+/** Big slimes on each cell: they split into a crowd when killed (core/slime). */
+const slimesOf = (cells: Cell[]): EnemySpawn[] => cells.map((cell) => ({ type: 'slime', cell }));
+
 /**
- * Floor 2: a stone block fills the middle, leaving a loop of floor around it for worms to run
- * laps on. They start on opposite straights, heading the same way round.
+ * Floor 2: a stone block fills the middle, leaving a loop of floor around it for slimes to hop
+ * laps on. They start on opposite straights.
  */
 const track: Archetype = {
   id: 'track',
@@ -297,16 +293,14 @@ const track: Archetype = {
     canvas.paint(block, 'obstacle');
     // Rock kerbs at the ends of the block, sometimes.
     if (rng.next() < 0.5) canvas.paint([{ x: 6 - halfWidth - 1, y: 2 }], 'rock');
-    const first = straight({ x: 4, y: rng.pick([0, 1]) }, -1);
-    const worms = [first];
-    if (rng.next() < 0.6) worms.push(first.map((c) => opposite(c, width, height)));
-    return { tiles: canvas.tiles, enemies: worms.map(worm), pickups: [], symmetry: { axes } };
+    const first = { x: rng.int(3, 4), y: rng.pick([0, 1]) };
+    return { tiles: canvas.tiles, enemies: slimesOf([first, opposite(first, width, height)]), pickups: [], symmetry: { axes } };
   },
 };
 
 /**
  * Floor 2: two jars facing each other across the middle of the room. One holds ghouls, the
- * other a worm; both spill into the same narrow gap between them.
+ * other a big slime; both spill into the same narrow gap between them.
  */
 const twinJars: Archetype = {
   id: 'twinJars',
@@ -321,14 +315,10 @@ const twinJars: Archetype = {
     const canvas = new Canvas(width, height, []);
     canvas.paint([...jarWall(left), ...jarWall(right)], 'obstacle');
     canvas.paint([left.openings.right, right.openings.left], 'floor');
-    const [hordeJar, wormJar] = rng.next() < 0.5 ? [left, right] : [right, left];
+    const [hordeJar, slimeJar] = rng.next() < 0.5 ? [left, right] : [right, left];
     const horde = shuffled(jarInside(hordeJar), rng).slice(0, rng.int(3, 4));
-    // An L through the jar's 2x3 inside: down one column, then across the bottom.
-    const [a, b] = [wormJar.x0 + 1, wormJar.x0 + 2];
-    const coiled = rng.next() < 0.5
-      ? [{ x: a, y: 2 }, { x: a, y: 3 }, { x: a, y: 4 }, { x: b, y: 4 }]
-      : [{ x: b, y: 2 }, { x: b, y: 3 }, { x: b, y: 4 }, { x: a, y: 4 }];
-    return { tiles: canvas.tiles, enemies: [...caveWalkers(horde), worm(coiled)], pickups: [], symmetry: { axes } };
+    const slime = rng.pick(jarInside(slimeJar));
+    return { tiles: canvas.tiles, enemies: [...caveWalkers(horde), ...slimesOf([slime])], pickups: [], symmetry: { axes } };
   },
 };
 
@@ -358,7 +348,7 @@ const gallery: Archetype = {
   },
 };
 
-/** Floor 2: a grid of pillars with worms threading between them. */
+/** Floor 2: a grid of pillars with big slimes hopping between them. */
 const serpentGarden: Archetype = {
   id: 'serpentGarden',
   floor: 1,
@@ -370,9 +360,8 @@ const serpentGarden: Archetype = {
     const canvas = new Canvas(width, height, axes);
     const cols = rng.pick([[2, 4, 6], [3, 5]]);
     canvas.paint(cols.map((x) => ({ x, y: 2 })), rng.next() < 0.3 ? 'rock' : 'obstacle');
-    const first = straight({ x: 4, y: 1 }, -1);
-    const second = rng.next() < 0.5 ? first.map((c) => opposite(c, width, height)) : first.map((c) => ({ x: width - 1 - c.x, y: c.y }));
-    return { tiles: canvas.tiles, enemies: [worm(first), worm(second)], pickups: [], symmetry: { axes } };
+    const lanes = shuffled(canvas.images({ x: rng.int(2, 4), y: 1 }), rng).slice(0, rng.int(2, 3));
+    return { tiles: canvas.tiles, enemies: slimesOf(lanes), pickups: [], symmetry: { axes } };
   },
 };
 

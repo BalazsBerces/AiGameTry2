@@ -53,6 +53,8 @@ export interface Ask {
    * tag, filling the free floor outward from each nest, rather than one to a spot.
    */
   swarm?: boolean;
+  /** Exactly `count` whatever the room's size (a big room grows its worm longer instead). */
+  unscaled?: boolean;
 }
 
 /** A big room's fight: who stands where, asked for by spot tag so any layout can host it. */
@@ -474,13 +476,13 @@ const batColony: Encounter = {
   ],
 };
 
-/** Floor 2: worms coiled in the open, a crystal turret keeping watch. */
+/** Floor 2: one long worm stretched across the open floor, ghouls prowling round it. */
 const wormNest: Encounter = {
   id: 'wormNest',
   floor: 1,
   asks: [
-    { tag: 'open', cast: 'worm', count: [1, 2] },
-    { tag: 'perch', cast: 'turret', count: [0, 2] },
+    { tag: 'open', cast: 'worm', count: [1, 1], unscaled: true },
+    { tag: 'centre', cast: 'walker', count: [1, 2] },
   ],
 };
 
@@ -575,13 +577,17 @@ function weightedPick<T>(items: readonly T[], weight: (item: T) => number, rng: 
 
 const key = (c: Cell) => `${c.x},${c.y}`;
 
+/** How long a worm grows in a big room of each shape: the more room, the longer. */
+export const wormLength = (shape: RoomShape) => (shape === '2x2' ? 8 : shape.startsWith('L') ? 7 : shape === '1x1' ? WORM_LENGTH : 6);
+
 /**
  * A worm's body behind a head on `head`: a straight run of free floor off in some direction,
  * clear of every cell already taken; undefined if there's no room for one.
  */
-function wormTail(head: Cell, tiles: Tile[][], taken: Set<string>, rng: Rng): Cell[] | undefined {
+function wormTail(head: Cell, length: number, tiles: Tile[][], taken: Set<string>, doors: Door[], rng: Rng): Cell[] | undefined {
   for (const [dx, dy] of shuffled([[1, 0], [-1, 0], [0, 1], [0, -1]], rng)) {
-    const tail = Array.from({ length: WORM_LENGTH - 1 }, (_, i) => ({ x: head.x + dx * (i + 1), y: head.y + dy * (i + 1) }));
+    const tail = Array.from({ length: length - 1 }, (_, i) => ({ x: head.x + dx * (i + 1), y: head.y + dy * (i + 1) }));
+    if (tail.some((c) => nearDoor(doors, c))) continue;
     if (tail.every((c) => tiles[c.y]?.[c.x] === 'floor' && !taken.has(key(c)))) return tail;
   }
   return undefined;
@@ -664,13 +670,13 @@ function cast(
       continue;
     }
     const free = shuffled(spots.filter((s) => s.tag === ask.tag && !taken.has(key(s.cell))), rng);
-    const count = scaleCount(ask.count, shape);
+    const count = ask.unscaled ? ask.count : scaleCount(ask.count, shape);
     const wanted = rng.int(...count);
     let placed = 0;
     for (const { cell } of free) {
       if (placed >= wanted || taken.has(key(cell))) continue;
       const type = typeOf(ask.cast);
-      const tail = type === 'worm' ? wormTail(cell, tiles, taken, rng) : undefined;
+      const tail = type === 'worm' ? wormTail(cell, wormLength(shape), tiles, taken, doors, rng) : undefined;
       if (type === 'worm' && !tail) continue;
       [cell, ...(tail ?? [])].forEach(take);
       enemies.push(tail ? { type, cell, tail } : { type, cell });

@@ -209,20 +209,13 @@ describe('generateRoom enemies', () => {
     }
   });
 
-  it('spawns worms from floor 2 as a contiguous chain of cells', () => {
-    let worms = 0;
-    for (let seed = 0; seed < 200; seed++) {
-      const r = generateRoom({ id: '0,0', kind: 'normal', doors: ['left'] }, 1, createRng(seed));
-      for (const w of r.enemies.filter((e) => e.type === 'worm')) {
-        worms++;
-        const chain = [w.cell, ...(w.tail ?? [])];
-        expect(chain.length).toBeGreaterThanOrEqual(3);
-        for (let i = 1; i < chain.length; i++) {
-          expect(Math.abs(chain[i].x - chain[i - 1].x) + Math.abs(chain[i].y - chain[i - 1].y)).toBe(1);
-        }
+  it('keeps worms out of 1x1 rooms: they only turn up in big ones', () => {
+    for (const doors of EVERY_DOOR_SET) {
+      for (let seed = 0; seed < 60; seed++) {
+        const r = generateRoom({ id: '0,0', kind: 'normal', doors: [...doors] }, 1, createRng(seed));
+        expect(r.enemies.some((e) => e.type === 'worm'), `seed ${seed} doors ${doors} ${r.archetype}`).toBe(false);
       }
     }
-    expect(worms).toBeGreaterThan(20);
   });
 });
 
@@ -296,18 +289,18 @@ describe('generateRoom enemy mix per floor', () => {
     expect([...types].sort()).toEqual(['boar', 'goblin', 'seedSpitter', 'wasp']);
   });
 
-  it('floor 2 adds worms', () => {
-    expect(sample(1).flat().some((e) => e.type === 'worm')).toBe(true);
+  it('floor 2 adds slimes', () => {
+    expect(sample(1).flat().some((e) => e.type === 'slime')).toBe(true);
   });
 
-  it('floor 2 (the caves) spawns ghouls, crystal turrets, worms and bats, and no zombies or plain turrets', () => {
+  it('floor 2 (the caves) spawns ghouls, crystal turrets, bats and slimes, and no zombies or plain turrets', () => {
     const types = new Set<string>();
     for (const doors of EVERY_DOOR_SET) {
       for (let seed = 0; seed < 60; seed++) {
         for (const e of generateRoom({ id: '0,0', kind: 'normal', doors: [...doors] }, 1, createRng(seed)).enemies) types.add(e.type);
       }
     }
-    expect([...types].sort()).toEqual(['bat', 'crystalTurret', 'ghoul', 'worm']);
+    expect([...types].sort()).toEqual(['bat', 'crystalTurret', 'ghoul', 'slime']);
   });
 
   it('floor 3 has no worms or plain turrets, and gargoyles make up a good share of it', () => {
@@ -319,8 +312,12 @@ describe('generateRoom enemy mix per floor', () => {
 
   it('asks for more damage to clear a room on each later floor', () => {
     // Default hit points: zombie 3, turret 4, worm 4 segments of 2, goblin 3, seed-spitter 4, ghoul 4,
-    // crystal turret 4, gargoyle 5, knight 6; a spawn's own `hp` (the dungeon's tougher zombies) overrides them.
-    const HP: Record<string, number> = { zombie: 3, turret: 4, worm: 8, goblin: 3, seedSpitter: 4, ghoul: 4, crystalTurret: 4, gargoyle: 5, knight: 6, wasp: 2, boar: 4, ghost: 4, bat: 2 };
+    // crystal turret 4, gargoyle 5, knight 6, a big slime and its brood 3 + 2x2 + 4x1; a spawn's own `hp`
+    // (the dungeon's tougher zombies) overrides them.
+    const HP: Record<string, number> = {
+      zombie: 3, turret: 4, worm: 8, goblin: 3, seedSpitter: 4, ghoul: 4, crystalTurret: 4, gargoyle: 5, knight: 6,
+      wasp: 1, boar: 4, ghost: 4, bat: 1, slime: 11,
+    };
     const mean = (floorIndex: number) =>
       sample(floorIndex).reduce((sum, r) => sum + r.reduce((s, e) => s + (e.hp ?? HP[e.type]), 0), 0) / 600;
     expect(mean(1)).toBeGreaterThan(mean(0) + 1);
@@ -759,7 +756,7 @@ describe('Boar Run (floor 1)', () => {
 });
 
 describe('every archetype', () => {
-  const ROSTER = [['goblin', 'seedSpitter', 'wasp', 'boar'], ['ghoul', 'crystalTurret', 'worm', 'bat'], ['zombie', 'gargoyle', 'knight', 'ghost']];
+  const ROSTER = [['goblin', 'seedSpitter', 'wasp', 'boar'], ['ghoul', 'crystalTurret', 'slime', 'bat'], ['zombie', 'gargoyle', 'knight', 'ghost']];
 
   it('builds its own idea for every shape and door set it fits: deterministic, varied, within its floor roster', () => {
     for (const a of ARCHETYPES) {

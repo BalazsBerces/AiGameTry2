@@ -172,6 +172,32 @@ describe('enemy counts by room area', () => {
   });
 });
 
+describe('worms in big rooms', () => {
+  it.each([
+    ['2x1', 6],
+    ['1x2', 6],
+    ['L-tr', 7],
+    ['L-bl', 7],
+    ['2x2', 8],
+  ] as const)('lays a single %s-room worm %i segments long, in a straight contiguous chain, with ghouls about', (shape, length) => {
+    for (const [i, specs] of doorSets(shape, 25).entries()) {
+      const doors = doorsFor(shape, specs);
+      const room = composeRoom({ shape, doors, theme: 'rift', floorIndex: 1, rng: createRng(i), encounter: 'wormNest' })!;
+      const where = `${shape} ${room?.layout} doors ${JSON.stringify(specs)}`;
+      expect(room, where).toBeDefined();
+      const worms = room.enemies.filter((e) => e.type === 'worm');
+      expect(worms.length, where).toBe(1);
+      const chain = [worms[0].cell, ...(worms[0].tail ?? [])];
+      expect(chain.length, where).toBe(length);
+      for (let j = 1; j < chain.length; j++) {
+        expect(Math.abs(chain[j].x - chain[j - 1].x) + Math.abs(chain[j].y - chain[j - 1].y), where).toBe(1);
+      }
+      expect(room.enemies.some((e) => e.type === 'ghoul'), where).toBe(true);
+      expect(validateRoom({ ...room, doors }, room.symmetry), where).toEqual([]);
+    }
+  });
+});
+
 describe('swarms in big rooms', () => {
   type Cell = { x: number; y: number };
   const near = (a: Cell, b: Cell) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)) <= 3;

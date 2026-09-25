@@ -203,11 +203,16 @@ describe('worm boss rampage lunges through the walls', () => {
 describe('worm boss lunge warning', () => {
   const lunge = lungeFrom(grid(['......', '......']), [], { x: 0, y: 0 }, 'right', createRng(0));
 
-  it('cracks the ground along the path from the head outward, all of it by the time it lunges', () => {
-    expect(lunge.path.length).toBeGreaterThan(4);
-    expect(lungeCracks(lunge, 0)).toEqual(lunge.path.slice(0, 1));
-    expect(lungeCracks(lunge, 0.5)).toEqual(lunge.path.slice(0, Math.ceil(lunge.path.length / 2)));
-    expect(lungeCracks(lunge, 1)).toEqual(lunge.path);
+  it('flows out of the head along the path, reaching its end just as it lunges', () => {
+    const n = lunge.path.length;
+    expect(n).toBeGreaterThan(4);
+    expect(lungeCracks(lunge, 0)).toEqual({ whole: [], tip: { cell: lunge.path[0], share: 0 } });
+    // A quarter of the way through a cell, halfway along.
+    const half = lungeCracks(lunge, (Math.floor(n / 2) + 0.25) / n);
+    expect(half.whole).toEqual(lunge.path.slice(0, Math.floor(n / 2)));
+    expect(half.tip?.cell).toEqual(lunge.path[Math.floor(n / 2)]);
+    expect(half.tip?.share).toBeCloseTo(0.25);
+    expect(lungeCracks(lunge, 1)).toEqual({ whole: lunge.path, tip: undefined });
   });
 });
 

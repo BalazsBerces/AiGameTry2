@@ -155,19 +155,31 @@ function shakeRocksLoose(ctx: EnemyContext, shared: WormBossShared, avoid: Cell[
 }
 
 /**
- * A crack across the tile at `at`, running along `heading`: jagged, the same for a cell every
- * frame. On the room's floor it warns of a lunge; on a wall spot, of where one will burst out.
+ * A crack across the tile at `at`, running along `heading` (`share` of the way across): jagged,
+ * the same for a cell every frame. It warns of a lunge, walls included where it will tunnel.
  */
-function drawCrack(g: Phaser.GameObjects.Graphics, at: { x: number; y: number }, cell: Cell, heading: Direction) {
+function drawCrack(g: Phaser.GameObjects.Graphics, at: { x: number; y: number }, cell: Cell, heading: Direction, share = 1) {
   const t = TUNING.tile;
   const along = STEP[heading];
   const side = { x: -along.y, y: along.x };
   const wobble = ((cell.x * 7 + cell.y * 13) % 3) - 1;
-  const points = [-0.5, -0.2, 0.15, 0.5].map((u, i) => {
+  const bend = (u: number, i: number) => {
     const off = (i % 2 ? 0.12 : -0.06) * t + wobble * 0.04 * t;
-    return { x: at.x + along.x * u * t + side.x * off, y: at.y + along.y * u * t + side.y * off };
-  });
-  g.lineStyle(2, COLORS.wormHole, 0.85).strokePoints(points);
+    return { u, off };
+  };
+  const knees = [-0.5, -0.2, 0.15, 0.5].map(bend);
+  // Only as far as the crack has grown into this cell (`share` of it).
+  const end = -0.5 + share;
+  const shown = knees.filter((k) => k.u <= end);
+  const next = knees[shown.length];
+  if (next && shown.length) {
+    const last = shown[shown.length - 1];
+    const f = (end - last.u) / (next.u - last.u);
+    shown.push({ u: end, off: last.off + (next.off - last.off) * f });
+  }
+  if (shown.length < 2) return;
+  const points = shown.map(({ u, off }) => ({ x: at.x + along.x * u * t + side.x * off, y: at.y + along.y * u * t + side.y * off }));
+  g.lineStyle(3, COLORS.wormHole, 0.9).strokePoints(points);
 }
 
 /** A dark hole in the wall at `wall`, with rubble on the floor in front of it (`inward` points into the room). */
@@ -259,7 +271,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
     r.next = planLunge(ctx.tiles, ctx.doors, state.worm, ctx.playerTile, b.shared.rng) ?? null;
   };
 
-  /** The warning before a lunge: a crack racing along its path from the head through the pause. */
+  /** The warning before a lunge: its whole lane marked at once, and a crack flowing out of the head along it through the pause. */
   const drawLungeCrack = (ctx: EnemyContext, b: BossPiece, r: Rampage) => {
     const lunge = r.next;
     if (!lunge) return;
@@ -267,9 +279,17 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
     // Out of the far wall it runs the new way.
     const { wrap } = lunge;
     const exitAt = wrap ? lunge.path.findIndex((c) => sameCell(c, wrap.exit)) : Infinity;
-    lungeCracks(lunge, progress).forEach((c, i) =>
-      drawCrack(b.shared.ground, ctx.tileCenter(c), c, wrap && i >= exitAt ? wrap.heading : lunge.heading),
-    );
+    const g = b.shared.ground;
+    const t = TUNING.tile;
+    for (const c of lunge.path) {
+      const p = ctx.tileCenter(c);
+      g.fillStyle(COLORS.rootTelegraph, 0.28).fillRect(p.x - t / 2 + 4, p.y - t / 2 + 4, t - 8, t - 8);
+      g.lineStyle(2, COLORS.rootTelegraph, 0.7).strokeRect(p.x - t / 2 + 4, p.y - t / 2 + 4, t - 8, t - 8);
+    }
+    const along = (i: number) => (wrap && i >= exitAt ? wrap.heading : lunge.heading);
+    const { whole, tip } = lungeCracks(lunge, progress);
+    whole.forEach((c, i) => drawCrack(g, ctx.tileCenter(c), c, along(i)));
+    if (tip) drawCrack(g, ctx.tileCenter(tip.cell), tip.cell, along(whole.length), tip.share);
   };
 
   /** Runs a rampage; true while the piece holds still (charging, pausing, dazed). */

@@ -240,8 +240,13 @@ export function bossCrawl(worm: Worm, tiles: Tile[][], rng: Rng, turnChance?: nu
   return over ? createWorm([ahead(head, over), ...worm.segments.slice(0, -1)], over) : next;
 }
 
-/** The cells a lunge's warning crack has reached, `progress` (0 to 1) through the pause before it: from the head outward. */
-export function lungeCracks(lunge: Lunge, progress: number): Cell[] {
-  const shown = Math.max(1, Math.ceil(lunge.path.length * Math.min(1, progress)));
-  return lunge.path.slice(0, shown);
+/**
+ * How far a lunge's warning crack has flowed out of the head, `progress` (0 to 1) through the
+ * pause before it: the cells it has crossed whole, and the one it is part way through (`share`).
+ */
+export function lungeCracks(lunge: Lunge, progress: number): { whole: Cell[]; tip?: { cell: Cell; share: number } } {
+  const reach = lunge.path.length * Math.min(1, Math.max(0, progress));
+  const whole = lunge.path.slice(0, Math.floor(reach));
+  const cell = lunge.path[whole.length];
+  return { whole, tip: cell && { cell, share: reach - whole.length } };
 }

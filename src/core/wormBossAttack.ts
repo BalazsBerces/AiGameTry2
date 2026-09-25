@@ -9,8 +9,8 @@ import type { Rng } from './rng';
 export const WORM_BOSS = {
   /** Shorter split pieces only crawl. */
   minAttackLength: 4,
-  /** Until this share of its hit points is gone, hits drain one shared pool and no segment breaks. */
-  sharedHpShare: 0.2,
+  /** It can't split until it has lost this share of its hit points. */
+  splitAfterShare: 0.2,
   /**
    * Rocks shaken loose as a lunge tunnels into a wall, on one cooldown shared by every piece: this
    * many, within this many tiles of the player, each marked by its shadow for `rockShadowMs`.
@@ -41,10 +41,18 @@ export const WORM_BOSS = {
 /** Whether a piece of the worm boss this many segments long still burrows and spits. */
 export const canAttack = (length: number) => length >= WORM_BOSS.minAttackLength;
 
-/** The shared pool a fresh worm boss with `maxHp` hit points starts with. */
-export const sharedPool = (maxHp: number) => maxHp * WORM_BOSS.sharedHpShare;
+/**
+ * Whether a blow to segment `index` of the whole worm boss (`length` long, down to `hp` of its
+ * `maxHp`) splits it: only once it has lost its share of hit points, and only in its middle,
+ * never at its head or tail. Until then no segment breaks; every hit just drains its hit points.
+ */
+export const splitsAt = (hp: number, maxHp: number, index: number, length: number) =>
+  maxHp - hp >= maxHp * WORM_BOSS.splitAfterShare && index > 0 && index < length - 1;
 
-/** A hit while the shared pool lasts: it drains the pool, and the segment hit breaks once it is empty. */
+/** The hit points it has left, shared between its two halves by their length. */
+export const halfPools = (hp: number, lengths: number[]) => lengths.map((n) => (hp * n) / lengths.reduce((a, b) => a + b, 0));
+
+/** A hit on a half of the split boss: it drains the half's pool, and the half is done for once it is empty. */
 export function absorbHit(pool: number, damage: number): { pool: number; breaks: boolean } {
   const left = Math.max(0, pool - damage);
   return { pool: left, breaks: left === 0 };

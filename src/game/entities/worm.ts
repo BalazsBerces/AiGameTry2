@@ -1,18 +1,19 @@
 import type Phaser from 'phaser';
 import { DIRECTIONS, STEP, type Cell, type Direction } from '../../core/floorGenerator';
 import { createRng, type Rng } from '../../core/rng';
-import { createWorm, killBossSegment, killSegment, nextStepDue, stepWorm, type Worm, type WormPiece } from '../../core/wormChain';
+import { createWorm, killSegment, splitBoss, nextStepDue, stepWorm, type Worm, type WormPiece } from '../../core/wormChain';
 import { broodTick, eggStage, WORM_BROOD } from '../../core/wormBrood';
 import {
   absorbHit,
   bossCrawl,
   breakOut,
   canAttack,
+  halfPools,
   inPhaseTwo,
   planLunge,
   planRockfall,
   rockfallAt,
-  sharedPool,
+  splitsAt,
   spitWave,
   WORM_BOSS,
   type Lunge,
@@ -70,10 +71,6 @@ interface WormBossShared {
   maxHp: number;
   hp: number;
   pieces: number;
-  /** Shared hit points left before any segment can break (core/wormBossAttack `absorbHit`). */
-  pool: number;
-  /** Once it has split in two, a kill only shortens a piece. */
-  split: boolean;
   /** Rocks falling (each landing as a rock tile), and when the next fall may start. */
   rocks: { cells: Cell[]; start: number }[];
   nextRockfallAt: number;
@@ -99,7 +96,7 @@ interface BossPiece {
   spitFrom?: Cell;
   /** When it next drops an egg (core/wormBrood); off while it can't. */
   nextEggAt?: number;
-  /** A half of the split boss: its own pool of hit points; it can't be broken apart, and dies whole once this is empty. */
+  /** A half of the split boss: its own pool of hit points; it dies whole once this is empty. */
   pool?: number;
   /** The last rampage round it has joined, or sat out (too short). */
   rampageRound: number;
@@ -367,63 +364,62 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
       if (index < 0) return [enemy];
       // Inside the wall it can't be touched, not even by a bomb.
       if (!part.body.enable) return [enemy];
-      const boss = state.boss;
-      if (boss?.pool !== undefined) {
-        // A half of the split boss can't be broken apart: its own pool of hit points takes every
-        // hit, and the whole half dies once it is empty.
-        const { pool, breaks } = absorbHit(boss.pool, damage);
-        boss.shared.hp -= boss.pool - pool;
-        boss.pool = pool;
-        if (!breaks) {
-          flash(scene, part);
-          return [enemy];
-        }
-        for (const p of state.parts) p.destroy();
-        boss.shared.bodies.delete(state);
-        dropPiece(boss.shared);
-        return [];
-      }
-      if (boss && boss.shared.pool > 0) {
-        // Its shared hit points soak up the first hits; the one that empties them breaks this segment.
-        const { pool, breaks } = absorbHit(boss.shared.pool, damage);
-        boss.shared.hp -= boss.shared.pool - pool;
-        boss.shared.pool = pool;
-        if (!breaks) {
-          flash(scene, part);
-          return [enemy];
-        }
-        boss.shared.hp -= state.hp[index];
-        state.hp[index] = 0;
-      } else {
-        if (boss) boss.shared.hp -= Math.min(damage, state.hp[index]);
-        state.hp[index] -= damage;
-        if (state.hp[index] > 0) {
-          flash(scene, part);
-          return [enemy];
-        }
+      if (state.boss) return hitBoss(state.boss, part, index, damage);
+      state.hp[index] -= damage;
+      if (state.hp[index] > 0) {
+        flash(scene, part);
+        return [enemy];
       }
       part.destroy();
-      const pieces = boss ? killBossSegment(state.worm, index, boss.shared.split) : splitAt(state.worm, index);
-      if (boss) {
-        boss.shared.bodies.delete(state);
-        if (pieces.length === 2) boss.shared.split = true;
-        boss.shared.pieces += pieces.length;
-        dropPiece(boss.shared);
-      }
-      return pieces.map(({ worm, from }, i) => {
-        const hp = from.map((k) => state.hp[k]);
-        // Each half of the split gets the hit points left in its segments as one pool.
-        const halfPool = pieces.length === 2 ? hp.reduce((a, b) => a + b, 0) : undefined;
-        return wormEnemy(scene, style, {
+      return splitAt(state.worm, index).map(({ worm, from }, i) =>
+        wormEnemy(scene, style, {
           worm,
           parts: from.map((k) => state.parts[k]),
-          hp,
+          hp: from.map((k) => state.hp[k]),
           rng: state.rng.fork(`split ${index} ${i}`),
           nextStepAt: state.nextStepAt,
-          ...(boss ? { boss: { ...splitPiece(boss, worm, i === 0), pool: halfPool } } : {}),
-        });
-      });
+        }),
+      );
     },
+  };
+
+  /**
+   * The boss never breaks apart segment by segment: the whole worm is one pool of hit points
+   * until it splits (core/wormBossAttack `splitsAt`), and then each half is one pool of its own,
+   * dying whole once it is empty.
+   */
+  const hitBoss = (b: BossPiece, part: EnemySprite, index: number, damage: number): Enemy[] => {
+    const { shared } = b;
+    const had = b.pool ?? shared.hp;
+    const { pool: left, breaks } = absorbHit(had, damage);
+    shared.hp -= had - left;
+    if (b.pool !== undefined) b.pool = left;
+    if (breaks) {
+      for (const p of state.parts) p.destroy();
+      shared.bodies.delete(state);
+      dropPiece(shared);
+      return [];
+    }
+    if (b.pool !== undefined || !splitsAt(shared.hp, shared.maxHp, index, state.parts.length)) {
+      flash(scene, part);
+      return [enemy];
+    }
+    part.destroy();
+    shared.bodies.delete(state);
+    const halves = splitBoss(state.worm, index);
+    shared.pieces += halves.length;
+    dropPiece(shared);
+    const pools = halfPools(shared.hp, halves.map(({ from }) => from.length));
+    return halves.map(({ worm, from }, i) =>
+      wormEnemy(scene, style, {
+        worm,
+        parts: from.map((k) => state.parts[k]),
+        hp: from.map((k) => state.hp[k]),
+        rng: state.rng.fork(`split ${index} ${i}`),
+        nextStepAt: state.nextStepAt,
+        boss: { ...splitPiece(b, worm, i === 0), pool: pools[i] },
+      }),
+    );
   };
   return enemy;
 }
@@ -535,8 +531,6 @@ export function spawnWorm(
         maxHp: cells.length * style.segmentHp,
         hp: cells.length * style.segmentHp,
         pieces: 1,
-        pool: sharedPool(cells.length * style.segmentHp),
-        split: false,
         rocks: [],
         nextRockfallAt: 0,
         bodies: new Map(),

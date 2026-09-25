@@ -7,13 +7,14 @@ import {
   bossCrawl,
   breakOut,
   canAttack,
+  halfPools,
   inPhaseTwo,
   lungeFrom,
   planLunge,
   planRockfall,
   rockfallAt,
-  sharedPool,
   spitWave,
+  splitsAt,
   WORM_BOSS,
 } from './wormBossAttack';
 import { createWorm } from './wormChain';
@@ -236,16 +237,30 @@ describe('worm boss crawling out of a hole', () => {
   });
 });
 
-describe('worm boss shared hit points', () => {
-  it('holds a fifth of all the worm hit points before any segment can break', () => {
-    expect(sharedPool(50)).toBe(10);
+describe('worm boss splitting', () => {
+  it('never splits until it has lost a fifth of its hit points', () => {
+    expect(splitsAt(41, 50, 10, 20)).toBe(false);
+    expect(splitsAt(40, 50, 10, 20)).toBe(true);
   });
 
-  it('soaks up hits, anywhere, without breaking a segment', () => {
+  it('splits only from a blow to its middle, never its head or tail', () => {
+    expect(splitsAt(30, 50, 0, 20)).toBe(false);
+    expect(splitsAt(30, 50, 19, 20)).toBe(false);
+    expect(splitsAt(30, 50, 1, 20)).toBe(true);
+    expect(splitsAt(30, 50, 18, 20)).toBe(true);
+  });
+
+  it('shares the hit points it has left between the halves by their length', () => {
+    expect(halfPools(38, [10, 9])).toEqual([20, 18]);
+  });
+});
+
+describe('worm boss half hit points', () => {
+  it('soaks up hits anywhere on the half', () => {
     expect(absorbHit(10, 3)).toEqual({ pool: 7, breaks: false });
   });
 
-  it('breaks the segment that takes the hit that empties it', () => {
+  it('is done for once the pool is empty', () => {
     expect(absorbHit(2, 3)).toEqual({ pool: 0, breaks: true });
     expect(absorbHit(3, 3)).toEqual({ pool: 0, breaks: true });
   });

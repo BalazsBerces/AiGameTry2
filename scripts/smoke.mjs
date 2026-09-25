@@ -271,7 +271,7 @@ if (scenario === 'worm-boss') {
       for (let i = 0; i < ${times} && p; i++) s.damagePart(p, 1); })()`);
   // Segments inside the wall can't be hit: wait for the whole worm to be out.
   for (let i = 0; i < 40 && (await status()).hidden.some((n) => n > 0); i++) await page.waitForTimeout(250);
-  // The first hits only drain its shared hit points; the one that empties them breaks the segment.
+  // Until it has lost a fifth of its hit points, hits only drain them; then a blow to its middle splits it.
   await hitPart(0, 9, 9);
   console.log('shared pool drained, nothing broken yet', JSON.stringify(await status()));
   await hitPart(0, 9, 1);

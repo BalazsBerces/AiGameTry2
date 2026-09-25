@@ -482,7 +482,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private tryShoot(time: number) {
-    const aim = DIRECTIONS.find((d) => this.aim[d].isDown);
+    // The newest held arrow wins, so a fresh press overrides one still held down.
+    const aim = DIRECTIONS.filter((d) => this.aim[d].isDown).reduce<Direction | undefined>(
+      (best, d) => (!best || this.aim[d].timeDown > this.aim[best].timeDown ? d : best),
+      undefined,
+    );
     if (!aim || time < this.nextShotAt) return;
     const weapon = resolveWeapon(this.world.player.passives, this.world.player.statUps);
     this.nextShotAt = time + weapon.fireDelayMs;

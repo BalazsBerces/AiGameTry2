@@ -610,10 +610,12 @@ export class GameScene extends Phaser.Scene {
    */
   private swingSword(aim: Direction, damage: number, arcDeg: number) {
     const inArc = this.sweepArc(this.player, aim, COLORS.passive.sword, arcDeg);
-    for (const part of this.enemies.flatMap((e) => e.parts).filter(inArc)) {
+    // One swing is one attack: across a many-part body it falls off from the part nearest the player.
+    const falloff = createFalloff();
+    for (const part of this.nearestFirst(this.enemies.flatMap((e) => e.parts).filter(inArc), this.player)) {
       const heading = { x: part.x - this.player.x, y: part.y - this.player.y };
       if (this.shieldBlocks(part, heading)) this.clink(part.x - heading.x * 0.3, part.y - heading.y * 0.3);
-      else this.strike(part, damage);
+      else this.strike(part, this.fallOff(falloff, part, damage));
     }
   }
 
@@ -956,7 +958,7 @@ export class GameScene extends Phaser.Scene {
    */
   private fallOff(falloff: Falloff, part: EnemySprite, full: number): number {
     const enemy = this.enemies.find((e) => e.parts.includes(part));
-    if (!enemy?.hitGroup || !part.body.enable || enemy.invulnerable?.(part)) return full;
+    if (!enemy?.hitGroup || !part.active || !part.body.enable || enemy.invulnerable?.(part)) return full;
     return falloff.damage(enemy.hitGroup, full);
   }
 
@@ -1090,7 +1092,17 @@ export class GameScene extends Phaser.Scene {
     if (Phaser.Math.Distance.Between(at.x, at.y, this.player.x, this.player.y) <= reach + TUNING.playerHurtRadius) {
       this.hurtPlayer(TUNING.bomb.playerDamage);
     }
-    for (const part of this.enemies.flatMap((e) => e.parts).filter(caught)) this.damagePart(part, TUNING.bomb.enemyDamage);
+    // One blast is one attack: across a many-part body it falls off from the part nearest the bomb.
+    const falloff = createFalloff();
+    for (const part of this.nearestFirst(this.enemies.flatMap((e) => e.parts).filter(caught), at)) {
+      this.damagePart(part, this.fallOff(falloff, part, TUNING.bomb.enemyDamage));
+    }
+  }
+
+  /** `parts` ordered nearest `to` first. */
+  private nearestFirst(parts: EnemySprite[], to: { x: number; y: number }): EnemySprite[] {
+    const dist = (p: EnemySprite) => Phaser.Math.Distance.Between(to.x, to.y, p.x, p.y);
+    return [...parts].sort((a, b) => dist(a) - dist(b));
   }
 
   private damagePart(part: EnemySprite, damage: number) {
@@ -1398,6 +1410,8 @@ export class GameScene extends Phaser.Scene {
     const { windupMs, msPerTile, cooldownMs, enemyDamage, playerDamage } = TUNING.crusher;
     const body = c.shape.body as Phaser.Physics.Arcade.StaticBody;
     const crushed = new Set<object>();
+    // One crush is one attack: across a many-part body it falls off, part after part as it slides over them.
+    const falloff = createFalloff();
     const under = (o: { x: number; y: number; width: number; height: number }) =>
       Math.abs(o.x - c.shape.x) < (TUNING.tile + o.width) / 2 - 4 && Math.abs(o.y - c.shape.y) < (TUNING.tile + o.height) / 2 - 4;
     this.tweens.add({ targets: c.shape, scale: 1.1, duration: windupMs / 2, yoyo: true });
@@ -1420,7 +1434,7 @@ export class GameScene extends Phaser.Scene {
         for (const part of this.enemies.flatMap((e) => e.parts)) {
           if (crushed.has(part) || !part.active || !under(part)) continue;
           crushed.add(part);
-          this.damagePart(part, enemyDamage);
+          this.damagePart(part, this.fallOff(falloff, part, enemyDamage));
         }
       },
       onComplete: () => {

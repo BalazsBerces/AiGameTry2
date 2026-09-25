@@ -99,6 +99,8 @@ interface BossPiece {
   spitFrom?: Cell;
   /** When it next drops an egg (core/wormBrood); off while it can't. */
   nextEggAt?: number;
+  /** A half of the split boss: its own pool of hit points; it can't be broken apart, and dies whole once this is empty. */
+  pool?: number;
   /** The last rampage round it has joined, or sat out (too short). */
   rampageRound: number;
   rampage?: Rampage;
@@ -366,6 +368,21 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
       // Inside the wall it can't be touched, not even by a bomb.
       if (!part.body.enable) return [enemy];
       const boss = state.boss;
+      if (boss?.pool !== undefined) {
+        // A half of the split boss can't be broken apart: its own pool of hit points takes every
+        // hit, and the whole half dies once it is empty.
+        const { pool, breaks } = absorbHit(boss.pool, damage);
+        boss.shared.hp -= boss.pool - pool;
+        boss.pool = pool;
+        if (!breaks) {
+          flash(scene, part);
+          return [enemy];
+        }
+        for (const p of state.parts) p.destroy();
+        boss.shared.bodies.delete(state);
+        dropPiece(boss.shared);
+        return [];
+      }
       if (boss && boss.shared.pool > 0) {
         // Its shared hit points soak up the first hits; the one that empties them breaks this segment.
         const { pool, breaks } = absorbHit(boss.shared.pool, damage);
@@ -390,22 +407,22 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
       if (boss) {
         boss.shared.bodies.delete(state);
         if (pieces.length === 2) boss.shared.split = true;
-        boss.shared.pieces += pieces.length - 1;
-        if (boss.shared.pieces === 0) {
-          boss.shared.ground.destroy();
-          boss.shared.holes.destroy();
-        }
+        boss.shared.pieces += pieces.length;
+        dropPiece(boss.shared);
       }
-      return pieces.map(({ worm, from }, i) =>
-        wormEnemy(scene, style, {
+      return pieces.map(({ worm, from }, i) => {
+        const hp = from.map((k) => state.hp[k]);
+        // Each half of the split gets the hit points left in its segments as one pool.
+        const halfPool = pieces.length === 2 ? hp.reduce((a, b) => a + b, 0) : undefined;
+        return wormEnemy(scene, style, {
           worm,
           parts: from.map((k) => state.parts[k]),
-          hp: from.map((k) => state.hp[k]),
+          hp,
           rng: state.rng.fork(`split ${index} ${i}`),
           nextStepAt: state.nextStepAt,
-          ...(boss ? { boss: splitPiece(boss, worm, i === 0) } : {}),
-        }),
-      );
+          ...(boss ? { boss: { ...splitPiece(boss, worm, i === 0), pool: halfPool } } : {}),
+        });
+      });
     },
   };
   return enemy;
@@ -455,6 +472,14 @@ function wormEgg(scene: Phaser.Scene, ctx: EnemyContext, shared: WormBossShared,
   // Eggs only get in the way: bumping one doesn't hurt.
   egg.harmless = () => true;
   return egg;
+}
+
+/** A boss piece is gone (killed, or replaced by what it broke into); the fight's ground marks go with the last. */
+function dropPiece(shared: WormBossShared) {
+  shared.pieces--;
+  if (shared.pieces > 0) return;
+  shared.ground.destroy();
+  shared.holes.destroy();
 }
 
 /** A regular worm splits wherever a segment dies: the pieces in front of and behind it. */

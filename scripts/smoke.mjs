@@ -277,7 +277,7 @@ if (scenario === 'worm-boss') {
   await hitPart(0, 9, 1);
   await hitPart(0, 4, 3);
   console.log('after splitting', JSON.stringify(await status()));
-  // Down to half its hit points: kill segments just behind the heads, wherever they are out of the wall.
+  // Down to half its hit points: hit the halves (each has its own pool now, and dies whole once it is empty).
   for (let killed = 2; killed < 11; ) {
     killed += await page.evaluate(`(() => { const s = ${scene()};
       const p = s.enemies.flatMap((e) => e.parts.slice(1, 2)).find((p) => p.body.enable);

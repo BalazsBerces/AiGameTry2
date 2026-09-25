@@ -4,15 +4,21 @@ export interface MomentumRules {
   topSpeed: number;
   /** Continuous movement it takes to ramp from start to top speed. */
   rampMs: number;
+  /** How long the built-up speed survives with no keys held (the ball itself stops at once). */
+  releaseMemoryMs: number;
 }
 
 export interface Momentum {
   /** Speed to move at right now, in px/s. */
   speed: number;
+  /** Speed built up so far; kept through a short release. */
+  built: number;
   /** When this frame was stepped. */
   time: number;
   /** The direction last moved in. */
   dir: { x: number; y: number };
+  /** When the keys were let go, while none are held. */
+  releasedAt?: number;
 }
 
 export interface MomentumInput {
@@ -24,10 +30,13 @@ export interface MomentumInput {
 /** Advances momentum by one frame. */
 export function stepMomentum(m: Momentum | undefined, input: MomentumInput, rules: MomentumRules): Momentum {
   const { dir, time } = input;
-  if (dir.x === 0 && dir.y === 0) return { speed: 0, time, dir: m?.dir ?? dir };
+  if (dir.x === 0 && dir.y === 0) {
+    return { speed: 0, built: m?.built ?? 0, time, dir: m?.dir ?? dir, releasedAt: m?.releasedAt ?? time };
+  }
+  const forgotten = !m || m.built === 0 || (m.releasedAt !== undefined && time - m.releasedAt > rules.releaseMemoryMs);
   // Turns up to 90° keep the speed; anything sharper is a reversal and starts over.
   const reversed = m && dir.x * m.dir.x + dir.y * m.dir.y < 0;
-  if (!m || m.speed === 0 || reversed) return { speed: rules.startSpeed, time, dir };
   const perMs = (rules.topSpeed - rules.startSpeed) / rules.rampMs;
-  return { speed: Math.min(rules.topSpeed, m.speed + perMs * (time - m.time)), time, dir };
+  const built = forgotten || reversed ? rules.startSpeed : Math.min(rules.topSpeed, m.built + perMs * (time - m.time));
+  return { speed: built, built, time, dir };
 }

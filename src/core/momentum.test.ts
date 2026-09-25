@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { stepMomentum, type Momentum, type MomentumRules } from './momentum';
 
-const RULES: MomentumRules = { startSpeed: 190, topSpeed: 260, rampMs: 800 };
+const RULES: MomentumRules = { startSpeed: 190, topSpeed: 260, rampMs: 800, releaseMemoryMs: 150 };
 const RIGHT = { x: 1, y: 0 };
 const LEFT = { x: -1, y: 0 };
 const DOWN = { x: 0, y: 1 };
@@ -36,6 +36,16 @@ describe('momentum', () => {
   it('starts over after standing still', () => {
     const stopped = hold(hold(undefined, RIGHT, 1000, 2000), STILL, 2016, 3000);
     expect(stepMomentum(stopped, { dir: RIGHT, time: 3016 }, RULES).speed).toBe(190);
+  });
+
+  it('remembers its speed through a quick release', () => {
+    const tapped = hold(hold(undefined, RIGHT, 1000, 2000), STILL, 2016, 2100);
+    expect(stepMomentum(tapped, { dir: RIGHT, time: 2116 }, RULES).speed).toBeCloseTo(260);
+  });
+
+  it('forgets its speed once the release outlasts the memory', () => {
+    const paused = hold(hold(undefined, RIGHT, 1000, 2000), STILL, 2016, 2200);
+    expect(stepMomentum(paused, { dir: RIGHT, time: 2216 }, RULES).speed).toBe(190);
   });
 
   it('keeps its speed through a right-angle turn', () => {

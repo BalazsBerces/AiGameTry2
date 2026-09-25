@@ -36,6 +36,8 @@ export const WORM_BOSS = {
   spitGapMs: 25,
   /** Its last stand opens with a roar: it holds still this long and can't be hurt. */
   roarMs: 2000,
+  /** Over its roar it wins back this share of the pool it had at the split. */
+  lastStandHealShare: 0.5,
 };
 
 /** Whether a piece of the worm boss this many segments long still burrows and spits. */
@@ -70,6 +72,16 @@ export function roarTick(roar: Roar | undefined, now: number, piece: { lastStand
   if (!roar || roar.phase === 'waiting') return piece.aboveGround ? { phase: 'roaring', until: now + WORM_BOSS.roarMs } : { phase: 'waiting' };
   if (roar.phase === 'roaring' && now >= roar.until) return { phase: 'done' };
   return roar;
+}
+
+/**
+ * The last half's pool `sinceMs` into its roar: it wins back `lastStandHealShare` of the pool it
+ * had at the split (`startPool`), never past it, filling up from `atRoarStart` over the roar.
+ */
+export function lastStandPool(atRoarStart: number, startPool: number, sinceMs: number): number {
+  const healed = Math.min(startPool, atRoarStart + startPool * WORM_BOSS.lastStandHealShare);
+  const k = Math.min(1, Math.max(0, sinceMs / WORM_BOSS.roarMs));
+  return atRoarStart + (healed - atRoarStart) * k;
 }
 
 /** Roaring: it holds still and can't be hurt. */

@@ -13,6 +13,7 @@ import {
   inLastStand,
   inPhaseTwo,
   isRoaring,
+  lastStandPool,
   lungeCracks,
   planLunge,
   planRockfall,
@@ -111,8 +112,9 @@ interface BossPiece {
   pool?: number;
   /** A half's piece of the health bar. */
   half?: BarHalf;
-  /** The roar that opens its last stand. */
+  /** The roar that opens its last stand, and its pool as the roar began (it heals from there). */
   roar?: Roar;
+  poolAtRoar?: number;
   /** The last rampage round it has joined, or sat out (too short). */
   rampageRound: number;
   rampage?: Rampage;
@@ -395,7 +397,8 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
       return false;
     }
     if (b.roar?.phase === 'done' && was?.phase === 'roaring') {
-      // The roar is over: on into its endless rampage.
+      // The roar is over, its heal done: on into its endless rampage.
+      healDuringRoar(b, WORM_BOSS.roarMs);
       head.setScale(1);
       state.nextStepAt = ctx.time;
     }
@@ -404,6 +407,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
       b.rampage = undefined;
       b.spit = undefined;
       b.shared.bar.rage = true;
+      b.poolAtRoar = b.pool;
       // Settle on its cells: it roars where it stands.
       state.worm.segments.forEach((c, i) => {
         const at = ctx.tileCenter(c);
@@ -414,6 +418,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
     const roar = TUNING.wormRoar;
     head.setScale(roar.headScale + 0.25 * Math.abs(Math.sin(ctx.time / 55)));
     const since = ctx.time - (b.roar.until - WORM_BOSS.roarMs);
+    healDuringRoar(b, since);
     const g = b.shared.ground;
     for (let start = 0; start <= since; start += roar.ringEveryMs) {
       // Each ring grows out from the head and fades as it goes.
@@ -423,6 +428,16 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
       g.lineStyle(4 * (1 - k) + 1, style.headColor, 0.8 * (1 - k)).strokeCircle(head.x, head.y, radius);
     }
     return true;
+  };
+
+  /** Its last stand's second wind, `sinceMs` into the roar: the pool (and the bar with it) fills back up. */
+  const healDuringRoar = (b: BossPiece, sinceMs: number) => {
+    if (b.poolAtRoar === undefined || b.pool === undefined || !b.half) return;
+    const pool = lastStandPool(b.poolAtRoar, b.half.startPool, sinceMs);
+    b.shared.hp += pool - b.pool;
+    b.shared.bar.hp = b.shared.hp;
+    b.pool = pool;
+    b.half.pool = pool;
   };
 
   /** Runs the boss; true while the piece holds still. */

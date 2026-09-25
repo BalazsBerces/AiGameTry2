@@ -1251,6 +1251,11 @@ if (scenario === 'worm-bar') {
   await page.waitForTimeout(400);
   await shot('bar-04-torn');
   console.log('after split', JSON.stringify(await bar()));
+  // Wear the front half down to its last 2 hit points, so its last stand has something to win back.
+  for (let i = 0; i < 400 && (await page.evaluate(`${scene()}.bossBar.halves[0].pool`)) > 2; i++) {
+    await page.evaluate(`(() => { const s = ${scene()}; const e = ${boss}[0]; const p = e?.parts.find((p) => p.body.enable); if (p) s.damagePart(p, 1); })()`);
+    await page.waitForTimeout(20);
+  }
   // Kill the back half off; the front one is left for its last stand.
   for (let i = 0; i < 200 && (await page.evaluate(`${boss}.length`)) > 1; i++) {
     await page.evaluate(`(() => { const s = ${scene()}; const e = ${boss}[1]; const p = e?.parts.find((p) => p.body.enable); if (p) s.damagePart(p, 1); })()`);
@@ -1263,10 +1268,13 @@ if (scenario === 'worm-bar') {
   console.log('roaring:', await page.evaluate(`${boss}[0]?.invulnerable?.()`));
   // Stand by it, so the camera shows the roar.
   await page.evaluate(`(() => { const s = ${scene()}; const h = ${boss}[0].parts[2]; s.player.body.reset(h.x - 110, h.y); })()`);
+  // It wins back half its split-time pool over the roar: 2 -> 17.
+  const hp = () => page.evaluate(`${scene()}.bossBar.halves.map((h) => Math.round(h.pool * 10) / 10)`);
+  console.log('pool as the roar begins', JSON.stringify(await hp()));
   await page.waitForTimeout(500);
   await shot('bar-06-roar');
-  // Hit it every way while it roars: nothing should change.
-  const hp = () => page.evaluate(`${scene()}.bossBar.halves.map((h) => h.pool)`);
+  console.log('pool mid-roar', JSON.stringify(await hp()));
+  // Hit it every way while it roars: nothing should drain it.
   const before = await hp();
   await page.evaluate(`(() => { const s = ${scene()}; const part = ${boss}[0].parts[2];
     s.damagePart(part, 5);

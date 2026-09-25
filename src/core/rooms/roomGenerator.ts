@@ -172,7 +172,8 @@ export type EnemyType =
   | 'wasp'
   | 'boar'
   | 'ghost'
-  | 'bat';
+  | 'bat'
+  | 'slime';
 
 export interface EnemySpawn {
   type: EnemyType;

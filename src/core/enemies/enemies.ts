@@ -30,4 +30,6 @@ export const ENEMY_CLASS: Record<EnemyType, EnemyClass> = {
   ghost: 'phasing',
   /** Flutters over chasms and swoops at the player, so it only has to be shootable. */
   bat: 'flyer',
+  /** Hops across the floor but not over chasms. */
+  slime: 'walker',
 };

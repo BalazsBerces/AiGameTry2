@@ -481,6 +481,16 @@ const wormNest: Encounter = {
   ],
 };
 
+/** Floor 2: big slimes wobble across the open floor, each one a crowd once split; a crystal turret may watch. */
+const slimePit: Encounter = {
+  id: 'slimePit',
+  floor: 1,
+  asks: [
+    { tag: 'open', cast: 'slime', count: [3, 4] },
+    { tag: 'perch', cast: 'turret', count: [0, 1] },
+  ],
+};
+
 /** Floor 3: shielded knights hold the middle while gargoyles watch from the posts. */
 const knightPatrol: Encounter = {
   id: 'knightPatrol',
@@ -510,6 +520,7 @@ export const ENCOUNTERS: readonly Encounter[] = [
   boarCharge,
   batColony,
   wormNest,
+  slimePit,
   knightPatrol,
   haunting,
 ];

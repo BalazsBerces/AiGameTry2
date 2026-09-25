@@ -110,6 +110,8 @@ export const TUNING = {
   glowCloud: { showMs: 450 },
   /** Small and frail; its flutter, telegraph and swoop (in tiles) live in core/bat. */
   bat: { hp: 1, width: 26, height: 12 },
+  /** Body size per tier; hit points, hop rhythm and splitting live in core/slime. The squash is its tell. */
+  slime: { size: { big: 32, medium: 23, small: 15 }, squash: { x: 1.3, y: 0.6 }, stretch: { x: 0.85, y: 1.2 } },
   /** How hard overlapping walkers are nudged apart: px/s per px of overlap, and the most any one gets (placeholder). */
   softPush: { stiffness: 8, cap: 120 },
 };
@@ -225,6 +227,8 @@ export const COLORS = {
   bat: 0x4a3a5c,
   batWing: 0x1c1424,
   batTelegraph: 0xe05a7a,
+  slime: 0xe0a03a,
+  slimeEdge: 0x8a5a1c,
   fallingRock: 0x8a7458,
   wormHole: 0x14100c,
   wormEgg: 0xe8dcc0,

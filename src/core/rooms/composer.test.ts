@@ -168,7 +168,7 @@ describe('enemy counts by room area', () => {
 });
 
 describe('big-room content per floor', () => {
-  const SPECIALS = [['wasp', 'boar'], ['bat', 'worm'], ['knight', 'ghost']];
+  const SPECIALS = [['wasp', 'boar'], ['bat', 'worm', 'slime'], ['knight', 'ghost']];
 
   it('gives every floor about three layouts per big shape and four or more encounters', () => {
     for (const floorIndex of [0, 1, 2]) {

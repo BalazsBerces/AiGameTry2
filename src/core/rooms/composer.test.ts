@@ -144,6 +144,29 @@ describe('composeRoom for every big shape', () => {
   }, 60_000);
 });
 
+describe('enemy counts by room area', () => {
+  // Prowlers ask for 2-4 lurkers and 1-2 on the open floor: 3-6 before scaling.
+  it.each([
+    ['2x1', 5, 9],
+    ['1x2', 5, 9],
+    ['L-tl', 6, 12],
+    ['L-br', 6, 12],
+    ['2x2', 8, 15],
+  ] as const)('fills a %s room with %i-%i prowlers', (shape, min, max) => {
+    const counts = new Set<number>();
+    for (const [i, specs] of doorSets(shape, 30).entries()) {
+      const doors = doorsFor(shape, specs);
+      const room = composeRoom({ shape, doors, theme: 'hollow', floorIndex: 1, rng: createRng(i), encounter: 'prowlers' })!;
+      const where = `${shape} ${room.layout} doors ${JSON.stringify(specs)}`;
+      expect(room.enemies.length, where).toBeGreaterThanOrEqual(min);
+      expect(room.enemies.length, where).toBeLessThanOrEqual(max);
+      counts.add(room.enemies.length);
+    }
+    // Well past the old most of six.
+    expect(Math.max(...counts)).toBeGreaterThan(6);
+  });
+});
+
 describe('big-room content per floor', () => {
   const SPECIALS = [['wasp', 'boar'], ['bat', 'worm'], ['knight', 'ghost']];
 

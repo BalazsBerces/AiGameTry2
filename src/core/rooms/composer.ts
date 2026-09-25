@@ -573,8 +573,18 @@ function wormTail(head: Cell, tiles: Tile[][], taken: Set<string>, rng: Rng): Ce
   return undefined;
 }
 
+/** How many times over an encounter's asks a big room of each shape holds: more room, more enemies. */
+export const AREA_SCALE: Partial<Record<RoomShape, number>> = { '2x1': 1.5, '1x2': 1.5, '2x2': 2.5 };
+const L_SCALE = 2;
+
+/** An ask's count range scaled to the room's shape. */
+export function scaleCount([min, max]: readonly [number, number], shape: RoomShape): [number, number] {
+  const scale = AREA_SCALE[shape] ?? (shape.startsWith('L') ? L_SCALE : 1);
+  return [Math.round(min * scale), Math.round(max * scale)];
+}
+
 /** The encounter's cast on free spots of the tags it asks for; undefined if a tag runs short. */
-function cast(encounter: Encounter, spots: Spot[], tiles: Tile[][], floorIndex: number, rng: Rng): EnemySpawn[] | undefined {
+function cast(encounter: Encounter, spots: Spot[], tiles: Tile[][], floorIndex: number, shape: RoomShape, rng: Rng): EnemySpawn[] | undefined {
   const floor = themeForFloor(floorIndex);
   const typeOf = (c: Cast): EnemyType => (c === 'walker' ? floor.walker : c === 'turret' ? floor.turret : c);
   const taken = new Set<string>();
@@ -582,7 +592,8 @@ function cast(encounter: Encounter, spots: Spot[], tiles: Tile[][], floorIndex: 
   const enemies: EnemySpawn[] = [];
   for (const ask of encounter.asks) {
     const free = shuffled(spots.filter((s) => s.tag === ask.tag && !taken.has(key(s.cell))), rng);
-    const wanted = rng.int(...ask.count);
+    const count = scaleCount(ask.count, shape);
+    const wanted = rng.int(...count);
     let placed = 0;
     for (const { cell } of free) {
       if (placed >= wanted || taken.has(key(cell))) continue;
@@ -593,6 +604,7 @@ function cast(encounter: Encounter, spots: Spot[], tiles: Tile[][], floorIndex: 
       enemies.push(tail ? { type, cell, tail } : { type, cell });
       placed++;
     }
+    // A layout short of spots for the scaled count takes what fits, down to the encounter's own least.
     if (placed < ask.count[0]) return undefined;
   }
   return enemies;
@@ -620,7 +632,7 @@ export function composeRoom(req: ComposeRequest): Composition | undefined {
     );
     // Spots on terrain, or crowding a door, could never pass validation: drop them before casting.
     const spots = drawn.spots.filter((s) => tiles[s.cell.y][s.cell.x] === 'floor' && !nearDoor(req.doors, s.cell));
-    const enemies = cast(encounter, spots, tiles, req.floorIndex, rng);
+    const enemies = cast(encounter, spots, tiles, req.floorIndex, req.shape, rng);
     if (!enemies) continue;
     const room = { tiles, enemies, pickups: [] as PickupSpawn[], symmetry: drawn.symmetry };
     if (validateRoom({ ...room, doors: req.doors }, room.symmetry).length === 0) {

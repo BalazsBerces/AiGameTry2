@@ -247,8 +247,8 @@ if (scenario === 'worm-boss') {
     await page.waitForTimeout(500);
     const now = await status();
     console.log(`t=${(i + 1) * 0.5}s`, JSON.stringify(now), 'rocks', await rocks());
-    // Its first eggs are lobbed about 10s in.
-    if ([3, 7, 19, 20, 21].includes(i)) await shot(`worm-boss-${i}`);
+    // Its first egg is lobbed about 8s in.
+    if ([3, 7, 15, 16, 17].includes(i)) await shot(`worm-boss-${i}`);
   }
   // Every piece rampages together 12s in: a charge-up (swollen head), then five lunges.
   for (let i = 0; i < 60 && !(await status()).charging; i++) await page.waitForTimeout(100);

@@ -22,40 +22,32 @@ function lobs(untilMs: number, piece: (now: number) => BroodPiece) {
 }
 
 describe('worm boss eggs', () => {
-  it('lobs two eggs every ten seconds before it splits, the first a full interval in', () => {
-    expect(lobs(30500, () => thrower())).toEqual([
-      [10000, 2],
-      [20000, 2],
-      [30000, 2],
+  it('lobs one egg every eight seconds before it splits, the first a full interval in', () => {
+    expect(lobs(24500, () => thrower())).toEqual([
+      [8000, 1],
+      [16000, 1],
+      [24000, 1],
     ]);
   });
 
   it('lobs no more once it has split', () => {
-    expect(lobs(30500, () => thrower({ split: true }))).toEqual([]);
-    expect(lobs(30500, (now) => thrower({ split: now >= 12000 }))).toEqual([[10000, 2]]);
+    expect(lobs(24500, () => thrower({ split: true }))).toEqual([]);
+    expect(lobs(24500, (now) => thrower({ split: now >= 10000 }))).toEqual([[8000, 1]]);
   });
 
   it('holds a lob that falls due while it rampages or is in the walls until it is back out', () => {
-    expect(lobs(25500, (now) => thrower({ aboveGround: now < 9000 || now >= 13000 }))).toEqual([
-      [13000, 2],
-      [23000, 2],
+    expect(lobs(20500, (now) => thrower({ aboveGround: now < 7000 || now >= 11000 }))).toEqual([
+      [11000, 1],
+      [19000, 1],
     ]);
   });
 
-  it('lobs only as many as there is room for under the cap of eggs and hatchlings', () => {
-    const { cap } = WORM_BROOD;
-    expect(cap).toBe(4);
-    expect(lobs(20500, () => thrower({ brood: 3 }))).toEqual([
+  it('holds its lob while the cap of eggs and hatchlings is full, and lobs as soon as one is gone', () => {
+    expect(WORM_BROOD.cap).toBe(4);
+    expect(lobs(20500, () => thrower({ brood: 4 }))).toEqual([]);
+    expect(lobs(20500, (now) => thrower({ brood: now < 10000 ? 4 : 3 }))).toEqual([
       [10000, 1],
-      [20000, 1],
-    ]);
-  });
-
-  it('holds its lob while the cap is full, and lobs as soon as one is gone', () => {
-    expect(lobs(25500, () => thrower({ brood: 4 }))).toEqual([]);
-    expect(lobs(25500, (now) => thrower({ brood: now < 12000 ? 4 : 2 }))).toEqual([
-      [12000, 2],
-      [22000, 2],
+      [18000, 1],
     ]);
   });
 });

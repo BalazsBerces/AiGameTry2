@@ -9,12 +9,12 @@ import {
   canAttack,
   halfPools,
   inLastStand,
-  inPhaseTwo,
   lungeCracks,
   lungeFrom,
   planLunge,
   planRockfall,
   isRoaring,
+  lastStandPool,
   roarTick,
   rockfallAt,
   spitWave,
@@ -260,9 +260,9 @@ describe('worm boss crawling out of a hole', () => {
 });
 
 describe('worm boss splitting', () => {
-  it('never splits until it has lost a fifth of its hit points', () => {
-    expect(splitsAt(41, 50, 10, 20)).toBe(false);
-    expect(splitsAt(40, 50, 10, 20)).toBe(true);
+  it('never splits until it has lost two fifths of its hit points', () => {
+    expect(splitsAt(61, 100, 10, 20)).toBe(false);
+    expect(splitsAt(60, 100, 10, 20)).toBe(true);
   });
 
   it('splits only from a blow to its middle, never its head or tail', () => {
@@ -300,11 +300,26 @@ describe('worm boss pieces', () => {
   it('lets only pieces of four or more segments attack', () => {
     expect([1, 2, 3, 4, 5, 20].map(canAttack)).toEqual([false, false, false, true, true, true]);
   });
+});
 
-  it('enters phase two once the whole worm is down to half its hit points', () => {
-    expect(inPhaseTwo(51, 100)).toBe(false);
-    expect(inPhaseTwo(50, 100)).toBe(true);
-    expect(inPhaseTwo(10, 100)).toBe(true);
+describe('worm boss last-stand heal', () => {
+  it('has won back half the pool it had at the split by the end of the roar', () => {
+    expect(lastStandPool(2, 30, 2000)).toBe(17);
+  });
+
+  it('never heals past the pool it had at the split', () => {
+    expect(lastStandPool(25, 30, 2000)).toBe(30);
+    expect(lastStandPool(30, 30, 2000)).toBe(30);
+  });
+
+  it('fills back up steadily over the roar, starting from what it had left', () => {
+    const over = [0, 250, 500, 1000, 1500, 1999, 2000, 3000].map((ms) => lastStandPool(2, 30, ms));
+    expect(over[0]).toBe(2);
+    for (let i = 1; i < over.length; i++) expect(over[i]).toBeGreaterThanOrEqual(over[i - 1]);
+    expect(over[3]).toBeGreaterThan(2);
+    expect(over[3]).toBeLessThan(17);
+    expect(over.every((pool) => pool <= 17)).toBe(true);
+    expect(over[7]).toBe(17);
   });
 });
 

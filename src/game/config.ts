@@ -30,8 +30,11 @@ export const TUNING = {
   /** Damage to enemy parts is a placeholder; the player always loses a full heart. */
   bomb: { fuseMs: 1500, enemyDamage: 6, playerDamage: 2, radius: 12 },
   worm: { segmentSize: 30, segmentHp: 2, stepMs: 300 },
-  /** Hit points of the whole worm, however long; its attacks and their timing live in core/wormBossAttack. */
-  wormBoss: { segmentSize: 38, hp: 80, stepMs: 230, shotSpeed: 155 },
+  /**
+   * Hit points of the whole worm, however long; its attacks and their timing live in
+   * core/wormBossAttack. Its spit is a little smaller than other enemy shots (`shotRadius`).
+   */
+  wormBoss: { segmentSize: 38, hp: 100, stepMs: 230, shotSpeed: 155, shotRadius: 5 },
   /**
    * The worm boss's roar (its length lives in core/wormBossAttack): the head swells to `headScale`
    * and throbs, and rings spread from it, each `ringMs` long, `ringEveryMs` apart, out to `ringTiles`.

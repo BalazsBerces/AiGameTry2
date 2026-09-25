@@ -10,7 +10,7 @@ export const WORM_BOSS = {
   /** Shorter split pieces only crawl. */
   minAttackLength: 4,
   /** It can't split until it has lost this share of its hit points. */
-  splitAfterShare: 0.2,
+  splitAfterShare: 0.4,
   /**
    * Rocks shaken loose as a lunge tunnels into a wall, on one cooldown shared by every piece: this
    * many, within this many tiles of the player, each marked by its shadow for `rockShadowMs`.
@@ -34,10 +34,10 @@ export const WORM_BOSS = {
   lungeRockShare: 0.5,
   /** The spit wave runs down the body one segment per this long. */
   spitGapMs: 25,
-  /** In phase two it steps this much more often (a factor on its step time). */
-  phaseTwoStepFactor: 0.65,
   /** Its last stand opens with a roar: it holds still this long and can't be hurt. */
   roarMs: 2000,
+  /** Over its roar it wins back this share of the pool it had at the split. */
+  lastStandHealShare: 0.5,
 };
 
 /** Whether a piece of the worm boss this many segments long still burrows and spits. */
@@ -74,11 +74,18 @@ export function roarTick(roar: Roar | undefined, now: number, piece: { lastStand
   return roar;
 }
 
+/**
+ * The last half's pool `sinceMs` into its roar: it wins back `lastStandHealShare` of the pool it
+ * had at the split (`startPool`), never past it, filling up from `atRoarStart` over the roar.
+ */
+export function lastStandPool(atRoarStart: number, startPool: number, sinceMs: number): number {
+  const healed = Math.min(startPool, atRoarStart + startPool * WORM_BOSS.lastStandHealShare);
+  const k = Math.min(1, Math.max(0, sinceMs / WORM_BOSS.roarMs));
+  return atRoarStart + (healed - atRoarStart) * k;
+}
+
 /** Roaring: it holds still and can't be hurt. */
 export const isRoaring = (roar: Roar | undefined, now: number) => roar?.phase === 'roaring' && now < roar.until;
-
-/** Phase two: the whole worm, all its pieces together, is down to half its hit points. */
-export const inPhaseTwo = (hp: number, maxHp: number) => hp <= maxHp / 2;
 
 /** The next cell from `c` along `heading`. */
 const ahead = (c: Cell, heading: Direction): Cell => ({ x: c.x + STEP[heading].x, y: c.y + STEP[heading].y });

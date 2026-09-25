@@ -20,7 +20,8 @@ const rand = (lo: number, hi: number) => lo + Math.random() * (hi - lo);
 /**
  * The worm boss's health bar in the strip under the playfield (core/bossBar lays it out and says
  * how hard it shakes): it fills in as the fight starts, snaps apart violently at the split, a dead
- * half's piece trembles and flickers harder with each pop until it blows apart at the head blast,
+ * half's piece trembles and flickers, breaking off chunk by chunk from its tail end as the half's
+ * segments pop, until its last chunk blows apart at the head blast,
  * and the last half trembles through its roar, flashes white, then throbs red.
  */
 export class BossBarView {
@@ -31,6 +32,8 @@ export class BossBarView {
   private enragedAt?: number;
   /** Pieces (by index) already blown apart, and when the last one went. */
   private crumbled = new Set<number>();
+  /** How much of each dying piece (by index) was left last frame, as it breaks off chunk by chunk. */
+  private left = new Map<number, number>();
   private goneAt?: number;
 
   constructor(
@@ -64,9 +67,16 @@ export class BossBarView {
       if (piece.state === 'crumbling') {
         if (!this.crumbled.has(i)) {
           this.crumbled.add(i);
-          this.blowApart(piece);
+          // What is left of it (a dying piece's head end, the last chunk) blows up with the head.
+          this.blowApart(piece, this.left.get(i) ?? 1);
         }
         return;
+      }
+      if (piece.state === 'dying') {
+        // A chunk breaks off its tail end for each segment that pops, down to its head's.
+        const had = this.left.get(i) ?? 1;
+        if (piece.remaining < had) this.breakOff(piece, piece.remaining, had);
+        this.left.set(i, piece.remaining);
       }
       // It flushes red as it roars, and flashes white as the roar ends, then throbs.
       if (piece.state === 'rage') this.enragedAt ??= bar.roar?.until ?? time;
@@ -83,6 +93,7 @@ export class BossBarView {
     this.tornAt = undefined;
     this.enragedAt = undefined;
     this.crumbled.clear();
+    this.left.clear();
     this.goneAt = undefined;
   }
 
@@ -90,14 +101,15 @@ export class BossBarView {
 
   private drawPiece(piece: BarPiece, index: number, count: number, entry: number, time: number, jolt: { x: number; y: number }, flash: boolean) {
     const x0 = this.edgeX(piece.left) + jolt.x;
-    const x1 = this.edgeX(piece.right) + jolt.x;
+    // A dying piece is only what has not broken off yet.
+    const x1 = x0 + (this.edgeX(piece.right) - this.edgeX(piece.left)) * piece.remaining;
     const since = piece.state === 'rage' && this.enragedAt !== undefined ? time - this.enragedAt : -1;
     const h = BAR.height * (1 + (since >= 0 ? 0.45 * heartbeat(since) : 0));
     const top = this.cy + jolt.y - h / 2;
     const bottom = this.cy + jolt.y + h / 2;
     // The torn edges: the first piece's right, the second's left.
     const jagLeft = count > 1 && index === 1;
-    const jagRight = count > 1 && index === 0;
+    const jagRight = (count > 1 && index === 0) || piece.remaining < 1;
     if (piece.state === 'dying') {
       // Failing: it flickers in its old colour, now and then going dark or almost out.
       const beat = Math.floor(time / 55) % 4;
@@ -146,19 +158,30 @@ export class BossBarView {
     }
   }
 
-  /** A dead piece blows apart: chunks fly up and sideways, spinning, then fall and fade. */
-  private blowApart(piece: BarPiece) {
+  /** The chunk of a dying piece between `from` and `to` (shares of it) breaks off and tumbles away. */
+  private breakOff(piece: BarPiece, from: number, to: number) {
     const x0 = this.edgeX(piece.left);
     const width = this.edgeX(piece.right) - x0;
-    const count = Math.max(5, Math.round(width / 12));
+    this.fling(x0 + width * from, width * (to - from), 2, 0.5);
+  }
+
+  /** A dead piece blows apart, up to `share` of it (what is left): chunks fly up and sideways, spinning, then fall and fade. */
+  private blowApart(piece: BarPiece, share: number) {
+    const x0 = this.edgeX(piece.left);
+    const width = (this.edgeX(piece.right) - x0) * share;
+    this.fling(x0, width, Math.max(5, Math.round(width / 6)), 1);
+  }
+
+  /** Breaks the stretch of bar from `x0`, `width` wide, into `count` chunks flung out with `power`. */
+  private fling(x0: number, width: number, count: number, power: number) {
     const chunkW = width / count;
     const gravity = 900;
     for (let i = 0; i < count; i++) {
       const color = i % 3 === 0 ? COLORS.bossBarTrack : COLORS.wormBossBody;
       const x = x0 + chunkW * (i + 0.5);
       const chunk = this.scene.add.rectangle(x, this.cy, chunkW * rand(0.5, 0.9), BAR.height * rand(0.5, 1), color);
-      const vx = (x - (x0 + width / 2)) * rand(1.5, 3) + rand(-40, 40);
-      const vy = -rand(140, 280);
+      const vx = ((x - (x0 + width / 2)) * rand(1.5, 3) + rand(-40, 40) + (power < 1 ? rand(20, 70) : 0)) * power;
+      const vy = -rand(140, 280) * power;
       const spin = rand(-900, 900);
       this.scene.tweens.addCounter({
         from: 0,

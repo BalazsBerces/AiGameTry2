@@ -44,6 +44,11 @@ export interface BarPiece {
   fill: number;
   /** A dead half's piece is `dying` while the half blows apart, and crumbles at its head blast. */
   state: 'whole' | 'torn' | 'dying' | 'crumbling' | 'rage';
+  /**
+   * The share of it still there, from its left edge: a dying piece breaks off a chunk from its
+   * tail end (the right, as the bar runs head to tail) with each segment of its half that pops.
+   */
+  remaining: number;
 }
 
 const dying = (h: BarHalf) => !h.alive && !!h.death && !h.death.blown;
@@ -82,7 +87,7 @@ export function snapGap(sinceMs: number, rest: number): number {
  * with its own half.
  */
 export function layoutBossBar(s: BossBarSnapshot, gap: number): BarPiece[] {
-  if (!s.halves) return [{ left: 0, right: 1, fill: s.hp / s.maxHp, state: s.hp > 0 ? 'whole' : 'crumbling' }];
+  if (!s.halves) return [{ left: 0, right: 1, fill: s.hp / s.maxHp, state: s.hp > 0 ? 'whole' : 'crumbling', remaining: 1 }];
   const total = s.halves.reduce((sum, h) => sum + h.startPool, 0);
   const tear = s.halves[0].startPool / total;
   const edges = [
@@ -94,5 +99,6 @@ export function layoutBossBar(s: BossBarSnapshot, gap: number): BarPiece[] {
     right: edges[i][1],
     fill: h.pool / h.startPool,
     state: dying(h) ? 'dying' : !h.alive ? 'crumbling' : s.rage ? 'rage' : 'torn',
+    remaining: h.death ? 1 - h.death.pops / h.death.of : 1,
   }));
 }

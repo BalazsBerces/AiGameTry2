@@ -5,7 +5,7 @@ const GAP = 0.02;
 
 describe('boss bar', () => {
   it('is one full-width piece before the split, filled by the hit points left', () => {
-    expect(layoutBossBar({ maxHp: 50, hp: 40, rage: false }, GAP)).toEqual([{ left: 0, right: 1, fill: 0.8, state: 'whole' }]);
+    expect(layoutBossBar({ maxHp: 50, hp: 40, rage: false }, GAP)).toEqual([{ left: 0, right: 1, fill: 0.8, state: 'whole', remaining: 1 }]);
   });
 
   it("rips at the front half's share of what was left at the split, the front half on the left", () => {
@@ -41,7 +41,7 @@ describe('boss bar', () => {
   });
 
   it('crumbles whole if the worm dies before it ever splits', () => {
-    expect(layoutBossBar({ maxHp: 50, hp: 0, rage: false }, GAP)).toEqual([{ left: 0, right: 1, fill: 0, state: 'crumbling' }]);
+    expect(layoutBossBar({ maxHp: 50, hp: 0, rage: false }, GAP)).toEqual([{ left: 0, right: 1, fill: 0, state: 'crumbling', remaining: 1 }]);
   });
 
   it("keeps a dead half's piece, dying, while it blows apart, and crumbles it at its head blast", () => {
@@ -50,6 +50,23 @@ describe('boss bar', () => {
     expect(layoutBossBar({ maxHp: 50, hp: 12, halves: [alive, dying], rage: false }, GAP)[1].state).toBe('dying');
     const blown = { ...dying, death: { pops: 11, of: 11, blown: true } };
     expect(layoutBossBar({ maxHp: 50, hp: 12, halves: [alive, blown], rage: false }, GAP)[1].state).toBe('crumbling');
+  });
+});
+
+describe('boss bar dying piece', () => {
+  const alive = { pool: 12, startPool: 24, alive: true };
+  const dying = (pops: number) => layoutBossBar({ maxHp: 50, hp: 12, halves: [alive, { pool: 0, startPool: 16, alive: false, death: { pops, of: 4, blown: false } }], rage: false }, GAP)[1];
+
+  it('is whole until its first pop', () => {
+    expect(dying(0).remaining).toBe(1);
+  });
+
+  it('breaks off a chunk from its tail end, the right, with each segment that pops', () => {
+    expect([1, 2, 3].map((pops) => dying(pops).remaining)).toEqual([0.75, 0.5, 0.25]);
+  });
+
+  it('is only a live piece when whole', () => {
+    expect(layoutBossBar({ maxHp: 50, hp: 12, halves: [alive, alive], rage: false }, GAP)[0].remaining).toBe(1);
   });
 });
 

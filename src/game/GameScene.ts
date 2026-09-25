@@ -60,6 +60,7 @@ import { isStunned, stun } from '../core/stun';
 import { applyPoison, chainTargets, poisonTick, rollsFreeze, type Poison } from '../core/onHit';
 import { createRng } from '../core/rng';
 import { clearSprout, smashRock } from '../core/world';
+import { hurtboxMeetsBox, hurtboxMeetsCircle } from '../core/hurtbox';
 import { createGhost } from './entities/ghost';
 import { stunBurst, GLOWSHROOM_RADIUS, type BurstTarget } from '../core/glowshroom';
 import { burstGlowshroom } from '../core/world';
@@ -328,7 +329,12 @@ export class GameScene extends Phaser.Scene {
     this.flyers = this.physics.add.group();
     this.physics.add.collider(this.flyers, this.walls);
     this.physics.add.overlap(this.shots, this.enemyParts, (shot, part) => this.hitEnemy(shot, part as EnemySprite));
-    this.physics.add.overlap(this.player, this.enemyParts, (_, part) => this.touchEnemy(part as EnemySprite));
+    this.physics.add.overlap(
+      this.player,
+      this.enemyParts,
+      (_, part) => this.touchEnemy(part as EnemySprite),
+      (_, part) => this.inHurtbox(part as EnemySprite),
+    );
     // An event rather than JustDown polling, so a tap shorter than a frame still counts.
     kb.addKey('E').on('down', () => this.dropBomb());
 
@@ -340,10 +346,15 @@ export class GameScene extends Phaser.Scene {
       (shot) => shot.destroy(),
       (shot, wall) => !this.ricochetEnemyShot(shot as Phaser.GameObjects.Arc, wall as Phaser.GameObjects.Shape),
     );
-    this.physics.add.overlap(this.player, this.enemyShots, (_p, shot) => {
-      shot.destroy();
-      this.hurtPlayer();
-    });
+    this.physics.add.overlap(
+      this.player,
+      this.enemyShots,
+      (_p, shot) => {
+        shot.destroy();
+        this.hurtPlayer();
+      },
+      (_p, shot) => this.inHurtbox(shot as Phaser.GameObjects.Arc),
+    );
 
     // The Orbital passive's orbs: they soak up enemy shots and nick what they touch.
     this.orbs = this.physics.add.group();
@@ -993,7 +1004,9 @@ export class GameScene extends Phaser.Scene {
     if (roomId !== this.world.currentRoomId) return;
     const caught = (o: { x: number; y: number; width: number }) =>
       Phaser.Math.Distance.Between(at.x, at.y, o.x, o.y) <= reach + o.width / 2;
-    if (caught(this.player)) this.hurtPlayer(TUNING.bomb.playerDamage);
+    if (Phaser.Math.Distance.Between(at.x, at.y, this.player.x, this.player.y) <= reach + TUNING.playerHurtRadius) {
+      this.hurtPlayer(TUNING.bomb.playerDamage);
+    }
     for (const part of this.enemies.flatMap((e) => e.parts).filter(caught)) this.damagePart(part, TUNING.bomb.enemyDamage);
   }
 
@@ -1025,6 +1038,14 @@ export class GameScene extends Phaser.Scene {
       part.body.setImmovable(immovable);
     }
     this.enemies.push(enemy);
+  }
+
+  /** Whether something that hurts (an enemy part, an enemy shot) reaches the player's hurtbox, smaller than their ball. */
+  private inHurtbox(thing: Phaser.GameObjects.GameObject): boolean {
+    const body = thing.body as Phaser.Physics.Arcade.Body;
+    const r = TUNING.playerHurtRadius;
+    if (body.isCircle) return hurtboxMeetsCircle(this.player, r, body.center, body.halfWidth);
+    return hurtboxMeetsBox(this.player, r, { x: body.x, y: body.y, width: body.width, height: body.height });
   }
 
   /** Takes `halves` half-hearts, unless the player is still flashing from the last hit. */
@@ -1328,8 +1349,8 @@ export class GameScene extends Phaser.Scene {
   private landSeedPod(room: WorldRoom, cell: Cell, tile: 'rock' | 'thorn'): boolean {
     const roomId = room.floorRoom.id;
     const c = tileCenter(room, cell.x, cell.y);
-    const reach = (TUNING.tile + TUNING.playerSize) / 2;
-    if (Math.abs(this.player.x - c.x) < reach && Math.abs(this.player.y - c.y) < reach) {
+    const spot = { x: c.x - TUNING.tile / 2, y: c.y - TUNING.tile / 2, width: TUNING.tile, height: TUNING.tile };
+    if (hurtboxMeetsBox(this.player, TUNING.playerHurtRadius, spot)) {
       this.hurtPlayer();
       return false;
     }

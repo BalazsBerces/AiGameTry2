@@ -5,6 +5,8 @@ export const TUNING = {
   tile: 48,
   playerSpeed: 220,
   playerSize: 30,
+  /** What hurts the player only counts inside this much smaller circle (core/hurtbox): room to slip between two shots a tile apart. */
+  playerHurtRadius: 11,
   roomSlideMs: 280,
   shotSpeed: 420,
   shotRadius: 7,

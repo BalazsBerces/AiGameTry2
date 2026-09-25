@@ -5,7 +5,8 @@ import type { Door, Tile } from './roomGenerator';
 
 /** The worm boss's phase-one eggs; placeholders for playtest tuning. */
 export const WORM_BROOD = {
-  /** Before it splits, it lobs this many eggs this often... */
+  /** Before it splits, it lobs this many eggs this long into the fight, then this often... */
+  firstLobMs: 4000,
   lobEveryMs: 12000,
   eggsPerLob: 2,
   /** ...each from one of its segments, coming down this far (in tiles, 8-way) from it, after flying this long. */
@@ -33,13 +34,13 @@ export interface BroodPiece {
 
 /**
  * The worm's egg timer, ticked every frame: before its split it lobs `eggs` every interval, the
- * first a full interval in (the timer is off, `undefined`, once it has split), only as many as
+ * first `firstLobMs` in (the timer is off, `undefined`, once it has split), only as many as
  * the cap has room for. A lob falling due while it is in the walls or rampaging, or at the cap,
  * is held until it is back out and there's room.
  */
 export function broodTick(nextLobAt: number | undefined, now: number, piece: BroodPiece): { eggs: number; nextLobAt: number | undefined } {
   if (piece.split) return { eggs: 0, nextLobAt: undefined };
-  if (nextLobAt === undefined) return { eggs: 0, nextLobAt: now + WORM_BROOD.lobEveryMs };
+  if (nextLobAt === undefined) return { eggs: 0, nextLobAt: now + WORM_BROOD.firstLobMs };
   const room = WORM_BROOD.cap - piece.brood;
   if (now < nextLobAt || !piece.aboveGround || room <= 0) return { eggs: 0, nextLobAt };
   return { eggs: Math.min(WORM_BROOD.eggsPerLob, room), nextLobAt: now + WORM_BROOD.lobEveryMs };

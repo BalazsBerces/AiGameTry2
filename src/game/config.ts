@@ -3,8 +3,12 @@ import type { Passive } from '../core/weaponModel';
 /** All tunable numbers for the Phaser layer live here. */
 export const TUNING = {
   tile: 48,
-  playerSpeed: 220,
-  playerSize: 22,
+  /**
+   * Player movement in px/s: starts at `startSpeed` and builds to `topSpeed` over `rampMs` of moving (core/momentum).
+   * Letting go stops the ball at once, but the speed survives a release of up to `releaseMemoryMs`.
+   */
+  momentum: { startSpeed: 190, topSpeed: 260, rampMs: 500, releaseMemoryMs: 150 },
+  playerSize: 26,
   /** What hurts the player only counts inside this smaller circle (core/hurtbox): room to slip between two shots a tile apart. */
   playerHurtRadius: 9,
   roomSlideMs: 280,

@@ -9,6 +9,7 @@ import { crusherWakes, settleCrusher, slideCrusher, type Crusher } from '../core
 import { launchVelocity, resolveWeapon, type Weapon } from '../core/weaponModel';
 import { fan, ring } from '../core/bulletPatterns';
 import { isDashing, tryDash, type Dash } from '../core/dash';
+import { stepMomentum, type Momentum } from '../core/momentum';
 import {
   boomerangLeg,
   createHitLog,
@@ -249,6 +250,7 @@ export class GameScene extends Phaser.Scene {
   private orbs!: Phaser.Physics.Arcade.Group;
   /** The player's current or last dash, and the enemies an upgraded one has already hurt. */
   private dash?: Dash;
+  private momentum?: Momentum;
   private dashHits = new Set<Enemy>();
   /** The player's share of the stun (a glowshroom cloud): no moving or shooting until it wears off. */
   private playerStun: Stunnable = {};
@@ -361,6 +363,7 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.overlap(this.orbs, this.enemyShots, (_o, shot) => shot.destroy());
     this.physics.add.overlap(this.orbs, this.enemyParts, (_o, part) => this.orbHits(part as EnemySprite));
     this.dash = undefined;
+    this.momentum = undefined;
     for (const key of ['SPACE', 'SHIFT']) kb.addKey(key).on('down', () => this.requestDash());
 
     this.pickupGroup = this.physics.add.group();
@@ -391,11 +394,13 @@ export class GameScene extends Phaser.Scene {
       (this.move.right.isDown ? 1 : 0) - (this.move.left.isDown ? 1 : 0),
       (this.move.down.isDown ? 1 : 0) - (this.move.up.isDown ? 1 : 0),
     );
-    if (dir.lengthSq() > 0) dir.normalize().scale(TUNING.playerSpeed);
-    // The shared stun (core/stun) holds the player too: no moving, no shooting.
+    if (dir.lengthSq() > 0) dir.normalize();
+    // The shared stun (core/stun) holds the player too: no moving, no shooting, and the built-up speed is lost.
     const stunned = isStunned(this.playerStun, time);
-    if (stunned) dir.set(0, 0);
-    if (isDashing(this.dash, time)) {
+    const dashing = isDashing(this.dash, time);
+    this.momentum = stepMomentum(this.momentum, { dir, time, stunned, dashing }, TUNING.momentum);
+    dir.scale(this.momentum.speed);
+    if (dashing) {
       const speed = this.dash!.speedTilesPerSec * TUNING.tile;
       dir.set(this.dash!.dir.x * speed, this.dash!.dir.y * speed);
     }
@@ -477,7 +482,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private tryShoot(time: number) {
-    const aim = DIRECTIONS.find((d) => this.aim[d].isDown);
+    // The newest held arrow wins, so a fresh press overrides one still held down.
+    const aim = DIRECTIONS.filter((d) => this.aim[d].isDown).reduce<Direction | undefined>(
+      (best, d) => (!best || this.aim[d].timeDown > this.aim[best].timeDown ? d : best),
+      undefined,
+    );
     if (!aim || time < this.nextShotAt) return;
     const weapon = resolveWeapon(this.world.player.passives, this.world.player.statUps);
     this.nextShotAt = time + weapon.fireDelayMs;

@@ -178,6 +178,8 @@ describe('dense big layouts', () => {
   const NEED: Record<string, Record<string, number>> = {
     '2x1': { perch: 3, centre: 3, open: 5, lurk: 3 },
     '1x2': { perch: 3, centre: 3, open: 5, lurk: 3 },
+    '2x2': { perch: 5, centre: 5, open: 8, lurk: 5 },
+    ...Object.fromEntries(L_SHAPES.map((s) => [s, { perch: 4, centre: 4, open: 6, lurk: 4 }])),
   };
   const cases = LAYOUTS.flatMap((l) => l.shapes.filter((s) => s in NEED).map((shape) => [l.id, shape] as const));
 

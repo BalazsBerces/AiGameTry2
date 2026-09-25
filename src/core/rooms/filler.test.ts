@@ -139,8 +139,9 @@ describe('addFiller', () => {
         if (around.some(([dx, dy]) => wallAt(p.x + dx, p.y + dy))) nearGap++;
       }
     }
-    // Two inner walls and the elbow: a fair share of an L's dressing sits along them.
-    expect(nearGap / L.length).toBeGreaterThanOrEqual(4);
+    // Two inner walls and the elbow: a fair share of an L's dressing sits along them (less than
+    // along outer walls, as some layouts already line them: the pond corner's pool fills the elbow).
+    expect(nearGap / L.length).toBeGreaterThanOrEqual(3);
     // As densely dressed, for its floor, as a full 2x2 room.
     const perFloor = (cases: Case[]) =>
       cases.reduce((n, c) => n + added(c.room.tiles, fill(c).tiles).length, 0) /

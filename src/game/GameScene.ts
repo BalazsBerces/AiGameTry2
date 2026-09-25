@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { DIRECTIONS, STEP, type Cell, type Direction, type RoomKind } from '../core/floorGenerator';
 import { distanceField, lineOfSight } from '../core/grid';
-import type { ChampionDrop, EnemySpawn, EnemyType, Tile } from '../core/roomGenerator';
+import type { LootDrop, EnemySpawn, EnemyType, Tile } from '../core/roomGenerator';
 import { themeForFloor, type Palette, type TileLook } from '../core/themes';
 import { roomLooks, roomThemeById, type DecorKind } from '../core/roomThemes';
 import { blocksShots, blocksSight, hurtsOnTouch, isWalkable } from '../core/tiles';
@@ -23,10 +23,11 @@ import {
 } from '../core/shotFlight';
 import {
   BOMB_RADIUS,
+  BOSS_DROPS,
   createWorld,
   damagePlayer,
   detonateBomb,
-  dropChampionLoot,
+  dropLoot,
   enterRoom,
   hitTile,
   isFinalFloor,
@@ -116,6 +117,15 @@ const PICKUP_SHAPES: Record<WorldPickup['type'], (scene: Phaser.Scene, x: number
   passive: (s, x, y, p) =>
     s.add.star(x, y, 5, 8, 18, COLORS.passive[p.passive ?? 'homing']).setStrokeStyle(2, 0xffffff),
   heart: (s, x, y) => s.add.circle(x, y, 10, COLORS.heart),
+  heartContainer: (s, x, y) => {
+    // The forest's gift: a heart-red orb with a gold-green rim and two leaves sprouting on top.
+    const orb = s.add.circle(x, y, 13, COLORS.heart).setStrokeStyle(3, COLORS.heartContainerRim);
+    const leaves = [-1, 1].map((side) =>
+      s.add.ellipse(x + side * 6, y - 15, 13, 7, COLORS.heartContainerLeaf).setAngle(side * -30).setStrokeStyle(1, COLORS.heartContainerRim),
+    );
+    orb.once('destroy', () => leaves.forEach((l) => l.destroy()));
+    return orb;
+  },
   key: (s, x, y) => s.add.rectangle(x, y, 10, 22, COLORS.key),
   bomb: (s, x, y) => s.add.circle(x, y, 11, COLORS.bomb).setStrokeStyle(3, COLORS.bombFuse),
   chest: (s, x, y) => s.add.rectangle(x, y, 34, 26, COLORS.chest),
@@ -228,8 +238,8 @@ export class GameScene extends Phaser.Scene {
   private walkers!: Phaser.Physics.Arcade.Group;
   private enemyShots!: Phaser.Physics.Arcade.Group;
   private enemies: Enemy[] = [];
-  /** Living champions (a split worm's pieces all count) and the pickup each drops once fully dead. */
-  private champions = new Map<Enemy, ChampionDrop>();
+  /** Living enemies carrying loot (champions, bosses with a drop; a split worm's pieces all count) and the pickup each drops once fully dead. */
+  private lootCarriers = new Map<Enemy, LootDrop>();
   private doorLocks: Phaser.GameObjects.GameObject[] = [];
   private pickupGroup!: Phaser.Physics.Arcade.Group;
   private itemLockoutUntil = 0;
@@ -272,7 +282,7 @@ export class GameScene extends Phaser.Scene {
     const seed = data.seed ?? (Number.isFinite(urlSeed) ? urlSeed : Math.floor(Math.random() * 2 ** 31));
     this.world = createWorld(seed);
     this.enemies = [];
-    this.champions = new Map();
+    this.lootCarriers = new Map();
     this.doorLocks = [];
     this.nextShotAt = 0;
     this.invincibleUntil = 0;
@@ -1075,12 +1085,12 @@ export class GameScene extends Phaser.Scene {
     const where = { x: part.x, y: part.y };
     const replacements = enemy.hit(part, damage);
     this.enemies = this.enemies.flatMap((e) => (e === enemy ? replacements : [e]));
-    const drop = this.champions.get(enemy);
+    const drop = this.lootCarriers.get(enemy);
     if (drop) {
-      this.champions.delete(enemy);
-      for (const r of replacements) this.champions.set(r, drop);
-      if (![...this.champions.values()].includes(drop)) {
-        dropChampionLoot(this.world, this.world.currentRoomId, drop, tileAt(this.currentRoom, where.x, where.y));
+      this.lootCarriers.delete(enemy);
+      for (const r of replacements) this.lootCarriers.set(r, drop);
+      if (![...this.lootCarriers.values()].includes(drop)) {
+        dropLoot(this.world, this.world.currentRoomId, drop, tileAt(this.currentRoom, where.x, where.y));
         this.showPickups();
       }
     }
@@ -1189,6 +1199,7 @@ export class GameScene extends Phaser.Scene {
     if (result === 'opened') this.itemLockoutUntil = this.time.now + TUNING.chestLockoutMs;
     if (result === 'damageUp') this.announce('Damage up', COLORS.damageUp);
     if (result === 'rateUp') this.announce('Fire rate up', COLORS.rateUp);
+    if (result === 'heartContainer') this.announce('+1 heart!', COLORS.heartUp);
     this.showPickups();
   }
 
@@ -1196,7 +1207,8 @@ export class GameScene extends Phaser.Scene {
     const at = (c: Cell) => tileCenter(room, c.x, c.y);
     for (const spawn of room.layout.enemies) {
       const enemy = ENEMY_FACTORIES[spawn.type](this, spawn, at, room.layout);
-      if (spawn.champion) this.champions.set(enemy, spawn.champion.drop);
+      const drop = spawn.champion?.drop ?? BOSS_DROPS[spawn.type];
+      if (drop) this.lootCarriers.set(enemy, drop);
       this.addEnemy(enemy);
     }
   }

@@ -4,7 +4,7 @@ import {
   burstGlowshroom,
   createWorld,
   detonateBomb,
-  dropChampionLoot,
+  dropLoot,
   enterRoom,
   hitTile,
   placeBomb,
@@ -436,6 +436,28 @@ describe('stat-ups', () => {
   });
 });
 
+describe('heart containers', () => {
+  it('raise max health by one heart and fill that heart', () => {
+    const world = createWorld(1);
+    const id = firstNormalRoom(world).floorRoom.id;
+    world.player.health = 3;
+    world.pickups.set(id, [{ id: 1, type: 'heartContainer', cell: { x: 2, y: 2 } }]);
+    expect(touchPickup(world, id, 1)).toBe('heartContainer');
+    expect(world.player.maxHealth).toBe(8);
+    expect(world.player.health).toBe(5);
+    expect(world.pickups.get(id)).toEqual([]);
+  });
+
+  it('can be picked up at full health', () => {
+    const world = createWorld(1);
+    const id = firstNormalRoom(world).floorRoom.id;
+    world.pickups.set(id, [{ id: 1, type: 'heartContainer', cell: { x: 2, y: 2 } }]);
+    expect(touchPickup(world, id, 1)).toBe('heartContainer');
+    expect(world.player.maxHealth).toBe(8);
+    expect(world.player.health).toBe(8);
+  });
+});
+
 describe('passives', () => {
   const itemRoomOf = (world: ReturnType<typeof createWorld>) => [...world.rooms.values()].find((r) => r.floorRoom.kind === 'item')!.floorRoom.id;
   const passiveIn = (world: ReturnType<typeof createWorld>, id: string) => world.pickups.get(id)!.find((p) => p.type === 'passive');
@@ -543,13 +565,13 @@ describe('champion loot', () => {
 
   it('lands where the champion died when that is open floor', () => {
     const { world, id } = pondRoom();
-    dropChampionLoot(world, id, { type: 'key' }, { x: 1, y: 1 });
+    dropLoot(world, id, { type: 'key' }, { x: 1, y: 1 });
     expect(dropped(world, id)).toEqual([{ x: 1, y: 1 }]);
   });
 
   it('washes up on the nearest floor the player can reach when a flyer dies over a pond', () => {
     const { world, id, tiles } = pondRoom();
-    dropChampionLoot(world, id, { type: 'key' }, { x: 6, y: 3 });
+    dropLoot(world, id, { type: 'key' }, { x: 6, y: 3 });
     const [cell] = dropped(world, id);
     expect(tiles[cell.y][cell.x]).toBe('floor');
     expect(Math.max(Math.abs(cell.x - 6), Math.abs(cell.y - 3))).toBe(2);
@@ -560,7 +582,7 @@ describe('champion loot', () => {
     // A pocket of floor at 6,3 ringed by the pond: nearest, but out of reach.
     tiles[3][6] = 'floor';
     tiles[3][7] = 'floor';
-    dropChampionLoot(world, id, { type: 'key' }, { x: 7, y: 3 });
+    dropLoot(world, id, { type: 'key' }, { x: 7, y: 3 });
     const [cell] = dropped(world, id);
     expect(`${cell.x},${cell.y}`).not.toMatch(/^(6|7),3$/);
     expect(tiles[cell.y][cell.x]).toBe('floor');

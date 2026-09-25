@@ -149,6 +149,10 @@ export const COLORS = {
   enemyShot: 0xff6b5a,
   lockedDoor: 0x3a2515,
   heart: 0xd8323c,
+  /** The Treant's heart container: its gold-green rim, its leaves, and the "+1 heart!" it announces. */
+  heartContainerRim: 0xc8d84a,
+  heartContainerLeaf: 0x4fae34,
+  heartUp: 0x8af06a,
   key: 0xf2c94c,
   bomb: 0x2a2a33,
   bombFuse: 0xff9a3c,

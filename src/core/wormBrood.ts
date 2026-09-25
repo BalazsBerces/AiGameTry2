@@ -6,8 +6,8 @@ import type { Door, Tile } from './roomGenerator';
 /** The worm boss's phase-one eggs; placeholders for playtest tuning. */
 export const WORM_BROOD = {
   /** Before it splits, it lobs this many eggs this often... */
-  lobEveryMs: 8000,
-  eggsPerLob: 1,
+  lobEveryMs: 12000,
+  eggsPerLob: 2,
   /** ...each from one of its segments, coming down this far (in tiles, 8-way) from it, after flying this long. */
   lobMinSpread: 2,
   lobSpread: 3,
@@ -16,7 +16,7 @@ export const WORM_BROOD = {
   hatchMs: 4000,
   wobbleMs: 1000,
   /** Eggs (in the air too) and living hatchlings together. */
-  cap: 4,
+  cap: 2,
   /** About two player shots. */
   eggHp: 2,
   /** A hatchling is a regular worm this many segments long. */

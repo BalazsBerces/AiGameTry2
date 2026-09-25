@@ -227,8 +227,9 @@ export const COLORS = {
   bat: 0x4a3a5c,
   batWing: 0x1c1424,
   batTelegraph: 0xe05a7a,
-  slime: 0xe0a03a,
-  slimeEdge: 0x8a5a1c,
+  /** Magenta: no other cave colour comes near it (stone is tan, crystals cyan, glowshrooms green, bats dark purple). */
+  slime: 0xd8488a,
+  slimeEdge: 0x6a1840,
   fallingRock: 0x8a7458,
   wormHole: 0x14100c,
   wormEgg: 0xe8dcc0,

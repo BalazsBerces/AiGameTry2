@@ -284,8 +284,15 @@ export class GameScene extends Phaser.Scene {
     const urlSeed = Number(params.get('seed') ?? NaN);
     // Playtesting: `?boss` (or `?boss=2`, `?boss=3`) starts at that floor's boss room door.
     const urlBoss = params.has('boss') ? Number(params.get('boss') || 1) : undefined;
+    // Playtesting: `?room=slimePit` (an archetype, layout or encounter id) starts at the door of
+    // the first such room, on the given seed or the first seed that has one.
+    const urlRoom = params.get('room') ?? undefined;
     firstBoot = false;
-    const seed = data.seed ?? (Number.isFinite(urlSeed) ? urlSeed : Math.floor(Math.random() * 2 ** 31));
+    const isUrlRoom = (r: WorldRoom) => [r.layout.archetype, r.layout.layout, r.layout.encounter].includes(urlRoom);
+    const roomSeed = urlRoom && !Number.isFinite(urlSeed)
+      ? Array.from({ length: 300 }, (_, s) => s).find((s) => [...createWorld(s).rooms.values()].some(isUrlRoom))
+      : undefined;
+    const seed = data.seed ?? roomSeed ?? (Number.isFinite(urlSeed) ? urlSeed : Math.floor(Math.random() * 2 ** 31));
     this.world = createWorld(seed);
     this.enemies = [];
     this.lootCarriers = new Map();
@@ -403,11 +410,12 @@ export class GameScene extends Phaser.Scene {
     this.scene.launch('hud');
 
     const boss = [...this.world.rooms.values()].find((r) => r.floorRoom.kind === 'boss' && r.floorIndex === (urlBoss ?? 0) - 1);
-    if (boss) {
-      const door = boss.layout.doors[0];
-      const at = tileCenter(boss, door.cell.x, door.cell.y);
+    const jumpTo = boss ?? (urlRoom ? [...this.world.rooms.values()].find(isUrlRoom) : undefined);
+    if (jumpTo) {
+      const door = jumpTo.layout.doors[0];
+      const at = tileCenter(jumpTo, door.cell.x, door.cell.y);
       this.player.body.reset(at.x, at.y);
-      this.enterRoom(boss, this.time.now);
+      this.enterRoom(jumpTo, this.time.now);
     }
   }
 

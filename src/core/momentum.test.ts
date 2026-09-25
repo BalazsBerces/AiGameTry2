@@ -48,6 +48,19 @@ describe('momentum', () => {
     expect(stepMomentum(paused, { dir: RIGHT, time: 2216 }, RULES).speed).toBe(190);
   });
 
+  it('loses its speed to a stun', () => {
+    let m = hold(undefined, RIGHT, 1000, 2000);
+    m = stepMomentum(m, { dir: RIGHT, time: 2016, stunned: true }, RULES);
+    expect(m.speed).toBe(0);
+    expect(stepMomentum(m, { dir: RIGHT, time: 2032 }, RULES).speed).toBe(190);
+  });
+
+  it('comes out of a dash at top speed', () => {
+    let m = stepMomentum(undefined, { dir: RIGHT, time: 1000 }, RULES);
+    m = stepMomentum(m, { dir: RIGHT, time: 1016, dashing: true }, RULES);
+    expect(stepMomentum(m, { dir: RIGHT, time: 1032 }, RULES).speed).toBeCloseTo(260);
+  });
+
   it('keeps its speed through a right-angle turn', () => {
     const running = hold(undefined, RIGHT, 1000, 2000);
     expect(stepMomentum(running, { dir: DOWN, time: 2016 }, RULES).speed).toBeCloseTo(260);

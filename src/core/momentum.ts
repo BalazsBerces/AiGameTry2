@@ -25,12 +25,19 @@ export interface MomentumInput {
   /** Held direction; zero when no keys are down. */
   dir: { x: number; y: number };
   time: number;
+  /** A stun holds the player and throws away the built-up speed. */
+  stunned?: boolean;
+  /** A dash leaves the player at top speed. */
+  dashing?: boolean;
 }
 
 /** Advances momentum by one frame. */
 export function stepMomentum(m: Momentum | undefined, input: MomentumInput, rules: MomentumRules): Momentum {
   const { dir, time } = input;
-  if (dir.x === 0 && dir.y === 0) {
+  const moving = dir.x !== 0 || dir.y !== 0;
+  if (input.stunned) return { speed: 0, built: 0, time, dir: m?.dir ?? dir };
+  if (input.dashing) return { speed: rules.topSpeed, built: rules.topSpeed, time, dir: moving ? dir : (m?.dir ?? dir) };
+  if (!moving) {
     return { speed: 0, built: m?.built ?? 0, time, dir: m?.dir ?? dir, releasedAt: m?.releasedAt ?? time };
   }
   const forgotten = !m || m.built === 0 || (m.releasedAt !== undefined && time - m.releasedAt > rules.releaseMemoryMs);

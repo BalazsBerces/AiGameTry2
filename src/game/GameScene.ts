@@ -395,12 +395,12 @@ export class GameScene extends Phaser.Scene {
       (this.move.down.isDown ? 1 : 0) - (this.move.up.isDown ? 1 : 0),
     );
     if (dir.lengthSq() > 0) dir.normalize();
-    this.momentum = stepMomentum(this.momentum, { dir, time }, TUNING.momentum);
-    dir.scale(this.momentum.speed);
-    // The shared stun (core/stun) holds the player too: no moving, no shooting.
+    // The shared stun (core/stun) holds the player too: no moving, no shooting, and the built-up speed is lost.
     const stunned = isStunned(this.playerStun, time);
-    if (stunned) dir.set(0, 0);
-    if (isDashing(this.dash, time)) {
+    const dashing = isDashing(this.dash, time);
+    this.momentum = stepMomentum(this.momentum, { dir, time, stunned, dashing }, TUNING.momentum);
+    dir.scale(this.momentum.speed);
+    if (dashing) {
       const speed = this.dash!.speedTilesPerSec * TUNING.tile;
       dir.set(this.dash!.dir.x * speed, this.dash!.dir.y * speed);
     }

@@ -1,5 +1,6 @@
 import type Phaser from 'phaser';
 import type { Cell } from '../../core/floorGenerator';
+import type { BossBarSnapshot } from '../../core/bossBar';
 import type { PackDecision, PackMember } from '../../core/forestCast';
 import type { Door, Tile } from '../../core/roomGenerator';
 import type { Stunnable } from '../../core/stun';
@@ -51,6 +52,8 @@ export interface EnemyContext {
   spawnEnemy(enemy: Enemy): void;
   /** Takes an enemy out of the fight without killing it (an egg that hatched, a brood outliving its boss). */
   removeEnemy(enemy: Enemy): void;
+  /** Shows a boss's health bar in the strip under the playfield (core/bossBar); the scene keeps the snapshot, which the boss updates in place. */
+  showBossBar(bar: BossBarSnapshot): void;
 }
 
 /**
@@ -70,6 +73,11 @@ export interface Enemy extends Stunnable {
    * knight's shield) instead of hurting it. Bombs, crushers and thorns never ask.
    */
   blocks?(part: EnemySprite, heading: { x: number; y: number }): boolean;
+  /**
+   * Nothing can hurt it right now (the worm boss roaring): every hit does nothing, on-hit passives
+   * included, and player shots bounce off it and drop to the ground.
+   */
+  invulnerable?(part: EnemySprite): boolean;
   /** Flyers (with `collidesWithTerrain` false) still hit walls and stone, but cross holes and thorns. */
   flies?: boolean;
   /** Parts that don't hurt the player on touch (the Candle Witch's candles); every part hurts if left out. */

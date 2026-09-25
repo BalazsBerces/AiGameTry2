@@ -10,6 +10,7 @@ import { launchVelocity, resolveWeapon, type Weapon } from '../core/weaponModel'
 import { fan, ring } from '../core/bulletPatterns';
 import { isDashing, tryDash, type Dash } from '../core/dash';
 import { stepMomentum, type Momentum } from '../core/momentum';
+import type { BossBarSnapshot } from '../core/bossBar';
 import {
   boomerangLeg,
   createHitLog,
@@ -252,6 +253,8 @@ export class GameScene extends Phaser.Scene {
   private dash?: Dash;
   private momentum?: Momentum;
   private dashHits = new Set<Enemy>();
+  /** The health bar of the boss fought in this room (the worm boss's), for the HUD; kept after it dies so the bar can crumble. */
+  bossBar?: BossBarSnapshot;
   /** The player's share of the stun (a glowshroom cloud): no moving or shooting until it wears off. */
   private playerStun: Stunnable = {};
   private playerStunMark?: Shape;
@@ -604,6 +607,7 @@ export class GameScene extends Phaser.Scene {
    */
   private strike(part: EnemySprite, damage: number) {
     const enemy = this.enemies.find((e) => e.parts.includes(part));
+    if (enemy?.invulnerable?.(part)) return;
     const at = { x: part.x, y: part.y };
     this.damagePart(part, damage);
     if (!enemy) return;
@@ -662,6 +666,43 @@ export class GameScene extends Phaser.Scene {
   /** Whether the part's enemy has a shield that turns aside a hit travelling along `heading`. */
   private shieldBlocks(part: EnemySprite, heading: { x: number; y: number }) {
     return !!this.enemies.find((e) => e.parts.includes(part))?.blocks?.(part, heading);
+  }
+
+  /**
+   * A shot strikes something that can't be hurt: it squashes against it, bounces back up to a
+   * tile and plops to the ground. It does nothing else.
+   */
+  private bounceOff(shot: Phaser.GameObjects.Arc) {
+    const { velocity } = shot.body as Phaser.Physics.Arcade.Body;
+    // Back the way it came, a little off true.
+    const angle = Math.atan2(-velocity.y, -velocity.x) + (Math.random() - 0.5) * 0.9;
+    const rules = TUNING.wormRoar;
+    const reach = rules.bounceTiles * TUNING.tile * (0.6 + 0.4 * Math.random());
+    const dud = this.add.circle(shot.x, shot.y, shot.radius, shot.fillColor).setDepth(shot.depth);
+    // Squashed flat against what it hit.
+    dud.setRotation(Math.atan2(velocity.y, velocity.x)).setScale(0.55, 1.35);
+    shot.destroy();
+    this.tweens.add({ targets: dud, scaleX: 1, scaleY: 1, duration: 70 });
+    this.tweens.add({
+      targets: dud,
+      x: dud.x + Math.cos(angle) * reach,
+      y: dud.y + Math.sin(angle) * reach,
+      duration: rules.bounceMs,
+      ease: 'Quad.easeOut',
+      onComplete: () => {
+        // Plop: it flattens into a little splat on the ground that fades.
+        dud.setRotation(0);
+        this.tweens.add({
+          targets: dud,
+          scaleX: 1.5,
+          scaleY: 0.45,
+          alpha: 0,
+          duration: rules.plopMs,
+          ease: 'Quad.easeIn',
+          onComplete: () => dud.destroy(),
+        });
+      },
+    });
   }
 
   /** A blocked hit: a brief spark where it struck the shield. */
@@ -855,6 +896,9 @@ export class GameScene extends Phaser.Scene {
         this.enemies = this.enemies.filter((e) => e !== enemy);
         if (this.enemies.length === 0) this.clearRoom();
       },
+      showBossBar: (bar) => {
+        this.bossBar = bar;
+      },
     };
   }
 
@@ -872,6 +916,10 @@ export class GameScene extends Phaser.Scene {
   private hitEnemy(shotObject: unknown, part: EnemySprite) {
     const shot = shotObject as Phaser.GameObjects.Arc;
     if (!shot.active) return; // already spent on another part this frame
+    if (this.enemies.find((e) => e.parts.includes(part))?.invulnerable?.(part)) {
+      this.bounceOff(shot);
+      return;
+    }
     const flight = shot.getData('flight') as Flight | undefined;
     const leg = this.legOf(flight, this.time.now);
     if (flight && !flight.hits.first(leg, part)) return;
@@ -1093,6 +1141,7 @@ export class GameScene extends Phaser.Scene {
 
   private enterRoom(room: WorldRoom, time: number) {
     enterRoom(this.world, room.floorRoom.id);
+    this.bossBar = undefined;
     for (const shot of [...this.shots.getChildren(), ...this.enemyShots.getChildren()]) shot.destroy();
 
     // Step the player just inside the door they came through, clear of the doorway.

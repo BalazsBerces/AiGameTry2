@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { currentFloorIndex, minimapRooms, roomLabel } from '../core/world';
 import { PASSIVE_POOL } from '../core/roomGenerator';
 import { WEAPON, type PassiveLevels } from '../core/weaponModel';
+import { BossBarView } from './bossBarView';
 import { COLORS } from './config';
 import { CELL_PX_H, LABEL_STRIP_H } from './geometry';
 import type { GameScene } from './GameScene';
@@ -23,6 +24,7 @@ export class HudScene extends Phaser.Scene {
   private bombsText!: Phaser.GameObjects.Text;
   private roomText!: Phaser.GameObjects.Text;
   private statUpsText!: Phaser.GameObjects.Text;
+  private bossBar!: BossBarView;
 
   constructor() {
     super('hud');
@@ -55,10 +57,14 @@ export class HudScene extends Phaser.Scene {
     this.roomText = this.add
       .text(this.scale.width / 2, CELL_PX_H + LABEL_STRIP_H / 2, '', { fontFamily: 'monospace', fontSize: '12px', color: COLORS.text })
       .setOrigin(0.5);
+    // The worm boss's bar takes the same strip while it shows.
+    this.bossBar = new BossBarView(this, this.scale.width / 2, CELL_PX_H + LABEL_STRIP_H / 2);
   }
 
   update() {
-    const { world } = this.scene.get('game') as GameScene;
+    const game = this.scene.get('game') as GameScene;
+    const { world } = game;
+    this.roomText.setVisible(!this.bossBar.update(game.bossBar, this.time.now));
     this.drawHearts(world.player.health, world.player.maxHealth);
     this.drawPassives(world.player.passives);
     this.drawMinimap(world);

@@ -15,10 +15,10 @@ export const WORM_BOSS = {
    * Rocks shaken loose as a lunge tunnels into a wall, on one cooldown shared by every piece: this
    * many, within this many tiles of the player, each marked by its shadow for `rockShadowMs`.
    */
-  rockfallCooldownMs: 6100,
+  rockfallCooldownMs: 6000,
   rockfallCount: 3,
   rockfallRadius: 3,
-  rockShadowMs: 1000,
+  rockShadowMs: 1100,
   /**
    * Every piece rampages together, first this long into the fight and then this long after each
    * rampage ends: it charges up, then lunges this many times, pausing between lunges.

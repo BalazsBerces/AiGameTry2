@@ -16,7 +16,7 @@ export const WORM_BOSS = {
    * many, anywhere in the room, each marked by its shadow for `rockShadowMs`.
    */
   rockfallCooldownMs: 6000,
-  rockfallCount: 4,
+  rockfallCount: 3,
   rockShadowMs: 1200,
   /**
    * Every piece rampages together, first this long into the fight and then this long after each

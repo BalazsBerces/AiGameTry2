@@ -19,6 +19,7 @@ import {
   spitWave,
   WORM_BOSS,
   type Lunge,
+  type SpitShot,
 } from '../../core/wormBossAttack';
 import { hitsToBreak } from '../../core/tiles';
 import { COLORS, TUNING } from '../config';
@@ -95,8 +96,8 @@ interface WormBossShared {
 
 interface BossPiece {
   shared: WormBossShared;
-  /** Phase two: the exit hole a lunge tunnelled out of; each segment spits as it leaves it. */
-  spitFrom?: Cell;
+  /** Phase two: a wave of spit running down the body, from where each segment lies as it fires. */
+  spit?: { start: number; shots: SpitShot[]; fired: number };
   /** When it next drops an egg (core/wormBrood); off while it can't. */
   nextEggAt?: number;
   /** A half of the split boss: its own pool of hit points; it dies whole once this is empty. */
@@ -300,6 +301,10 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
         drawLungeCrack(ctx, b, r);
         return false;
       }
+      // Phase two: out of the walls and stretched along its lane, it spits down its whole length.
+      if (r.lunge!.wrap && inPhaseTwo(b.shared.hp, b.shared.maxHp)) {
+        b.spit = { start: ctx.time, shots: spitWave(state.worm.segments, state.worm.heading), fired: 0 };
+      }
       endLunge(ctx, b, r);
     }
     // The first lunge is planned as the charge-up's last stretch begins, like a pause.
@@ -337,9 +342,24 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
     return false;
   };
 
+  /** Fires the spit wave's shots as they fall due, each from its segment as it is now; none from inside a wall. */
+  const fireSpit = (ctx: EnemyContext, b: BossPiece) => {
+    const spit = b.spit;
+    if (!spit) return;
+    const speed = TUNING.wormBoss.shotSpeed;
+    while (spit.fired < spit.shots.length && spit.shots[spit.fired].atMs <= ctx.time - spit.start) {
+      const shot = spit.shots[spit.fired++];
+      const part = state.parts[shot.segment];
+      if (!part?.active || !part.visible) continue;
+      for (const a of shot.angles) ctx.fireEnemyShot(part.x, part.y, Math.cos(a) * speed, Math.sin(a) * speed);
+    }
+    if (spit.fired >= spit.shots.length) b.spit = undefined;
+  };
+
   /** Runs the boss; true while the piece holds still. */
   const updateBoss = (ctx: EnemyContext, b: BossPiece): boolean => {
     tickRocks(ctx, b.shared);
+    fireSpit(ctx, b);
     joinRampage(ctx, b);
     if (b.rampage) return updateRampage(ctx, b, b.rampage);
     layEggs(ctx, b);
@@ -361,30 +381,12 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
       if (wrap && sameCell(next, wrap.exit)) {
         drawHole(ctx, b.shared, next, wrap.heading);
         lunge.heading = wrap.heading;
-        // Phase two: it comes out spitting.
-        if (inPhaseTwo(b.shared.hp, b.shared.maxHp)) b.spitFrom = next;
       }
       return createWorm([next, ...worm.segments.slice(0, -1)], lunge.heading);
     }
     const rock = breakOut(worm, ctx.tiles);
     if (rock) ctx.smashRock(rock);
     return bossCrawl(worm, ctx.tiles, state.rng);
-  };
-
-  /** After a boss step, in phase two: each segment spits out both flanks as it leaves the exit hole. */
-  const spitOut = (ctx: EnemyContext, b: BossPiece, before: Cell[]) => {
-    const exit = b.spitFrom;
-    if (!exit) return;
-    const after = state.worm.segments;
-    const speed = TUNING.wormBoss.shotSpeed;
-    const wave = spitWave(after, state.worm.heading);
-    after.forEach((c, i) => {
-      if (!sameCell(before[i], exit) || sameCell(c, exit)) return;
-      const at = ctx.tileCenter(c);
-      for (const a of wave[i].angles) ctx.fireEnemyShot(at.x, at.y, Math.cos(a) * speed, Math.sin(a) * speed);
-    });
-    // Done once the whole body is through (the head may not have reached the hole yet).
-    if (!after.some((c) => sameCell(c, exit))) b.spitFrom = undefined;
   };
 
   const enemy: Enemy = {
@@ -413,10 +415,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
         recolor();
         return;
       }
-      if (state.boss) {
-        spitOut(ctx, state.boss, before);
-        hideInWalls(ctx, before);
-      }
+      if (state.boss) hideInWalls(ctx, before);
       const seconds = stepMs / 1000;
       state.worm.segments.forEach((c, i) => {
         const to = ctx.tileCenter(c);
@@ -557,12 +556,13 @@ function splitAt(worm: Worm, index: number): WormPiece[] {
  * (`front`) carrying on its lunge and a back half starting its own at once.
  */
 function splitPiece(parent: BossPiece, worm: Worm, front: boolean): BossPiece {
-  const { spitFrom, rampage } = parent;
+  const { spit, rampage } = parent;
   return {
     shared: parent.shared,
     nextEggAt: parent.nextEggAt,
     rampageRound: parent.rampageRound,
-    spitFrom: spitFrom && worm.segments.some((c) => sameCell(c, spitFrom)) ? spitFrom : undefined,
+    // The front half, its segments numbered as before, spits on.
+    spit: front && spit ? { ...spit, shots: spit.shots.filter((shot) => shot.segment < worm.segments.length) } : undefined,
     rampage: rampage && carryRampage(rampage, front),
   };
 }

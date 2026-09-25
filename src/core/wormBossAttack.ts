@@ -33,7 +33,7 @@ export const WORM_BOSS = {
   /** A lunge into rock takes this share of its hit points. */
   lungeRockShare: 0.5,
   /** The spit wave runs down the body one segment per this long. */
-  spitGapMs: 70,
+  spitGapMs: 25,
   /** In phase two it steps this much more often (a factor on its step time). */
   phaseTwoStepFactor: 0.65,
 };

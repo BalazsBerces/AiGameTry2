@@ -370,16 +370,17 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
     // The first lunge is planned as the charge-up's last stretch begins, like a pause.
     if (r.phase === 'charging' && r.next === undefined && ctx.time >= r.until - WORM_BOSS.lungePauseMs) planNext(ctx, b, r);
     if (ctx.time < r.until) {
-      for (const p of state.parts) p.body.setVelocity(0, 0);
       drawLungeCrack(ctx, b, r);
-      if (r.phase === 'charging') {
-        // The one warning: its head swells and throbs while the body shudders.
-        head.setScale(1.15 + 0.2 * Math.abs(Math.sin(ctx.time / 70)));
-        state.worm.segments.forEach((c, i) => {
-          const at = ctx.tileCenter(c);
-          if (i > 0) state.parts[i].body.reset(at.x + (Math.random() - 0.5) * 4, at.y + (Math.random() - 0.5) * 4);
-        });
-      }
+      // The one warning, as it charges up: its head swells and throbs while the body shudders.
+      const charging = r.phase === 'charging';
+      if (charging) head.setScale(1.15 + 0.2 * Math.abs(Math.sin(ctx.time / 70)));
+      // It holds still on the cells it lunges from: it may have been caught mid-glide, or
+      // overshot its last cell a little.
+      state.worm.segments.forEach((c, i) => {
+        const at = ctx.tileCenter(c);
+        const shudder = charging && i > 0 ? 4 : 0;
+        state.parts[i].body.reset(at.x + (Math.random() - 0.5) * shudder, at.y + (Math.random() - 0.5) * shudder);
+      });
       return true;
     }
     head.setScale(1);

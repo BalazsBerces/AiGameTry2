@@ -73,7 +73,7 @@ Chests and cleared rooms also drop hearts, keys, bombs and chests. Now and then 
 | `npm run build` | Type check, then a production build into `dist/` |
 
 The code is split in two:
-- **`src/core/`** holds the game's rules as plain, framework-free TypeScript: floor and room generation, enemy and boss decisions, the weapon model, items and the world state. It's all deterministic for a given seed and covered by unit tests beside each module. It's grouped into `map/` (grid, tiles, floor layout, world state), `rooms/` (room generation and validation), `player/` (movement and the weapon model), `enemies/` and `bosses/`, with the shared `rng` at the top.
+- **`src/core/`** holds the game's rules as plain, framework-free TypeScript: floor and room generation, enemy and boss decisions, the weapon model, items and the world state. It's all deterministic for a given seed and covered by unit tests beside each module. It's grouped into `map/` (grid, tiles, floor layout, world state), `rooms/` (room generation and validation), `player/` (movement and the weapon model), `enemies/`, `bosses/` and `obstacles/` (terrain with an ability, like the crusher and glowshroom), with the shared `rng` at the top.
 - **`src/game/`** is the [Phaser 3](https://phaser.io/) layer. It handles physics, drawing and input, and asks `core` what should happen. It's split into `scenes/`, `entities/` (with `entities/bosses/`), `ui/` and `effects/`.
 
 `scripts/smoke.mjs` drives the running game in a headless Microsoft Edge (through Playwright) and takes screenshots. It's used to check changes in the real game:

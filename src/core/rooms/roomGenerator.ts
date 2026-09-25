@@ -6,7 +6,7 @@ import type { Passive } from '../player/weaponModel';
 import type { Rng } from '../rng';
 import { themeForFloor } from '../map/themes';
 import { isWalkable } from '../map/tiles';
-import type { Crusher } from '../enemies/crusher';
+import type { Crusher } from '../obstacles/crusher';
 import { candleCells } from '../bosses/candleWitch';
 import { composeRoom, composes, type Spot } from './composer';
 import { addFiller } from './filler';

@@ -5,7 +5,7 @@ import type { LootDrop, EnemySpawn, EnemyType, Tile } from '../../core/rooms/roo
 import { themeForFloor, type Palette, type TileLook } from '../../core/map/themes';
 import { roomLooks, roomThemeById, type DecorKind } from '../../core/rooms/roomThemes';
 import { blocksShots, blocksSight, hurtsOnTouch, isWalkable } from '../../core/map/tiles';
-import { crusherWakes, settleCrusher, slideCrusher, type Crusher } from '../../core/enemies/crusher';
+import { crusherWakes, settleCrusher, slideCrusher, type Crusher } from '../../core/obstacles/crusher';
 import { launchVelocity, resolveWeapon, type Weapon } from '../../core/player/weaponModel';
 import { fan, ring } from '../../core/bosses/bulletPatterns';
 import { isDashing, tryDash, type Dash } from '../../core/player/dash';
@@ -65,7 +65,7 @@ import { createRng } from '../../core/rng';
 import { clearSprout, smashRock } from '../../core/map/world';
 import { hurtboxMeetsBox, hurtboxMeetsCircle } from '../../core/player/hurtbox';
 import { createGhost } from '../entities/ghost';
-import { stunBurst, GLOWSHROOM_RADIUS, type BurstTarget } from '../../core/enemies/glowshroom';
+import { stunBurst, GLOWSHROOM_RADIUS, type BurstTarget } from '../../core/obstacles/glowshroom';
 import { burstGlowshroom } from '../../core/map/world';
 import type { Stunnable } from '../../core/enemies/stun';
 import { createBat } from '../entities/bat';

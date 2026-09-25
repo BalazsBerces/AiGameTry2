@@ -3,7 +3,7 @@ import { ENEMY_CLASS } from '../enemies/enemies';
 import { floodFill, lineOfSight } from '../map/grid';
 import { ROOM_HEIGHT, ROOM_WIDTH, type Door, type RoomLayout, type Tile } from './roomGenerator';
 import { blocksSight, isWalkable } from '../map/tiles';
-import { AXIS_DIRECTIONS, settleCrusher, slideCrusher, type Crusher } from '../enemies/crusher';
+import { AXIS_DIRECTIONS, settleCrusher, slideCrusher, type Crusher } from '../obstacles/crusher';
 
 export type MirrorAxis = 'vertical' | 'horizontal';
 

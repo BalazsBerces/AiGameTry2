@@ -1,5 +1,5 @@
 import type { Cell } from '../map/floorGenerator';
-import { stun, type Stunnable } from './stun';
+import { stun, type Stunnable } from '../enemies/stun';
 
 /** How far (in tiles, centre to centre) a glowshroom's stun cloud reaches. Placeholder. */
 export const GLOWSHROOM_RADIUS = 2;

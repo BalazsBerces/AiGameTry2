@@ -3,7 +3,7 @@ import type { Rng } from '../rng';
 import { WORM_LENGTH, type Door, type EnemySpawn, type PickupSpawn, type Tile } from './roomGenerator';
 import type { MirrorAxis, Symmetry } from './roomValidator';
 import { themeForFloor } from '../map/themes';
-import type { Crusher } from '../enemies/crusher';
+import type { Crusher } from '../obstacles/crusher';
 
 /** What an archetype gets to draw its idea into. */
 export interface ArchetypeContext {

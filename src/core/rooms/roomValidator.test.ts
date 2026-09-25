@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Direction } from '../map/floorGenerator';
 import type { Door, EnemySpawn, PickupSpawn, Tile } from './roomGenerator';
 import { validateRoom, type Symmetry } from './roomValidator';
-import type { Crusher } from '../enemies/crusher';
+import type { Crusher } from '../obstacles/crusher';
 
 const DOOR_CELLS: Record<Direction, { x: number; y: number }> = {
   up: { x: 6, y: 0 },

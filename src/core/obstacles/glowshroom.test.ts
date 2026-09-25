@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { stunBurst } from './glowshroom';
-import { isStunned, type Stunnable } from './stun';
+import { isStunned, type Stunnable } from '../enemies/stun';
 
 /** A target standing at the centre of tile (x, y), in tile units. */
 const standing = (target: Stunnable, x: number, y: number) => ({ target, at: { x: x + 0.5, y: y + 0.5 } });

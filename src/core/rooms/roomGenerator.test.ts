@@ -4,9 +4,9 @@ import { ARCHETYPES, supportsShape } from './archetypes';
 import { ENEMY_CLASS } from '../enemies/enemies';
 import { generateRoom, WORM_LENGTH, type DoorSpec, type RoomLayout } from './roomGenerator';
 import { createWorld } from '../map/world';
-import { AXIS_DIRECTIONS, slideCrusher } from '../enemies/crusher';
+import { AXIS_DIRECTIONS, slideCrusher } from '../obstacles/crusher';
 import { validateRoom } from './roomValidator';
-import { GLOWSHROOM_RADIUS } from '../enemies/glowshroom';
+import { GLOWSHROOM_RADIUS } from '../obstacles/glowshroom';
 import { themeForFloor } from '../map/themes';
 import { candleCells } from '../bosses/candleWitch';
 

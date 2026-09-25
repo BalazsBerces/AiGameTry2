@@ -1127,7 +1127,7 @@ describe('Wasp Nest (floor 1)', () => {
     return groups;
   };
 
-  it('builds valid rooms around one swarm of 3-4 wasps, for every door set', () => {
+  it('builds valid rooms around one swarm of 5-7 wasps, for every door set', () => {
     const layouts = new Set<string>();
     for (const doors of EVERY_DOOR_SET) {
       for (let seed = 0; seed < 30; seed++) {
@@ -1137,8 +1137,8 @@ describe('Wasp Nest (floor 1)', () => {
         const groups = swarms(r);
         expect(groups.length, where).toBe(1);
         for (const g of groups) {
-          expect(g.length, where).toBeGreaterThanOrEqual(3);
-          expect(g.length, where).toBeLessThanOrEqual(4);
+          expect(g.length, where).toBeGreaterThanOrEqual(5);
+          expect(g.length, where).toBeLessThanOrEqual(7);
         }
         expect(validateRoom(r, { axes: ['vertical', 'horizontal'] }), where).toEqual([]);
         layouts.add(JSON.stringify(r.tiles));
@@ -1359,14 +1359,15 @@ describe('Bat Roost (floor 2)', () => {
     generateRoom({ id: '0,0', kind: 'normal', doors: [...doors], archetype: 'batRoost' }, 1, createRng(seed));
   const batsIn = (r: ReturnType<typeof roost>) => r.enemies.filter((e) => e.type === 'bat');
 
-  it('builds valid, symmetric rooms around bats and chasms, for every door set', () => {
+  it('builds valid, symmetric rooms around a colony of 5-7 bats and chasms, for every door set', () => {
     const layouts = new Set<string>();
     for (const doors of EVERY_DOOR_SET) {
       for (let seed = 0; seed < 30; seed++) {
         const r = roost(seed, doors);
         const where = `seed ${seed} doors ${doors}`;
         expect(r.archetype, where).toBe('batRoost');
-        expect(batsIn(r).length, where).toBeGreaterThanOrEqual(2);
+        expect(batsIn(r).length, where).toBeGreaterThanOrEqual(5);
+        expect(batsIn(r).length, where).toBeLessThanOrEqual(7);
         expect(r.tiles.flat().filter((t) => t === 'hole').length, where).toBeGreaterThan(0);
         expect(validateRoom(r, { axes: ['vertical', 'horizontal'] }), where).toEqual([]);
         layouts.add(JSON.stringify([r.tiles, r.enemies]));

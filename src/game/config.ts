@@ -99,7 +99,7 @@ export const TUNING = {
   /** Slow and sturdy; its shield's arc and turn rate live in core/shield. `clinkMs`: the blocked-hit spark. */
   knight: { hp: 6, speed: 70, size: 28, clinkMs: 160 },
   /** Small and quicker than a goblin; its zigzag lives in core/wasp. */
-  wasp: { hp: 2, speed: 175, size: 14 },
+  wasp: { hp: 1, speed: 175, size: 14 },
   /** Trots between charges at `speed`, dashes at `dashSpeed`; charge timing and stun live in core/boar. */
   boar: { hp: 4, speed: 60, dashSpeed: 420, width: 34, height: 24 },
   /** The mark over a stunned enemy's head, spinning `spinDegPerSec`. */
@@ -109,7 +109,7 @@ export const TUNING = {
   /** How long a burst glowshroom's cloud lingers on screen; its reach and stun live in core/glowshroom. */
   glowCloud: { showMs: 450 },
   /** Small and frail; its flutter, telegraph and swoop (in tiles) live in core/bat. */
-  bat: { hp: 2, width: 26, height: 12 },
+  bat: { hp: 1, width: 26, height: 12 },
   /** How hard overlapping walkers are nudged apart: px/s per px of overlap, and the most any one gets (placeholder). */
   softPush: { stiffness: 8, cap: 120 },
 };

@@ -58,6 +58,17 @@ describe('steerWasp', () => {
     }
   });
 
+  it('never strays more than 0.7 rad off the straight line, so its path stays readable', () => {
+    for (let seed = 0; seed < 20; seed++) {
+      const { path, headings, target } = fly(seed, 300);
+      headings.forEach((h, i) => {
+        const direct = Math.atan2(target.y - path[i].y, target.x - path[i].x);
+        const off = Math.atan2(Math.sin(Math.atan2(h.y, h.x) - direct), Math.cos(Math.atan2(h.y, h.x) - direct));
+        expect(Math.abs(off), `seed ${seed} frame ${i}`).toBeLessThanOrEqual(0.7 + 1e-9);
+      });
+    }
+  });
+
   it('sends wasps of one swarm on different paths', () => {
     const paths = [1, 2, 3, 4].map((seed) => JSON.stringify(fly(seed, 100).path));
     expect(new Set(paths).size).toBe(4);

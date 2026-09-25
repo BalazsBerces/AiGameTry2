@@ -831,8 +831,8 @@ const knightGuard: Archetype = {
 };
 
 /**
- * Floor 1, the wasp nest: one swarm of 3-4 wasps hangs on a reed island in a pond in the middle
- * of the room. Nobody walks out to it, but the wasps fly straight over the water, so the fight is
+ * Floor 1, the wasp nest: one swarm of 5-7 wasps hangs on a long reed island in a pond in the
+ * middle of the room. Nobody walks out to it, but the wasps fly straight over the water, so the fight is
  * thinning a buzzing swarm as it comes; sometimes a pair of goblins prowls the banks too. The pond
  * stays small, so the player keeps most of the room to dodge in, and it clears every door approach.
  */
@@ -846,14 +846,14 @@ const waspNest: Archetype = {
     const axes: MirrorAxis[] = ['vertical', 'horizontal'];
     const canvas = new Canvas(width, height, axes);
     // The island is the middle row from `from` to the centre column; the pond rings it (painted as a quarter).
-    const from = rng.pick([4, 5]);
+    const from = rng.pick([3, 4]);
     const island = Array.from({ length: 7 - from }, (_, i) => ({ x: from + i, y: 3 }));
     canvas.paint([...Array.from({ length: 8 - from }, (_, i) => ({ x: from - 1 + i, y: 2 })), { x: from - 1, y: 3 }], 'hole');
     // Sometimes a stand of reeds on each bank.
     if (rng.next() < 0.5) canvas.paint([{ x: 1, y: 1 }], 'obstacle');
     // The swarm packs together along the island.
     const shore = island.flatMap((c) => canvas.images(c)).sort((a, b) => a.x - b.x);
-    const size = Math.min(shore.length, rng.int(3, 4));
+    const size = Math.min(shore.length, rng.int(5, 7));
     const start = rng.int(0, shore.length - size);
     const wasps = shore.slice(start, start + size);
     // A goblin pair on opposite banks, or none.
@@ -958,14 +958,14 @@ const batRoost: Archetype = {
       // Islands: a pillar of rock rising out of a chasm on either side of the middle.
       {
         chasm: [{ x: 3, y: 1 }, { x: 4, y: 1 }, { x: 5, y: 1 }, { x: 3, y: 2 }, { x: 5, y: 2 }, { x: 3, y: 3 }, { x: 5, y: 3 }],
-        roosts: [{ x: 4, y: 2 }, { x: 4, y: 3 }],
+        roosts: [{ x: 4, y: 2 }, { x: 4, y: 3 }, { x: 2, y: 1 }],
         ghoul: { x: 1, y: 1 },
         sinkhole: false,
       },
       // Rifts: two deep drops either side of a bridge down the middle.
       {
         chasm: [{ x: 3, y: 2 }, { x: 4, y: 2 }, { x: 5, y: 2 }, { x: 3, y: 3 }, { x: 4, y: 3 }, { x: 5, y: 3 }],
-        roosts: [{ x: 4, y: 1 }, { x: 2, y: 3 }],
+        roosts: [{ x: 4, y: 1 }, { x: 2, y: 3 }, { x: 3, y: 1 }],
         ghoul: { x: 1, y: 0 },
         sinkhole: false,
       },
@@ -980,9 +980,8 @@ const batRoost: Archetype = {
     canvas.paint(layout.chasm, 'hole');
     // Some layouts sometimes open a sinkhole in the middle too.
     if (layout.sinkhole && rng.next() < 0.5) canvas.paint([{ x: 5, y: 3 }, { x: 6, y: 3 }], 'hole');
-    const roosts = canvas.images(rng.pick(layout.roosts));
-    // Every roost taken, or (when there are four) just a diagonal pair.
-    const bats = roosts.length > 2 && rng.next() < 0.5 ? [roosts[0], roosts[roosts.length - 1]] : roosts;
+    // A colony of 5-7 spread over the brinks.
+    const bats = shuffled(layout.roosts.flatMap((c) => canvas.images(c)), rng).slice(0, rng.int(5, 7));
     const spots = canvas.images(layout.ghoul);
     const ghouls = rng.next() < 0.4 ? [spots[0], spots[spots.length - 1]] : [];
     return {

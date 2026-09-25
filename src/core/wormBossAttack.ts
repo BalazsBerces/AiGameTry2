@@ -36,6 +36,8 @@ export const WORM_BOSS = {
   spitGapMs: 25,
   /** In phase two it steps this much more often (a factor on its step time). */
   phaseTwoStepFactor: 0.65,
+  /** Its last stand opens with a roar: it holds still this long and can't be hurt. */
+  roarMs: 2000,
 };
 
 /** Whether a piece of the worm boss this many segments long still burrows and spits. */
@@ -60,6 +62,20 @@ export function absorbHit(pool: number, damage: number): { pool: number; breaks:
 
 /** Its last stand: split, and one half of it left, which rampages without end. */
 export const inLastStand = (split: boolean, halvesLeft: number) => split && halvesLeft === 1;
+
+/** The roar that opens its last stand: waiting to be out of the walls, roaring (invulnerable) until `until`, then done. */
+export type Roar = { phase: 'waiting' } | { phase: 'roaring'; until: number } | { phase: 'done' };
+
+/** Advances the last stand's roar; it has none (`undefined`) until the last stand begins. */
+export function roarTick(roar: Roar | undefined, now: number, piece: { lastStand: boolean; aboveGround: boolean }): Roar | undefined {
+  if (!piece.lastStand) return roar;
+  if (!roar || roar.phase === 'waiting') return piece.aboveGround ? { phase: 'roaring', until: now + WORM_BOSS.roarMs } : { phase: 'waiting' };
+  if (roar.phase === 'roaring' && now >= roar.until) return { phase: 'done' };
+  return roar;
+}
+
+/** Roaring: it holds still and can't be hurt. */
+export const isRoaring = (roar: Roar | undefined, now: number) => roar?.phase === 'roaring' && now < roar.until;
 
 /** Phase two: the whole worm, all its pieces together, is down to half its hit points. */
 export const inPhaseTwo = (hp: number, maxHp: number) => hp <= maxHp / 2;

@@ -14,6 +14,8 @@ import {
   lungeFrom,
   planLunge,
   planRockfall,
+  isRoaring,
+  roarTick,
   rockfallAt,
   spitWave,
   splitsAt,
@@ -303,5 +305,35 @@ describe('worm boss pieces', () => {
     expect(inPhaseTwo(51, 100)).toBe(false);
     expect(inPhaseTwo(50, 100)).toBe(true);
     expect(inPhaseTwo(10, 100)).toBe(true);
+  });
+});
+
+describe('worm boss last-stand roar', () => {
+  it('never roars before its last stand', () => {
+    const roar = roarTick(undefined, 1000, { lastStand: false, aboveGround: true });
+    expect(isRoaring(roar, 1000)).toBe(false);
+  });
+
+  it('roars for 2 s as its last stand begins, out of the walls', () => {
+    const roar = roarTick(undefined, 1000, { lastStand: true, aboveGround: true });
+    expect(isRoaring(roar, 1000)).toBe(true);
+    expect(isRoaring(roar, 2999)).toBe(true);
+    expect(isRoaring(roar, 3000)).toBe(false);
+  });
+
+  it('waits to roar until it is out of the walls', () => {
+    let roar = roarTick(undefined, 1000, { lastStand: true, aboveGround: false });
+    roar = roarTick(roar, 1500, { lastStand: true, aboveGround: false });
+    expect(isRoaring(roar, 1500)).toBe(false);
+    roar = roarTick(roar, 1600, { lastStand: true, aboveGround: true });
+    expect(isRoaring(roar, 3599)).toBe(true);
+    expect(isRoaring(roar, 3600)).toBe(false);
+  });
+
+  it('roars only once', () => {
+    let roar = roarTick(undefined, 1000, { lastStand: true, aboveGround: true });
+    roar = roarTick(roar, 3000, { lastStand: true, aboveGround: true });
+    roar = roarTick(roar, 3016, { lastStand: true, aboveGround: true });
+    expect(isRoaring(roar, 3016)).toBe(false);
   });
 });

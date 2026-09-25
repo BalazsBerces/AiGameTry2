@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BAT, createBat, updateBat, type Bat } from './bat';
+import { BAT, createBat, createBatFlock, leaveFlock, mayDive, reportToFlock, updateBat, type Bat } from './bat';
 import { createRng } from '../rng';
 
 const FRAME_MS = 16;
@@ -39,7 +39,10 @@ describe('bat flutter', () => {
       const start = { x: 5, y: 3 };
       const log = fly(seed, 1500, start, FAR);
       const step = (BAT.flutterSpeed * FRAME_MS) / 1000;
-      for (const f of log) expect(dist(f.at, start), `seed ${seed} t ${f.time}`).toBeLessThanOrEqual(BAT.flutterRadius + step);
+      for (const f of log) {
+        const roost = f.bat.mode === 'flutter' ? f.bat.roost : start;
+        expect(dist(f.at, roost), `seed ${seed} t ${f.time}`).toBeLessThanOrEqual(BAT.flutterRadius + step);
+      }
       expect(log.every((f) => f.bat.mode === 'flutter'), `seed ${seed}`).toBe(true);
     }
   });
@@ -55,6 +58,17 @@ describe('bat flutter', () => {
     }
   });
 
+  it('creeps its roost toward the player at about half a tile a second while it flutters', () => {
+    for (let seed = 0; seed < 10; seed++) {
+      const start = { x: 5, y: 3 };
+      const log = fly(seed, 250, start, FAR); // 4 seconds
+      const roost = log.map((f) => (f.bat.mode === 'flutter' ? f.bat.roost : undefined));
+      const crept = dist(start, FAR()) - dist(roost[roost.length - 1]!, FAR());
+      expect(crept, `seed ${seed}`).toBeGreaterThan(1.8);
+      expect(crept, `seed ${seed}`).toBeLessThan(2.2);
+    }
+  });
+
   it('sends bats of one roost on different paths', () => {
     const paths = [1, 2, 3, 4].map((seed) => JSON.stringify(fly(seed, 100, { x: 5, y: 3 }, FAR).map((f) => f.at)));
     expect(new Set(paths).size).toBe(4);
@@ -67,7 +81,8 @@ describe('bat swoop', () => {
   const NEAR = () => ({ x: START.x + BAT.swoopRange - 1, y: START.y });
 
   it('never swoops at a player out of range', () => {
-    const log = fly(2, 2000, START, () => ({ x: START.x + BAT.swoopRange + BAT.flutterRadius + 2, y: START.y }));
+    // Far enough that its creeping roost never brings the player into range in these 32 seconds.
+    const log = fly(2, 2000, START, () => ({ x: START.x + BAT.swoopRange + BAT.flutterRadius + 20, y: START.y }));
     expect(log.some((f) => f.bat.mode !== 'flutter')).toBe(false);
   });
 
@@ -117,6 +132,17 @@ describe('bat swoop', () => {
     expect(closest).toBeGreaterThan(1);
   });
 
+  it('picks on a player up to 7 tiles away and dives again within a second of landing', () => {
+    const far = () => ({ x: START.x + 6.5, y: START.y });
+    const log = fly(3, 1500, START, far);
+    expect(log.some((f) => f.bat.mode === 'telegraph')).toBe(true);
+    const ends = log.flatMap((f, i) => (i > 0 && log[i - 1].bat.mode === 'swoop' && f.bat.mode === 'flutter' ? [f.time] : []));
+    const starts = log.flatMap((f, i) => (i > 0 && log[i - 1].bat.mode === 'flutter' && f.bat.mode === 'telegraph' ? [f.time] : []));
+    const gaps = ends.flatMap((end) => starts.filter((s) => s > end).slice(0, 1).map((s) => s - end));
+    expect(gaps.length).toBeGreaterThan(0);
+    for (const gap of gaps) expect(gap).toBeLessThan(1000);
+  });
+
   it('rests after a swoop before telegraphing again', () => {
     const log = fly(3, 1500, START, NEAR);
     const ends = log.flatMap((f, i) => (i > 0 && log[i - 1].bat.mode === 'swoop' && f.bat.mode === 'flutter' ? [f.time] : []));
@@ -126,5 +152,58 @@ describe('bat swoop', () => {
       const next = starts.find((s) => s > end);
       if (next !== undefined) expect(next - end).toBeGreaterThanOrEqual(BAT.restMs);
     }
+  });
+});
+
+describe('bat flock', () => {
+  /** Flies `count` bats of one flock round a player standing among them; returns each frame's modes. */
+  function flyFlock(seed: number, count: number, frames: number) {
+    const rng = createRng(seed);
+    const flock = createBatFlock();
+    const player = { x: 6, y: 3 };
+    const bats = Array.from({ length: count }, (_, i) => {
+      const at = { x: 2 + i, y: 1 + (i % 3) };
+      return { id: i, at, bat: createBat(at, 0, rng) };
+    });
+    const modes: Bat['mode'][][] = [];
+    for (let f = 1; f <= frames; f++) {
+      const time = f * FRAME_MS;
+      for (const b of bats) {
+        const step = updateBat(b.bat, { time, dtMs: FRAME_MS, at: b.at, player, mayDive: mayDive(flock, b.id) }, rng);
+        b.bat = step.bat;
+        reportToFlock(flock, b.id, b.bat);
+        b.at = { x: b.at.x + step.velocity.x * (FRAME_MS / 1000), y: b.at.y + step.velocity.y * (FRAME_MS / 1000) };
+      }
+      modes.push(bats.map((b) => b.bat.mode));
+    }
+    return { modes, flock };
+  }
+
+  it('never has more than two bats winding up or swooping at once', () => {
+    for (let seed = 0; seed < 10; seed++) {
+      const { modes } = flyFlock(seed, 7, 800);
+      for (const [i, frame] of modes.entries()) {
+        expect(frame.filter((m) => m !== 'flutter').length, `seed ${seed} frame ${i}`).toBeLessThanOrEqual(2);
+      }
+    }
+  });
+
+  it('gives every bat a turn', () => {
+    for (let seed = 0; seed < 10; seed++) {
+      const { modes } = flyFlock(seed, 7, 800);
+      for (let bat = 0; bat < 7; bat++) {
+        expect(modes.some((frame) => frame[bat] === 'swoop'), `seed ${seed} bat ${bat}`).toBe(true);
+      }
+    }
+  });
+
+  it('frees a dead diver\'s turn', () => {
+    const flock = createBatFlock();
+    const diving: Bat = { mode: 'swoop', target: { x: 0, y: 0 }, giveUpAt: 1000 };
+    reportToFlock(flock, 'a', diving);
+    reportToFlock(flock, 'b', diving);
+    expect(mayDive(flock, 'c')).toBe(false);
+    leaveFlock(flock, 'a');
+    expect(mayDive(flock, 'c')).toBe(true);
   });
 });

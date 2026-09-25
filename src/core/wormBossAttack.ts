@@ -16,7 +16,7 @@ export const WORM_BOSS = {
    * many, within this many tiles of the player, each marked by its shadow for `rockShadowMs`.
    */
   rockfallCooldownMs: 6000,
-  rockfallCount: 3,
+  rockfallCount: 4,
   rockfallRadius: 3,
   rockShadowMs: 1100,
   /**

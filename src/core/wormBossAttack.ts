@@ -34,6 +34,8 @@ export const WORM_BOSS = {
   lungeRockShare: 0.5,
   /** The spit wave runs down the body one segment per this long. */
   spitGapMs: 25,
+  /** The fight stops this long at the split: both halves hold still and can't be hurt. */
+  splitStopMs: 1000,
   /** Its last stand opens with a roar: it holds still this long and can't be hurt. */
   roarMs: 2000,
   /** Over its roar it wins back this share of the pool it had at the split. */
@@ -63,16 +65,41 @@ export function absorbHit(pool: number, damage: number): { pool: number; breaks:
 /** Its last stand: split, and one half of it left, which rampages without end. */
 export const inLastStand = (split: boolean, halvesLeft: number) => split && halvesLeft === 1;
 
-/** The roar that opens its last stand: waiting to be out of the walls, roaring (invulnerable) until `until`, then done. */
-export type Roar = { phase: 'waiting' } | { phase: 'roaring'; until: number } | { phase: 'done' };
+/**
+ * The moments a piece of the worm boss holds still for: the stop at its split (until `until`);
+ * then, in its last stand, waiting to be out of the walls, roaring until `until`, and done.
+ */
+export type BossMoment =
+  | { phase: 'splitStop'; until: number }
+  | { phase: 'waiting' }
+  | { phase: 'roaring'; until: number }
+  | { phase: 'done' };
 
-/** Advances the last stand's roar; it has none (`undefined`) until the last stand begins. */
-export function roarTick(roar: Roar | undefined, now: number, piece: { lastStand: boolean; aboveGround: boolean }): Roar | undefined {
-  if (!piece.lastStand) return roar;
-  if (!roar || roar.phase === 'waiting') return piece.aboveGround ? { phase: 'roaring', until: now + WORM_BOSS.roarMs } : { phase: 'waiting' };
-  if (roar.phase === 'roaring' && now >= roar.until) return { phase: 'done' };
-  return roar;
+/** Both halves stop dead at the split, from `now`. */
+export const splitStop = (now: number): BossMoment => ({ phase: 'splitStop', until: now + WORM_BOSS.splitStopMs });
+
+/** Advances a piece's moments; it has none (`undefined`) outside them. */
+export function momentTick(
+  moment: BossMoment | undefined,
+  now: number,
+  piece: { lastStand: boolean; aboveGround: boolean },
+): BossMoment | undefined {
+  let m = moment;
+  if (m?.phase === 'splitStop') {
+    if (now < m.until) return m;
+    m = undefined;
+  }
+  if (!piece.lastStand) return m;
+  if (!m || m.phase === 'waiting') return piece.aboveGround ? { phase: 'roaring', until: now + WORM_BOSS.roarMs } : { phase: 'waiting' };
+  if (m.phase === 'roaring' && now >= m.until) return { phase: 'done' };
+  return m;
 }
+
+/** Holding still: it doesn't crawl or rampage, every segment sitting on its cell. */
+export const isFrozen = (m: BossMoment | undefined, now: number) => (m?.phase === 'splitStop' || m?.phase === 'roaring') && now < m.until;
+
+/** Nothing hurts it while it holds still for a moment. */
+export const canBeHurt = (m: BossMoment | undefined, now: number) => !isFrozen(m, now);
 
 /**
  * The last half's pool `sinceMs` into its roar: it wins back `lastStandHealShare` of the pool it
@@ -85,7 +112,7 @@ export function lastStandPool(atRoarStart: number, startPool: number, sinceMs: n
 }
 
 /** Roaring: it holds still and can't be hurt. */
-export const isRoaring = (roar: Roar | undefined, now: number) => roar?.phase === 'roaring' && now < roar.until;
+export const isRoaring = (m: BossMoment | undefined, now: number) => m?.phase === 'roaring' && now < m.until;
 
 /** The next cell from `c` along `heading`. */
 const ahead = (c: Cell, heading: Direction): Cell => ({ x: c.x + STEP[heading].x, y: c.y + STEP[heading].y });

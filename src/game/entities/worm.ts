@@ -9,20 +9,22 @@ import {
   bossCrawl,
   breakOut,
   canAttack,
+  canBeHurt,
   halfPools,
   inLastStand,
   isRoaring,
   lastStandPool,
   lungeCracks,
+  momentTick,
   planLunge,
   planRockfall,
-  roarTick,
   rockfallAt,
   splitsAt,
+  splitStop,
   spitWave,
   WORM_BOSS,
+  type BossMoment,
   type Lunge,
-  type Roar,
   type SpitShot,
 } from '../../core/wormBossAttack';
 import type { BarHalf, BossBarSnapshot } from '../../core/bossBar';
@@ -115,8 +117,8 @@ interface BossPiece {
   pool?: number;
   /** A half's piece of the health bar. */
   half?: BarHalf;
-  /** The roar that opens its last stand, and its pool as the roar began (it heals from there). */
-  roar?: Roar;
+  /** The moments it holds still for (its split, its roar), and its pool as the roar began (it heals from there). */
+  moment?: BossMoment;
   poolAtRoar?: number;
   /** The last rampage round it has joined, or sat out (too short). */
   rampageRound: number;
@@ -417,17 +419,34 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
     if (spit.fired >= spit.shots.length) b.spit = undefined;
   };
 
+  /** It holds still on its cells, even ones inside a wall, where those segments stay out of sight. */
+  const holdStill = (ctx: EnemyContext) => {
+    state.worm.segments.forEach((c, i) => {
+      const at = ctx.tileCenter(c);
+      state.parts[i].body.reset(at.x, at.y);
+    });
+    hideInWalls(ctx, state.worm.segments);
+  };
+
   /**
-   * Its last stand opens with a roar (core/wormBossAttack `roarTick`). Until then it finishes any
-   * lunge and crawls out of the walls; then it holds still and can't be hurt, its head swelling
-   * and throbbing while rings spread from it. True while it waits or roars (no rampage, no eggs).
+   * The moments it holds still for, unhurtable (core/wormBossAttack `momentTick`): the stop at
+   * its split, after which it crawls on (out of any wall), and the roar that opens its last stand.
+   * Before the roar it finishes any lunge and crawls out of the walls; then its head swells and
+   * throbs while rings spread from it. True while it holds still or waits to roar (no rampage, no eggs).
    */
-  const lastStandRoar = (ctx: EnemyContext, b: BossPiece): boolean => {
-    const was = b.roar;
+  const holdMoments = (ctx: EnemyContext, b: BossPiece): boolean => {
+    const was = b.moment;
     const lastStand = inLastStand(b.pool !== undefined, b.shared.pieces);
-    b.roar = roarTick(b.roar, ctx.time, { lastStand, aboveGround: !inWalls(ctx) && !b.rampage?.lunge });
+    b.moment = momentTick(b.moment, ctx.time, { lastStand, aboveGround: !inWalls(ctx) && !b.rampage?.lunge });
     const head = state.parts[0];
-    if (b.roar?.phase === 'waiting') {
+    if (b.moment?.phase === 'splitStop') {
+      // Caught charging up, its head goes back to size.
+      head.setScale(1);
+      holdStill(ctx);
+      return true;
+    }
+    if (was?.phase === 'splitStop') state.nextStepAt = ctx.time;
+    if (b.moment?.phase === 'waiting') {
       // Out of its lunge, it drops the rampage and crawls on out of the walls.
       if (b.rampage && !b.rampage.lunge) {
         b.rampage = undefined;
@@ -436,13 +455,13 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
       }
       return false;
     }
-    if (b.roar?.phase === 'done' && was?.phase === 'roaring') {
+    if (b.moment?.phase === 'done' && was?.phase === 'roaring') {
       // The roar is over, its heal done: on into its endless rampage.
       healDuringRoar(b, WORM_BOSS.roarMs);
       head.setScale(1);
       state.nextStepAt = ctx.time;
     }
-    if (b.roar?.phase !== 'roaring' || !isRoaring(b.roar, ctx.time)) return false;
+    if (b.moment?.phase !== 'roaring' || !isRoaring(b.moment, ctx.time)) return false;
     if (was?.phase !== 'roaring') {
       b.rampage = undefined;
       b.spit = undefined;
@@ -457,7 +476,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
     for (const p of state.parts) p.body.setVelocity(0, 0);
     const roar = TUNING.wormRoar;
     head.setScale(roar.headScale + 0.25 * Math.abs(Math.sin(ctx.time / 55)));
-    const since = ctx.time - (b.roar.until - WORM_BOSS.roarMs);
+    const since = ctx.time - (b.moment.until - WORM_BOSS.roarMs);
     healDuringRoar(b, since);
     const g = b.shared.ground;
     for (let start = 0; start <= since; start += roar.ringEveryMs) {
@@ -485,8 +504,8 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
     tickGround(scene, ctx, b.shared);
     ctx.showBossBar(b.shared.bar);
     fireSpit(ctx, b);
-    if (lastStandRoar(ctx, b)) return true;
-    if (b.roar?.phase === 'waiting' && !b.rampage) return false;
+    if (holdMoments(ctx, b)) return true;
+    if (b.moment?.phase === 'waiting' && !b.rampage) return false;
     joinRampage(ctx, b);
     if (b.rampage) return updateRampage(ctx, b, b.rampage);
     lobEggs(ctx, b);
@@ -519,7 +538,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
   const enemy: Enemy = {
     parts: state.parts,
     collidesWithTerrain: false,
-    invulnerable: () => isRoaring(state.boss?.roar, scene.time.now),
+    invulnerable: () => !canBeHurt(state.boss?.moment, scene.time.now),
     update(ctx: EnemyContext) {
       state.boss?.shared.bodies.set(state, state.worm.segments);
       if (state.boss && updateBoss(ctx, state.boss)) return;
@@ -581,8 +600,8 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
    */
   const hitBoss = (b: BossPiece, part: EnemySprite, index: number, damage: number): Enemy[] => {
     const { shared } = b;
-    // Roaring, it doesn't even notice.
-    if (isRoaring(b.roar, scene.time.now)) return [enemy];
+    // Holding still for a moment (its split, its roar), it doesn't even notice.
+    if (!canBeHurt(b.moment, scene.time.now)) return [enemy];
     const had = b.pool ?? shared.hp;
     const { pool: left, breaks } = absorbHit(had, damage);
     shared.hp -= had - left;
@@ -618,7 +637,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
         hp: from.map((k) => state.hp[k]),
         rng: state.rng.fork(`split ${index} ${i}`),
         nextStepAt: state.nextStepAt,
-        boss: { ...splitPiece(b, worm, i === 0), pool: pools[i], half: bars[i] },
+        boss: { ...splitPiece(b, scene.time.now), pool: pools[i], half: bars[i] },
       }),
     );
   };
@@ -690,27 +709,16 @@ function splitAt(worm: Worm, index: number): WormPiece[] {
 }
 
 /**
- * A piece left after a kill: a rampage goes on in every piece, the one that keeps the head
- * (`front`) carrying on its lunge and a back half starting its own at once.
+ * A half left by the split, at `now`: it stops dead for a moment, dropping any rampage it was
+ * in, and sits out the rest of the round.
  */
-function splitPiece(parent: BossPiece, worm: Worm, front: boolean): BossPiece {
-  const { spit, rampage } = parent;
+function splitPiece(parent: BossPiece, now: number): BossPiece {
   return {
     shared: parent.shared,
     nextEggAt: parent.nextEggAt,
     rampageRound: parent.rampageRound,
-    // The front half, its segments numbered as before, spits on.
-    spit: front && spit ? { ...spit, shots: spit.shots.filter((shot) => shot.segment < worm.segments.length) } : undefined,
-    rampage: rampage && carryRampage(rampage, front),
+    moment: splitStop(now),
   };
-}
-
-function carryRampage(r: Rampage, front: boolean): Rampage {
-  const copy = (lunge: Lunge) => ({ ...lunge, path: [...lunge.path] });
-  if (front) return { ...r, lunge: r.lunge && copy(r.lunge), next: r.next && copy(r.next) };
-  // A back half plans its own lunges (straight away, if cut off mid-lunge).
-  const own = { next: undefined, crack: undefined };
-  return r.lunge ? { ...r, ...own, phase: 'pausing', until: 0, lunge: undefined } : { ...r, ...own };
 }
 
 export function spawnWorm(

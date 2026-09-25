@@ -7,6 +7,10 @@ import {
   bossCrawl,
   breakOut,
   canAttack,
+  canBeHurt,
+  isFrozen,
+  momentTick,
+  splitStop,
   halfPools,
   inLastStand,
   lungeCracks,
@@ -15,11 +19,11 @@ import {
   planRockfall,
   isRoaring,
   lastStandPool,
-  roarTick,
   rockfallAt,
   spitWave,
   splitsAt,
   WORM_BOSS,
+  type BossMoment,
 } from './wormBossAttack';
 import { createWorm } from './wormChain';
 
@@ -325,30 +329,63 @@ describe('worm boss last-stand heal', () => {
 
 describe('worm boss last-stand roar', () => {
   it('never roars before its last stand', () => {
-    const roar = roarTick(undefined, 1000, { lastStand: false, aboveGround: true });
+    const roar = momentTick(undefined, 1000, { lastStand: false, aboveGround: true });
     expect(isRoaring(roar, 1000)).toBe(false);
+    expect(isFrozen(roar, 1000)).toBe(false);
+    expect(canBeHurt(roar, 1000)).toBe(true);
   });
 
-  it('roars for 2 s as its last stand begins, out of the walls', () => {
-    const roar = roarTick(undefined, 1000, { lastStand: true, aboveGround: true });
-    expect(isRoaring(roar, 1000)).toBe(true);
-    expect(isRoaring(roar, 2999)).toBe(true);
+  it('roars for 2 s as its last stand begins, out of the walls, frozen and unhurtable', () => {
+    const roar = momentTick(undefined, 1000, { lastStand: true, aboveGround: true });
+    for (const now of [1000, 2000, 2999]) {
+      expect(isRoaring(roar, now), `${now}`).toBe(true);
+      expect(isFrozen(roar, now), `${now}`).toBe(true);
+      expect(canBeHurt(roar, now), `${now}`).toBe(false);
+    }
     expect(isRoaring(roar, 3000)).toBe(false);
+    expect(canBeHurt(roar, 3000)).toBe(true);
   });
 
-  it('waits to roar until it is out of the walls', () => {
-    let roar = roarTick(undefined, 1000, { lastStand: true, aboveGround: false });
-    roar = roarTick(roar, 1500, { lastStand: true, aboveGround: false });
+  it('waits to roar until it is out of the walls, crawling and hurtable while it waits', () => {
+    let roar = momentTick(undefined, 1000, { lastStand: true, aboveGround: false });
+    roar = momentTick(roar, 1500, { lastStand: true, aboveGround: false });
     expect(isRoaring(roar, 1500)).toBe(false);
-    roar = roarTick(roar, 1600, { lastStand: true, aboveGround: true });
+    expect(isFrozen(roar, 1500)).toBe(false);
+    expect(canBeHurt(roar, 1500)).toBe(true);
+    roar = momentTick(roar, 1600, { lastStand: true, aboveGround: true });
     expect(isRoaring(roar, 3599)).toBe(true);
     expect(isRoaring(roar, 3600)).toBe(false);
   });
 
   it('roars only once', () => {
-    let roar = roarTick(undefined, 1000, { lastStand: true, aboveGround: true });
-    roar = roarTick(roar, 3000, { lastStand: true, aboveGround: true });
-    roar = roarTick(roar, 3016, { lastStand: true, aboveGround: true });
+    let roar = momentTick(undefined, 1000, { lastStand: true, aboveGround: true });
+    roar = momentTick(roar, 3000, { lastStand: true, aboveGround: true });
+    roar = momentTick(roar, 3016, { lastStand: true, aboveGround: true });
     expect(isRoaring(roar, 3016)).toBe(false);
+    expect(canBeHurt(roar, 3016)).toBe(true);
+  });
+});
+
+describe('worm boss split stop', () => {
+  const half = { lastStand: false, aboveGround: false };
+
+  it('holds both halves frozen and unhurtable for 1 s from the split', () => {
+    let m: BossMoment | undefined = splitStop(5000);
+    for (let now = 5000; now < 6000; now += 16) {
+      m = momentTick(m, now, half);
+      expect(isFrozen(m, now), `${now}`).toBe(true);
+      expect(canBeHurt(m, now), `${now}`).toBe(false);
+    }
+    m = momentTick(m, 6000, half);
+    expect(isFrozen(m, 6000)).toBe(false);
+    expect(canBeHurt(m, 6000)).toBe(true);
+  });
+
+  it('holds still even out of the walls, then carries on as before', () => {
+    let m = momentTick(splitStop(5000), 5500, { lastStand: false, aboveGround: true });
+    expect(isFrozen(m, 5500)).toBe(true);
+    m = momentTick(m, 6100, { lastStand: false, aboveGround: true });
+    expect(isFrozen(m, 6100)).toBe(false);
+    expect(isRoaring(m, 6100)).toBe(false);
   });
 });

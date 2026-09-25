@@ -1307,5 +1307,70 @@ if (scenario === 'worm-bar') {
   await shot('bar-11-label-back');
 }
 
+if (scenario === 'worm-split') {
+  // The split stop: split the worm boss mid-rampage (partly in a wall, if it gets the chance); both
+  // halves hold still for 1 s, shrug off every hit, then crawl on. SMOKE_SPLIT_AT: 'charge' or 'wall'.
+  const id = await page.evaluate(`[...${scene()}.world.rooms.values()].find((r) => r.floorIndex === 1 && r.floorRoom.kind === 'boss').floorRoom.id`);
+  await page.evaluate(`(() => { const s = ${scene()};
+    for (const e of s.enemies) for (const p of e.parts) p.destroy();
+    s.enemies = [];
+    s.invincibleUntil = Infinity;
+    const room = s.world.rooms.get('${id}');
+    const door = room.layout.doors[0];
+    s.player.body.reset(room.floorRoom.cell.x * 720 + (door.cell.x + 1.5) * 48, room.floorRoom.cell.y * 432 + (door.cell.y + 1.5) * 48);
+    s.enterRoom(room, s.time.now);
+  })()`);
+  const boss = `${scene()}.enemies.filter((e) => e.parts[0]?.width === 38)`;
+  const splitAt = process.env.SMOKE_SPLIT_AT ?? 'charge';
+  // Knock it down to just above its split point first.
+  await page.waitForTimeout(500);
+  await page.evaluate(`(() => { const s = ${scene()}; const p = ${boss}[0].parts[0]; for (let i = 0; i < 39; i++) s.damagePart(p, 1); })()`);
+  const ready =
+    splitAt === 'wall'
+      ? `${boss}[0].parts.some((p) => !p.body.enable) && ${boss}[0].parts.slice(1, -1).some((p) => p.body.enable)`
+      : `${boss}[0].parts[0].scale > 1.05`;
+  for (let i = 0; i < 300 && !(await page.evaluate(ready)); i++) await page.waitForTimeout(50);
+  console.log('ready to split', splitAt, await page.evaluate(ready));
+  await page.evaluate(`(() => { const s = ${scene()}; const ps = ${boss}[0].parts; const p = ps.slice(1, -1).find((p) => p.body.enable); s.damagePart(p, 1); })()`);
+  const look = () =>
+    page.evaluate(`(() => { const s = ${scene()}; return {
+      pieces: ${boss}.map((e) => e.parts.length),
+      hidden: ${boss}.map((e) => e.parts.filter((p) => !p.visible).length),
+      heads: ${boss}.map((e) => [Math.round(e.parts[0].x), Math.round(e.parts[0].y)].join(',')),
+      headScale: ${boss}.map((e) => Math.round(e.parts[0].scale * 100) / 100),
+      invulnerable: ${boss}.map((e) => e.invulnerable(e.parts[0])),
+      pools: (s.bossBar.halves ?? []).map((h) => Math.round(h.pool * 10) / 10),
+    }; })()`);
+  const first = await look();
+  console.log('just split', JSON.stringify(first));
+  await shot('split-01-stop');
+  // Hit every way during the stop: nothing drains.
+  await page.evaluate(`(() => { const s = ${scene()};
+    for (const e of ${boss}) {
+      const part = e.parts.find((p) => p.body.enable);
+      s.damagePart(part, 5);
+      s.strike(part, 5);
+      const shot = s.add.circle(part.x - 60, part.y - 40, 7, 0xfff2a8);
+      s.physics.add.existing(shot);
+      shot.body.setVelocity(420, 280);
+      s.hitEnemy(shot, part);
+    }
+  })()`);
+  const trail = [];
+  for (let i = 0; i < 8; i++) {
+    await page.waitForTimeout(100);
+    trail.push(JSON.stringify((await look()).heads));
+  }
+  console.log('heads during the stop', trail.join(' '));
+  const mid = await look();
+  console.log('mid stop', JSON.stringify(mid));
+  await page.waitForTimeout(800);
+  const after = await look();
+  console.log('after the stop', JSON.stringify(after));
+  await page.waitForTimeout(1000);
+  console.log('a second later', JSON.stringify(await look()));
+  await shot('split-02-after');
+}
+
 console.log(errors.length ? `ERRORS:\n${errors.join('\n')}` : 'no console errors');
 await browser.close();

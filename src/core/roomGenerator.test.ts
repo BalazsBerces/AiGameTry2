@@ -144,12 +144,12 @@ describe('generateRoom worm boss arena (floor 2)', () => {
     expect(new Set(arenas.map((a) => JSON.stringify(a.tiles))).size).toBe(30);
   });
 
-  it('places exactly one worm boss, twenty segments long, on valid cells away from the doors', () => {
+  it('places exactly one worm boss, twenty-three segments long, on valid cells away from the doors', () => {
     for (let seed = 0; seed < 200; seed++) {
       const a = arena(seed);
       expect(a.enemies.map((e) => e.type), `seed ${seed}`).toEqual(['wormBoss']);
       const chain = [a.enemies[0].cell, ...(a.enemies[0].tail ?? [])];
-      expect(chain.length, `seed ${seed}`).toBe(20);
+      expect(chain.length, `seed ${seed}`).toBe(23);
       expect(new Set(chain.map((c) => `${c.x},${c.y}`)).size).toBe(chain.length);
       chain.forEach((c, i) => {
         expect(a.tiles[c.y][c.x], `seed ${seed}`).toBe('floor');

@@ -14,7 +14,8 @@ describe('worm step timing', () => {
   });
 });
 import { createRng } from './rng';
-import { createWorm, killSegment, stepWorm } from './wormChain';
+import { WORM_BOSS_LENGTH } from './roomGenerator';
+import { createWorm, killSegment, splitBoss, stepWorm } from './wormChain';
 
 /** A 5-segment worm heading right, head at x=4, tail at x=0. */
 const worm = () =>
@@ -101,5 +102,46 @@ describe('killSegment', () => {
 
   it('killing the last segment leaves no worm', () => {
     expect(killSegment(createWorm([{ x: 0, y: 0 }], 'up'), 0)).toEqual([]);
+  });
+});
+
+describe('splitBoss', () => {
+  /** A 20-segment boss lying along a snake of rows, head at the top left. */
+  const boss = () =>
+    createWorm(
+      Array.from({ length: 20 }, (_, i) => ({ x: Math.floor(i / 5) % 2 ? 4 - (i % 5) : i % 5, y: Math.floor(i / 5) })),
+      'left',
+    );
+
+  it('cuts the boss into two halves of equal length, wherever in its middle the blow lands', () => {
+    for (let index = 1; index < 19; index++) {
+      const pieces = splitBoss(boss(), index);
+      expect(pieces, `index ${index}`).toHaveLength(2);
+      const [a, b] = pieces.map((p) => p.worm.segments.length);
+      expect(a + b, `index ${index}`).toBe(19);
+      expect(Math.abs(a - b), `index ${index}`).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('leaves two halves of 11 from the boss as the arena spawns it', () => {
+    const spawned = createWorm(Array.from({ length: WORM_BOSS_LENGTH }, (_, x) => ({ x, y: 0 })), 'left');
+    for (const index of [1, 11, WORM_BOSS_LENGTH - 2]) {
+      expect(splitBoss(spawned, index).map((p) => p.worm.segments.length), `index ${index}`).toEqual([11, 11]);
+    }
+  });
+
+  it('closes up over the dead segment: the segments behind move up a cell, telling where each half came from', () => {
+    const w = boss();
+    const pieces = splitBoss(w, 3);
+    expect(pieces.flatMap((p) => p.from)).toEqual([0, 1, 2, ...Array.from({ length: 16 }, (_, i) => i + 4)]);
+    expect(pieces.flatMap((p) => p.worm.segments)).toEqual(w.segments.slice(0, -1));
+  });
+
+  it('leaves the front half heading on, and the back half facing along its own body', () => {
+    const [front, back] = splitBoss(boss(), 5);
+    expect(front.worm.heading).toBe('left');
+    // Its head, segment 10 of what is left, lies at (0,2) with the body running right of it.
+    expect(back.worm.segments[0]).toEqual({ x: 0, y: 2 });
+    expect(back.worm.heading).toBe('left');
   });
 });

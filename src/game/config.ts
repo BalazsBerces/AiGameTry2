@@ -4,7 +4,9 @@ import type { Passive } from '../core/weaponModel';
 export const TUNING = {
   tile: 48,
   playerSpeed: 220,
-  playerSize: 30,
+  playerSize: 22,
+  /** What hurts the player only counts inside this smaller circle (core/hurtbox): room to slip between two shots a tile apart. */
+  playerHurtRadius: 9,
   roomSlideMs: 280,
   shotSpeed: 420,
   shotRadius: 7,
@@ -24,8 +26,8 @@ export const TUNING = {
   /** Damage to enemy parts is a placeholder; the player always loses a full heart. */
   bomb: { fuseMs: 1500, enemyDamage: 6, playerDamage: 2, radius: 12 },
   worm: { segmentSize: 30, segmentHp: 2, stepMs: 300 },
-  /** Twenty segments long; its attacks and their timing live in core/wormBossAttack. */
-  wormBoss: { segmentSize: 38, segmentHp: 2.5, stepMs: 230, shotSpeed: 185 },
+  /** Hit points of the whole worm, however long; its attacks and their timing live in core/wormBossAttack. */
+  wormBoss: { segmentSize: 38, hp: 50, stepMs: 230, shotSpeed: 155 },
   /** Its walk/open cycle, stomps, volleys, spikes and chains live in core/ironMaiden. */
   ironMaiden: { hp: 60, width: 40, height: 46, speed: 70, shotSpeed: 175 },
   /** Candles, patterns, relighting and the dark live in core/candleWitch. */
@@ -172,8 +174,9 @@ export const COLORS = {
   bat: 0x4a3a5c,
   batWing: 0x1c1424,
   batTelegraph: 0xe05a7a,
-  burrowWarning: 0xd8a860,
   fallingRock: 0x8a7458,
+  wormHole: 0x14100c,
+  wormEgg: 0xe8dcc0,
   maidenIron: 0x5c6068,
   maidenRivets: 0xb8bcc4,
   maidenInside: 0x7a1c20,

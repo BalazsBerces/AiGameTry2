@@ -251,17 +251,18 @@ export type TileHitResult = 'none' | 'damaged' | 'broken';
 
 /**
  * A player shot hit a terrain tile. Breakable tiles turn into floor after their `hitsToBreak`; the
- * room's tiles are the world's, so a broken rock stays broken for the rest of the run.
+ * room's tiles are the world's, so a broken rock stays broken for the rest of the run. A heavier
+ * blow (a lunging worm boss) counts as `hits` shots at once.
  */
-export function hitTile(world: World, roomId: string, cell: Cell): TileHitResult {
+export function hitTile(world: World, roomId: string, cell: Cell, hits = 1): TileHitResult {
   const tiles = world.rooms.get(roomId)?.layout.tiles;
   const tile = tiles?.[cell.y]?.[cell.x];
   const toBreak = tile && hitsToBreak(tile);
   if (!tiles || !toBreak) return 'none';
   const key = `${roomId}|${cell.x},${cell.y}`;
-  const hits = (world.tileHits.get(key) ?? 0) + 1;
-  if (hits < toBreak) {
-    world.tileHits.set(key, hits);
+  const taken = (world.tileHits.get(key) ?? 0) + hits;
+  if (taken < toBreak) {
+    world.tileHits.set(key, taken);
     return 'damaged';
   }
   world.tileHits.delete(key);

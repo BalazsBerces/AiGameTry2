@@ -156,6 +156,16 @@ describe('hitTile', () => {
     expect(room.layout.tiles[3][6]).toBe('floor');
   });
 
+  it('takes a heavier blow as several hits at once: two half-rock blows break a rock', () => {
+    const world = createWorld(1);
+    const room = firstNormalRoom(world);
+    room.layout.tiles[3][6] = 'rock';
+    const at = { x: 6, y: 3 };
+    expect(hitTile(world, room.floorRoom.id, at, 1.5)).toBe('damaged');
+    expect(hitTile(world, room.floorRoom.id, at, 1.5)).toBe('broken');
+    expect(room.layout.tiles[3][6]).toBe('floor');
+  });
+
   it('leaves stone and floor untouched', () => {
     const world = createWorld(1);
     const room = firstNormalRoom(world);

@@ -220,7 +220,8 @@ const LABYRINTH = {
 /**
  * Worm boss arena: a maze on a coarse grid with extra walls removed, so there are loops and
  * no dead ends. Passages are two tiles wide, leaving the worm room to turn. The walls are
- * breakable rock: the worm tunnels through them and the player can shoot or bomb a way out.
+ * breakable rock: the player can shoot or bomb a way out, and the worm smashes any in the lane
+ * it bursts out along.
  */
 function placeLabyrinth(tiles: Tile[][], rng: Rng, keepClear: (c: Cell) => boolean) {
   const { cols, rows } = LABYRINTH;
@@ -601,7 +602,8 @@ const placeLoot = (p: PickupSpawn, rng: Rng): PickupSpawn => ({
 });
 
 export const WORM_LENGTH = 4;
-export const WORM_BOSS_LENGTH = 20;
+/** Its split kills one segment and leaves two halves of 11. */
+export const WORM_BOSS_LENGTH = 23;
 
 /** Random walk of `length` cells from `head` through `pool`, removing them from it; undefined if it gets stuck. */
 function growTail(head: Cell, pool: Cell[], length: number, rng: Rng): Cell[] | undefined {

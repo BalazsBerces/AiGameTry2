@@ -54,7 +54,7 @@ About one room in seven has a **champion**: a bigger, tougher enemy that drops e
 | Floor | Boss |
 |---|---|
 | 1 (Forest) | **Treant**: walks toward you, sends up lines of roots and lobs seed pods that sprout rock and thorn. At a quarter of its health it sinks and bursts up in the middle of the room for its last stand: roots cover the room except three gaps that sweep clockwise, faster as it weakens. |
-| 2 (Caves) | **Worm boss**: a long worm that breaks rock, and splits in two when you kill segments in its middle. |
+| 2 (Caves) | **Worm boss**: a long worm that rampages in bursts of straight lunges, tunnelling through the walls and out of another, splits once into two halves, and lays eggs in its second phase. |
 | 3 (Dungeon) | **Iron Maiden** or **Candle Witch**, one picked at random each run. |
 
 ![The Treant's last stand: roots erupt across the room except in the gaps that sweep clockwise around it](docs/treant-last-stand.png)

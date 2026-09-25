@@ -61,19 +61,24 @@ describe('worm boss spit wave', () => {
 
 describe('worm boss falling rocks', () => {
   const tiles = grid(['..........', '..#.......', '....r.....', '..........', '..........', '..........']);
-  const player = { x: 4, y: 3 };
-  const chebyshev = (a: Cell, b: Cell) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
-
-  it('drops a few rocks on open floor around the player, one right on them', () => {
+  it('drops a few rocks on open floor anywhere in the room, at random', () => {
+    const hit = new Set<string>();
     for (let seed = 0; seed < 40; seed++) {
-      const cells = planRockfall(tiles, player, [], [], createRng(seed));
+      const cells = planRockfall(tiles, [], [], createRng(seed));
       expect(cells.length, `seed ${seed}`).toBe(WORM_BOSS.rockfallCount);
       expect(new Set(cells.map(key)).size, `seed ${seed}`).toBe(cells.length);
-      expect(cells.map(key), `seed ${seed}`).toContain(key(player));
       for (const c of cells) {
         expect(tiles[c.y][c.x], `seed ${seed}`).toBe('floor');
-        expect(chebyshev(c, player), `seed ${seed}`).toBeLessThanOrEqual(WORM_BOSS.rockfallRadius);
+        hit.add(key(c));
       }
+    }
+    // Every corner of the room gets rocks over the fights, not just one patch of it.
+    for (const corner of [{ x: 0, y: 0 }, { x: 9, y: 0 }, { x: 0, y: 5 }, { x: 9, y: 5 }]) {
+      const near = [...hit].some((k) => {
+        const [x, y] = k.split(',').map(Number);
+        return Math.abs(x - corner.x) <= 1 && Math.abs(y - corner.y) <= 1;
+      });
+      expect(near, `${corner.x},${corner.y}`).toBe(true);
     }
   });
 
@@ -81,7 +86,7 @@ describe('worm boss falling rocks', () => {
     const worm = [{ x: 3, y: 3 }, { x: 5, y: 3 }, { x: 4, y: 4 }, { x: 4, y: 2 }];
     const door = { side: 'down' as const, cell: { x: 5, y: 5 } };
     for (let seed = 0; seed < 40; seed++) {
-      const cells = planRockfall(tiles, { x: 4, y: 4 }, worm, [door], createRng(seed)).map(key);
+      const cells = planRockfall(tiles, worm, [door], createRng(seed)).map(key);
       for (const c of [...worm, door.cell]) expect(cells, `seed ${seed}`).not.toContain(key(c));
     }
   });

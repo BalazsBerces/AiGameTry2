@@ -13,11 +13,10 @@ export const WORM_BOSS = {
   splitAfterShare: 0.4,
   /**
    * Rocks shaken loose as a lunge tunnels into a wall, on one cooldown shared by every piece: this
-   * many, within this many tiles of the player, each marked by its shadow for `rockShadowMs`.
+   * many, anywhere in the room, each marked by its shadow for `rockShadowMs`.
    */
   rockfallCooldownMs: 6000,
   rockfallCount: 4,
-  rockfallRadius: 3,
   rockShadowMs: 1200,
   /**
    * Every piece rampages together, first this long into the fight and then this long after each
@@ -29,7 +28,7 @@ export const WORM_BOSS = {
   lungeStepMs: 30,
   /** The warning crack flows out along a lunge's path one cell per this long, from the start of the pause before it. */
   crackStepMs: 25,
-  lungePauseMs: 370,
+  lungePauseMs: 390,
   /** A lunge into rock takes this share of its hit points. */
   lungeRockShare: 0.5,
   /** The spit wave runs down the body one segment per this long. */
@@ -177,22 +176,15 @@ export function spitWave(segments: Cell[], heading: Direction): SpitShot[] {
 }
 
 /**
- * Where rocks fall: one on the player and the rest on open floor around them, never on `avoid`
- * (the worm's own cells) or on a door's cell.
+ * Where rocks fall: on open floor anywhere in the room, at random, never on `avoid` (the worm's
+ * own cells) or on a door's cell.
  */
-export function planRockfall(tiles: Tile[][], player: Cell, avoid: Cell[], doors: Door[], rng: Rng): Cell[] {
+export function planRockfall(tiles: Tile[][], avoid: Cell[], doors: Door[], rng: Rng): Cell[] {
   const same = (a: Cell) => (b: Cell) => a.x === b.x && a.y === b.y;
   const open = (c: Cell) => tiles[c.y]?.[c.x] === 'floor' && !avoid.some(same(c)) && !doors.some((d) => same(c)(d.cell));
-  const { rockfallRadius: r, rockfallCount } = WORM_BOSS;
-  const around: Cell[] = [];
-  for (let dy = -r; dy <= r; dy++) {
-    for (let dx = -r; dx <= r; dx++) {
-      const c = { x: player.x + dx, y: player.y + dy };
-      if ((dx || dy) && open(c)) around.push(c);
-    }
-  }
-  const cells = open(player) ? [player] : [];
-  while (cells.length < rockfallCount && around.length) cells.push(around.splice(rng.int(0, around.length - 1), 1)[0]);
+  const floor = tiles.flatMap((row, y) => row.map((_, x) => ({ x, y }))).filter(open);
+  const cells: Cell[] = [];
+  while (cells.length < WORM_BOSS.rockfallCount && floor.length) cells.push(floor.splice(rng.int(0, floor.length - 1), 1)[0]);
   return cells;
 }
 

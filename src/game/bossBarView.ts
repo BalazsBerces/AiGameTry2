@@ -1,13 +1,12 @@
 import Phaser from 'phaser';
-import { layoutBossBar, type BarPiece, type BossBarSnapshot } from '../core/bossBar';
+import { barShake, layoutBossBar, snapGap, type BarPiece, type BossBarSnapshot } from '../core/bossBar';
 import { COLORS, TUNING } from './config';
 
 const BAR = TUNING.bossBar;
-/** How far each torn edge's teeth reach, in px. */
-const TOOTH = 3;
-
-/** Overshoots a little before settling: the pieces jerk apart. */
-const jerk = (k: number) => 1 + 2.7 * (k - 1) ** 3 + 1.7 * (k - 1) ** 2;
+/** How far each torn edge's teeth reach, in px, and how many there are; each tooth's depth varies. */
+const TOOTH = 5;
+const TEETH = 8;
+const TOOTH_DEPTH = [0, 1, 0, 1.4, 0, 0.7, 0, 1.2, 0];
 
 /** A heartbeat, 0..1: a strong beat, then a weaker one just after. */
 function heartbeat(since: number) {
@@ -16,10 +15,13 @@ function heartbeat(since: number) {
   return Math.max(bump(0.04), 0.6 * bump(0.22));
 }
 
+const rand = (lo: number, hi: number) => lo + Math.random() * (hi - lo);
+
 /**
- * The worm boss's health bar in the strip under the playfield (core/bossBar lays it out): it
- * fills in as the fight starts, rips in two at the split, a dead half crumbles away, and the last
- * half flashes white, then throbs red.
+ * The worm boss's health bar in the strip under the playfield (core/bossBar lays it out and says
+ * how hard it shakes): it fills in as the fight starts, snaps apart violently at the split, a dead
+ * half's piece trembles and flickers harder with each pop until it blows apart at the head blast,
+ * and the last half trembles through its roar, flashes white, then throbs red.
  */
 export class BossBarView {
   private readonly g: Phaser.GameObjects.Graphics;
@@ -27,7 +29,7 @@ export class BossBarView {
   private shownAt = 0;
   private tornAt?: number;
   private enragedAt?: number;
-  /** Pieces (by index) already crumbled away, and when the last one went. */
+  /** Pieces (by index) already blown apart, and when the last one went. */
   private crumbled = new Set<number>();
   private goneAt?: number;
 
@@ -47,24 +49,29 @@ export class BossBarView {
     if (this.goneAt !== undefined) return time - this.goneAt < BAR.crumbleMs;
 
     const fullGap = BAR.gapPx / BAR.width;
+    const sinceSnap = time - (bar.splitAt ?? time);
     if (bar.halves && this.tornAt === undefined) {
       this.tornAt = time;
-      this.shred(this.edgeX(layoutBossBar(bar, 0)[0].right));
+      this.snap(this.edgeX(layoutBossBar(bar, 0)[0].right));
     }
-    const tearK = this.tornAt === undefined ? 1 : Math.min(1, (time - this.tornAt) / BAR.tearMs);
-    const pieces = layoutBossBar(bar, fullGap * jerk(tearK));
+    const pieces = layoutBossBar(bar, bar.halves ? snapGap(sinceSnap, fullGap) : fullGap);
+    const shakes = barShake(bar, time);
     const entry = Math.min(1, (time - this.shownAt) / BAR.entryMs);
+    // The rip flashes white.
+    const flash = bar.halves && sinceSnap < BAR.snapFlashMs;
 
     pieces.forEach((piece, i) => {
       if (piece.state === 'crumbling') {
         if (!this.crumbled.has(i)) {
           this.crumbled.add(i);
-          this.crumble(piece);
+          this.blowApart(piece);
         }
         return;
       }
-      if (piece.state === 'rage') this.enragedAt ??= time;
-      this.drawPiece(piece, i, pieces.length, entry, time);
+      // It flushes red as it roars, and flashes white as the roar ends, then throbs.
+      if (piece.state === 'rage') this.enragedAt ??= bar.roar?.until ?? time;
+      const jolt = { x: rand(-1, 1) * shakes[i], y: rand(-1, 1) * shakes[i] * 0.6 };
+      this.drawPiece(piece, i, pieces.length, entry, time, jolt, !!flash);
     });
     if (this.crumbled.size === pieces.length) this.goneAt = time;
     return true;
@@ -81,75 +88,99 @@ export class BossBarView {
 
   private edgeX = (share: number) => this.cx - BAR.width / 2 + share * BAR.width;
 
-  private drawPiece(piece: BarPiece, index: number, count: number, entry: number, time: number) {
-    const x0 = this.edgeX(piece.left);
-    const x1 = this.edgeX(piece.right);
-    const rage = piece.state === 'rage' && this.enragedAt !== undefined;
-    const since = rage ? time - this.enragedAt! : 0;
-    const h = BAR.height * (1 + (rage ? 0.45 * heartbeat(since) : 0));
-    const top = this.cy - h / 2;
-    const bottom = this.cy + h / 2;
+  private drawPiece(piece: BarPiece, index: number, count: number, entry: number, time: number, jolt: { x: number; y: number }, flash: boolean) {
+    const x0 = this.edgeX(piece.left) + jolt.x;
+    const x1 = this.edgeX(piece.right) + jolt.x;
+    const since = piece.state === 'rage' && this.enragedAt !== undefined ? time - this.enragedAt : -1;
+    const h = BAR.height * (1 + (since >= 0 ? 0.45 * heartbeat(since) : 0));
+    const top = this.cy + jolt.y - h / 2;
+    const bottom = this.cy + jolt.y + h / 2;
     // The torn edges: the first piece's right, the second's left.
     const jagLeft = count > 1 && index === 1;
     const jagRight = count > 1 && index === 0;
-    this.g.fillStyle(COLORS.bossBarTrack).fillPoints(shape(x0, x1, top, bottom, jagLeft, jagRight), true);
+    if (piece.state === 'dying') {
+      // Failing: it flickers in its old colour, now and then going dark or almost out.
+      const beat = Math.floor(time / 55) % 4;
+      const color = flash ? COLORS.bossBarFlash : beat === 2 ? COLORS.bossBarTrack : COLORS.wormBossBody;
+      this.g.fillStyle(color, beat === 3 ? 0.4 : 1).fillPoints(shape(x0, x1, top, bottom, jagLeft, jagRight), true);
+      return;
+    }
+    this.g.fillStyle(flash ? COLORS.bossBarFlash : COLORS.bossBarTrack).fillPoints(shape(x0, x1, top, bottom, jagLeft, jagRight), true);
     const fillW = (x1 - x0) * piece.fill * entry;
     if (fillW <= 0) return;
-    const color = !rage ? COLORS.wormBossBody : since < BAR.rageFlashMs ? COLORS.bossBarFlash : COLORS.bossBarRage;
+    const color =
+      flash || (since >= 0 && since < BAR.rageFlashMs) ? COLORS.bossBarFlash : piece.state === 'rage' ? COLORS.bossBarRage : COLORS.wormBossBody;
     // It fills from its left edge; the teeth show only where the fill reaches a torn edge.
     const fx1 = x0 + fillW;
     this.g.fillStyle(color).fillPoints(shape(x0, fx1, top, bottom, jagLeft, jagRight && fx1 >= x1 - 0.5), true);
   }
 
-  /** A few scraps fall from the tear. */
-  private shred(x: number) {
-    for (let i = 0; i < 5; i++) {
-      const scrap = this.scene.add.rectangle(x + (Math.random() - 0.5) * 6, this.cy, 3, 2, i % 2 ? COLORS.wormBossBody : COLORS.bossBarTrack);
+  /** The snap: a shower of scraps falls from the tear, and sparks fly off it. */
+  private snap(x: number) {
+    for (let i = 0; i < 14; i++) {
+      const scrap = this.scene.add.rectangle(x + rand(-4, 4), this.cy + rand(-4, 4), rand(2, 5), rand(2, 3), i % 2 ? COLORS.wormBossBody : COLORS.bossBarTrack);
       this.scene.tweens.add({
         targets: scrap,
-        x: scrap.x + (Math.random() - 0.5) * 24,
-        y: this.cy + 10 + Math.random() * 12,
-        angle: (Math.random() - 0.5) * 360,
+        x: scrap.x + rand(-40, 40),
+        y: this.cy + rand(8, 26),
+        angle: rand(-360, 360),
         alpha: 0,
-        duration: BAR.tearMs * 2,
+        duration: BAR.crumbleMs,
         ease: 'Quad.easeIn',
         onComplete: () => scrap.destroy(),
       });
     }
+    for (let i = 0; i < 12; i++) {
+      const a = rand(0, Math.PI * 2);
+      const far = rand(18, 46);
+      const spark = this.scene.add.rectangle(x, this.cy, rand(3, 6), 1.5, COLORS.bossBarSpark).setRotation(a);
+      this.scene.tweens.add({
+        targets: spark,
+        x: x + Math.cos(a) * far,
+        y: this.cy + Math.sin(a) * far * 0.7,
+        alpha: 0,
+        duration: rand(180, 320),
+        ease: 'Quad.easeOut',
+        onComplete: () => spark.destroy(),
+      });
+    }
   }
 
-  /** A dead piece breaks into chunks that tumble down and fade. */
-  private crumble(piece: BarPiece) {
+  /** A dead piece blows apart: chunks fly up and sideways, spinning, then fall and fade. */
+  private blowApart(piece: BarPiece) {
     const x0 = this.edgeX(piece.left);
     const width = this.edgeX(piece.right) - x0;
-    const count = Math.max(3, Math.round(width / 24));
+    const count = Math.max(5, Math.round(width / 12));
     const chunkW = width / count;
+    const gravity = 900;
     for (let i = 0; i < count; i++) {
-      const filled = (i + 0.5) / count < piece.fill;
-      const color = !filled ? COLORS.bossBarTrack : piece.state === 'rage' ? COLORS.bossBarRage : COLORS.wormBossBody;
-      const chunk = this.scene.add.rectangle(x0 + chunkW * (i + 0.5), this.cy, chunkW - 1, BAR.height, color);
-      this.scene.tweens.add({
-        targets: chunk,
-        x: chunk.x + (Math.random() - 0.5) * 16,
-        y: this.cy + 14 + Math.random() * 16,
-        angle: (Math.random() - 0.5) * 120,
-        alpha: 0,
-        delay: Math.random() * 120,
+      const color = i % 3 === 0 ? COLORS.bossBarTrack : COLORS.wormBossBody;
+      const x = x0 + chunkW * (i + 0.5);
+      const chunk = this.scene.add.rectangle(x, this.cy, chunkW * rand(0.5, 0.9), BAR.height * rand(0.5, 1), color);
+      const vx = (x - (x0 + width / 2)) * rand(1.5, 3) + rand(-40, 40);
+      const vy = -rand(140, 280);
+      const spin = rand(-900, 900);
+      this.scene.tweens.addCounter({
+        from: 0,
+        to: BAR.crumbleMs / 1000,
         duration: BAR.crumbleMs,
-        ease: 'Quad.easeIn',
+        onUpdate: (tween) => {
+          const t = tween.getValue() ?? 0;
+          chunk.setPosition(x + vx * t, this.cy + vy * t + (gravity * t * t) / 2).setAngle(spin * t);
+          chunk.setAlpha(Math.min(1, 2 * (1 - (t * 1000) / BAR.crumbleMs)));
+        },
         onComplete: () => chunk.destroy(),
       });
     }
   }
 }
 
-/** A bar piece's outline, with teeth down whichever edges are torn. */
+/** A bar piece's outline, with sharp, uneven teeth down whichever edges are torn. */
 function shape(x0: number, x1: number, top: number, bottom: number, jagLeft: boolean, jagRight: boolean) {
-  const teeth = 4;
   const edge = (x: number, outward: number, down: boolean) =>
-    Array.from({ length: teeth + 1 }, (_, i) => {
-      const k = down ? i / teeth : 1 - i / teeth;
-      return new Phaser.Math.Vector2(x + (i % 2 ? outward * TOOTH : 0), top + (bottom - top) * k);
+    Array.from({ length: TEETH + 1 }, (_, i) => {
+      const k = down ? i / TEETH : 1 - i / TEETH;
+      return new Phaser.Math.Vector2(x + (i % 2 ? outward * TOOTH * TOOTH_DEPTH[i] : 0), top + (bottom - top) * k);
     });
   const right = jagRight ? edge(x1, -1, true) : [new Phaser.Math.Vector2(x1, top), new Phaser.Math.Vector2(x1, bottom)];
   const left = jagLeft ? edge(x0, 1, false) : [new Phaser.Math.Vector2(x0, bottom), new Phaser.Math.Vector2(x0, top)];

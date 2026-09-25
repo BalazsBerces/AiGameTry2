@@ -42,11 +42,12 @@ export const TUNING = {
    */
   wormRoar: { headScale: 1.6, ringMs: 900, ringEveryMs: 700, ringTiles: 3.5, bounceTiles: 1, bounceMs: 200, plopMs: 280 },
   /**
-   * The worm boss's health bar in the strip under the playfield: it fills in over `entryMs`, rips
-   * over `tearMs` leaving a `gapPx` gap, and a dead piece crumbles over `crumbleMs`. Once enraged
-   * it flashes white for `rageFlashMs`, then throbs once every `heartbeatMs`.
+   * The worm boss's health bar in the strip under the playfield: it fills in over `entryMs`, snaps
+   * apart leaving a `gapPx` gap (flashing white for `snapFlashMs`; how it shakes and overshoots
+   * lives in core/bossBar), and a dead piece blows apart over `crumbleMs`. After the roar it
+   * flashes white for `rageFlashMs`, then throbs once every `heartbeatMs`.
    */
-  bossBar: { width: 360, height: 10, gapPx: 10, entryMs: 700, tearMs: 300, crumbleMs: 700, rageFlashMs: 160, heartbeatMs: 900 },
+  bossBar: { width: 360, height: 10, gapPx: 10, entryMs: 700, snapFlashMs: 110, crumbleMs: 700, rageFlashMs: 160, heartbeatMs: 900 },
   /**
    * The worm boss's flesh burst, by size: `chunks` of flesh (each `chunkPx` across) and `drops` of
    * dark blood flung up to `reachTiles`, leaving a splat `splatTiles` across. Chunks fly and bounce
@@ -143,6 +144,7 @@ export const COLORS = {
   /** Saturated, so it stands apart from the worm's brick-red body colour the bar starts in. */
   bossBarRage: 0xd81420,
   bossBarFlash: 0xffffff,
+  bossBarSpark: 0xffe8a0,
   champion: 0xf2b632,
   enemyShot: 0xff6b5a,
   lockedDoor: 0x3a2515,

@@ -1248,9 +1248,12 @@ if (scenario === 'worm-bar') {
   const allOut = `${boss}.every((e) => e.parts.every((p) => p.body.enable))`;
   for (let i = 0; i < 80 && !(await page.evaluate(allOut)); i++) await page.waitForTimeout(100);
   await page.evaluate(`(() => { const s = ${scene()}; const p = ${boss}[0].parts[9]; for (let i = 0; i < 40; i++) s.damagePart(p, 1); })()`);
-  await page.waitForTimeout(120);
-  await shot('bar-03-tearing');
-  await page.waitForTimeout(400);
+  // It snaps apart: a white flash and sparks, the halves flying apart past their gap, then slamming back.
+  await page.waitForTimeout(40);
+  await shot('bar-03-snap');
+  await page.waitForTimeout(90);
+  await shot('bar-03b-flying-apart');
+  await page.waitForTimeout(500);
   await shot('bar-04-torn');
   console.log('after split', JSON.stringify(await bar()));
   // Wear the front half down to its last 2 hit points, so its last stand has something to win back.
@@ -1258,13 +1261,18 @@ if (scenario === 'worm-bar') {
     await page.evaluate(`(() => { const s = ${scene()}; const e = ${boss}[0]; const p = e?.parts.find((p) => p.body.enable); if (p) s.damagePart(p, 1); })()`);
     await page.waitForTimeout(20);
   }
-  // Kill the back half off; the front one is left for its last stand.
-  for (let i = 0; i < 200 && (await page.evaluate(`${boss}.length`)) > 1; i++) {
+  // Kill the back half off; the front one is left for its last stand. Its piece trembles and
+  // flickers harder with each pop while the half blows apart, then explodes at the head blast.
+  for (let i = 0; i < 200 && (await page.evaluate(`${scene()}.bossBar.halves[1].alive`)); i++) {
     await page.evaluate(`(() => { const s = ${scene()}; const e = ${boss}[1]; const p = e?.parts.find((p) => p.body.enable); if (p) s.damagePart(p, 1); })()`);
     await page.waitForTimeout(20);
   }
-  await page.waitForTimeout(200);
-  await shot('bar-05-half-crumbling');
+  await page.waitForTimeout(1200);
+  await shot('bar-05-half-dying');
+  console.log('one half dying', JSON.stringify(await bar()));
+  for (let i = 0; i < 100 && !(await page.evaluate(`${scene()}.bossBar.halves[1].death.blown`)); i++) await page.waitForTimeout(20);
+  await page.waitForTimeout(90);
+  await shot('bar-05b-half-exploding');
   console.log('one half dead', JSON.stringify(await bar()));
   for (let i = 0; i < 100 && !(await page.evaluate(`${boss}[0]?.invulnerable?.()`)); i++) await page.waitForTimeout(100);
   console.log('roaring:', await page.evaluate(`${boss}[0]?.invulnerable?.()`));
@@ -1293,16 +1301,22 @@ if (scenario === 'worm-bar') {
   console.log('pools before', JSON.stringify(before), 'after hits while roaring', JSON.stringify(await hp()));
   await page.waitForTimeout(250);
   await shot('bar-08-plop');
-  for (let i = 0; i < 40 && (await page.evaluate(`${boss}[0]?.invulnerable?.()`)); i++) await page.waitForTimeout(100);
+  for (let i = 0; i < 80 && (await page.evaluate(`${boss}[0]?.invulnerable?.()`)); i++) await page.waitForTimeout(25);
+  await shot('bar-09a-flash');
   await page.waitForTimeout(600);
   await shot('bar-09-rage');
   console.log('after roar', JSON.stringify(await bar()));
-  for (let i = 0; i < 300 && (await page.evaluate(`${boss}.length`)) > 0; i++) {
+  for (let i = 0; i < 300 && (await page.evaluate(`${scene()}.bossBar.halves[0].alive`)); i++) {
     await page.evaluate(`(() => { const s = ${scene()}; const e = ${boss}[0]; const p = e?.parts.find((p) => p.body.enable); if (p) s.damagePart(p, 1); })()`);
     await page.waitForTimeout(20);
   }
-  await page.waitForTimeout(150);
-  await shot('bar-10-crumble');
+  await page.waitForTimeout(1500);
+  await shot('bar-10-last-dying');
+  // The room clears only after the last head blast; the bar blows apart with it.
+  for (let i = 0; i < 100 && (await page.evaluate(`${boss}.length`)) > 0; i++) await page.waitForTimeout(20);
+  console.log('last head blast: room cleared', await page.evaluate(`${scene()}.world.cleared.has('${id}')`));
+  await page.waitForTimeout(90);
+  await shot('bar-10b-exploding');
   await page.waitForTimeout(1000);
   console.log('dead', JSON.stringify(await bar()));
   await shot('bar-11-label-back');

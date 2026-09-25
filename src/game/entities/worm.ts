@@ -504,6 +504,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
       b.rampage = undefined;
       b.spit = undefined;
       b.shared.bar.rage = true;
+      b.shared.bar.roar = { from: ctx.time, until: b.moment.until };
       b.poolAtRoar = b.pool;
       shakeScreen(scene, 'roar');
       // Settle on its cells: it roars where it stands.
@@ -558,6 +559,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
       shakeScreen(scene, big ? 'head' : 'pop');
     }
     dying.popped = popped.length;
+    if (b.half?.death) b.half.death = { ...b.half.death, pops: popped.length, blown: over };
     if (!over) return;
     const { shared } = b;
     shared.corpses--;
@@ -573,6 +575,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
   const die = (b: BossPiece) => {
     const now = scene.time.now;
     b.dying = { at: now, popped: 0 };
+    if (b.half) b.half.death = { pops: 0, of: state.parts.length, blown: false };
     b.rampage = undefined;
     b.spit = undefined;
     b.shared.pieces--;
@@ -718,6 +721,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
     // The bar rips in two, front half (the old head) on the left.
     const bars = pools.map((pool) => ({ pool, startPool: pool, alive: true }));
     shared.bar.halves = bars;
+    shared.bar.splitAt = scene.time.now;
     return halves.map(({ worm, from }, i) =>
       wormEnemy(scene, style, {
         worm,

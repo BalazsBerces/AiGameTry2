@@ -15,7 +15,7 @@ export const WORM_BOSS = {
    * Rocks shaken loose as a lunge tunnels into a wall, on one cooldown shared by every piece: this
    * many, within this many tiles of the player, each marked by its shadow for `rockShadowMs`.
    */
-  rockfallCooldownMs: 6000,
+  rockfallCooldownMs: 6100,
   rockfallCount: 3,
   rockfallRadius: 3,
   rockShadowMs: 1000,
@@ -29,7 +29,7 @@ export const WORM_BOSS = {
   lungeStepMs: 30,
   /** The warning crack flows out along a lunge's path one cell per this long, from the start of the pause before it. */
   crackStepMs: 25,
-  lungePauseMs: 350,
+  lungePauseMs: 370,
   /** A lunge into rock takes this share of its hit points. */
   lungeRockShare: 0.5,
   /** The spit wave runs down the body one segment per this long. */

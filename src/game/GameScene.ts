@@ -71,7 +71,7 @@ import type { Stunnable } from '../core/stun';
 import { createBat } from './entities/bat';
 import { softPush } from '../core/softPush';
 import { updateGoblinPack } from '../core/forestCast';
-import { createFalloff, type Falloff } from '../core/multiHit';
+import { createFalloff, createHitGate, type Falloff } from '../core/multiHit';
 
 type Keys = Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
 type PhysicsArc = Phaser.GameObjects.Arc & { body: Phaser.Physics.Arcade.Body };
@@ -260,12 +260,13 @@ export class GameScene extends Phaser.Scene {
   private poisoned = new Map<Enemy, Poison>();
   /** Rolls for the Freeze passive. */
   private hitRng = createRng(Math.floor(Math.random() * 2 ** 31));
-  /** The Orbital passive's orbs. */
+  /** The Orbital passive's orbs, and how often they may hurt each part or body. */
   private orbs!: Phaser.Physics.Arcade.Group;
-  /** The player's current or last dash, and the enemies an upgraded one has already hurt. */
+  private orbGate = createHitGate();
+  /** The player's current or last dash, and the enemies (or many-part bodies, by hit group) an upgraded one has already hurt. */
   private dash?: Dash;
   private momentum?: Momentum;
-  private dashHits = new Set<Enemy>();
+  private dashHits = new Set<object>();
   /** The health bar of the boss fought in this room (the worm boss's), for the HUD; kept after it dies so the bar can crumble. */
   bossBar?: BossBarSnapshot;
   /** The player's share of the stun (a glowshroom cloud): no moving or shooting until it wears off. */
@@ -378,6 +379,7 @@ export class GameScene extends Phaser.Scene {
 
     // The Orbital passive's orbs: they soak up enemy shots and nick what they touch.
     this.orbs = this.physics.add.group();
+    this.orbGate = createHitGate();
     this.physics.add.overlap(this.orbs, this.enemyShots, (_o, shot) => shot.destroy());
     this.physics.add.overlap(this.orbs, this.enemyParts, (_o, part) => this.orbHits(part as EnemySprite));
     this.dash = undefined;
@@ -454,11 +456,11 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  /** An orb touches an enemy part: a small hit, at most so often per part. */
+  /** An orb touches an enemy part: a small hit, at most so often per part, or per body for a many-part one (its hit group). */
   private orbHits(part: EnemySprite) {
-    const now = this.time.now;
-    if (!part.active || now < ((part.getData('orbSafeUntil') as number | undefined) ?? 0)) return;
-    part.setData('orbSafeUntil', now + TUNING.orbital.hitEveryMs);
+    if (!part.active) return;
+    const group = this.enemies.find((e) => e.parts.includes(part))?.hitGroup ?? part;
+    if (!this.orbGate.pass(group, this.time.now, TUNING.orbital.hitEveryMs)) return;
     this.damagePart(part, TUNING.orbital.damage);
   }
 
@@ -486,8 +488,9 @@ export class GameScene extends Phaser.Scene {
     if (enemy?.harmless?.(part)) return;
     const dash = resolveWeapon(this.world.player.passives, this.world.player.statUps).dash;
     if (enemy && dash?.damage && isDashing(this.dash, this.time.now)) {
-      if (!this.dashHits.has(enemy)) {
-        this.dashHits.add(enemy);
+      const body = enemy.hitGroup ?? enemy;
+      if (!this.dashHits.has(body)) {
+        this.dashHits.add(body);
         this.damagePart(part, dash.damage);
       }
       return;

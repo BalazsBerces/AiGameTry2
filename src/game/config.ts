@@ -31,7 +31,7 @@ export const TUNING = {
   bomb: { fuseMs: 1500, enemyDamage: 6, playerDamage: 2, radius: 12 },
   worm: { segmentSize: 30, segmentHp: 2, stepMs: 300 },
   /** Hit points of the whole worm, however long; its attacks and their timing live in core/wormBossAttack. */
-  wormBoss: { segmentSize: 38, hp: 50, stepMs: 230, shotSpeed: 155 },
+  wormBoss: { segmentSize: 38, hp: 80, stepMs: 230, shotSpeed: 155 },
   /**
    * The worm boss's roar (its length lives in core/wormBossAttack): the head swells to `headScale`
    * and throbs, and rings spread from it, each `ringMs` long, `ringEveryMs` apart, out to `ringTiles`.

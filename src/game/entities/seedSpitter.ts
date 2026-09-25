@@ -1,5 +1,5 @@
 import type Phaser from 'phaser';
-import { spreadShots } from '../../core/forestCast';
+import { spreadShots } from '../../core/enemies/forestCast';
 import { COLORS, TUNING } from '../config';
 import { championBoost, championColor, markChampion, singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
 

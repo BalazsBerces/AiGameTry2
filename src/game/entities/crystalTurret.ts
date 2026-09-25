@@ -1,5 +1,5 @@
 import type Phaser from 'phaser';
-import { CRYSTAL_TURRET_BOUNCES } from '../../core/ricochet';
+import { CRYSTAL_TURRET_BOUNCES } from '../../core/player/ricochet';
 import { COLORS, TUNING } from '../config';
 import { championBoost, championColor, markChampion, singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
 

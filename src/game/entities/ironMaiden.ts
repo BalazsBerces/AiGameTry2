@@ -1,6 +1,6 @@
 import type Phaser from 'phaser';
-import { stepDownhill } from '../../core/grid';
-import { canHurtMaiden, createIronMaiden, IRON_MAIDEN, spikeAt, updateIronMaiden, type IronMaiden } from '../../core/ironMaiden';
+import { stepDownhill } from '../../core/map/grid';
+import { canHurtMaiden, createIronMaiden, IRON_MAIDEN, spikeAt, updateIronMaiden, type IronMaiden } from '../../core/enemies/ironMaiden';
 import { createRng } from '../../core/rng';
 import { COLORS, TUNING } from '../config';
 import { flash, type Enemy, type EnemyContext, type EnemySprite } from './enemy';

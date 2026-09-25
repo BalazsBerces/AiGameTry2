@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
-import { STEP, type Cell } from '../core/floorGenerator';
-import { CELL_TILES, roomPadding, type Door } from '../core/roomGenerator';
-import type { WorldRoom } from '../core/world';
+import { STEP, type Cell } from '../core/map/floorGenerator';
+import { CELL_TILES, roomPadding, type Door } from '../core/rooms/roomGenerator';
+import type { WorldRoom } from '../core/map/world';
 import { TUNING } from './config';
 
 export const CELL_PX_W = CELL_TILES.w * TUNING.tile;

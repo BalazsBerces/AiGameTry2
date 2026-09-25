@@ -8,8 +8,8 @@ import {
   snuffCandle,
   updateWitch,
   type Witch,
-} from '../../core/candleWitch';
-import type { Cell } from '../../core/floorGenerator';
+} from '../../core/enemies/candleWitch';
+import type { Cell } from '../../core/map/floorGenerator';
 import { COLORS, TUNING } from '../config';
 import { flash, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
 

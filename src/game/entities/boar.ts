@@ -1,7 +1,7 @@
 import type Phaser from 'phaser';
-import { createBoar as createBoarState, updateBoar, type Boar } from '../../core/boar';
-import { stepDownhill } from '../../core/grid';
-import { stun } from '../../core/stun';
+import { createBoar as createBoarState, updateBoar, type Boar } from '../../core/enemies/boar';
+import { stepDownhill } from '../../core/map/grid';
+import { stun } from '../../core/enemies/stun';
 import { COLORS, TUNING } from '../config';
 import { championBoost, championColor, markChampion, roundBody, singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
 

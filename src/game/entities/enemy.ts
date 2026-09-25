@@ -1,9 +1,9 @@
 import type Phaser from 'phaser';
-import type { Cell } from '../../core/floorGenerator';
-import type { BossBarSnapshot } from '../../core/bossBar';
-import type { PackDecision, PackMember } from '../../core/forestCast';
-import type { Door, Tile } from '../../core/roomGenerator';
-import type { Stunnable } from '../../core/stun';
+import type { Cell } from '../../core/map/floorGenerator';
+import type { BossBarSnapshot } from '../../core/bosses/bossBar';
+import type { PackDecision, PackMember } from '../../core/enemies/forestCast';
+import type { Door, Tile } from '../../core/rooms/roomGenerator';
+import type { Stunnable } from '../../core/enemies/stun';
 import { COLORS, TUNING } from '../config';
 
 export type Body = Phaser.Physics.Arcade.Body;

@@ -1,7 +1,7 @@
 import type Phaser from 'phaser';
-import { createGoblin as newGoblinState, goblinStep } from '../../core/forestCast';
+import { createGoblin as newGoblinState, goblinStep } from '../../core/enemies/forestCast';
 import { COLORS, TUNING } from '../config';
-import { stepDownhill } from '../../core/grid';
+import { stepDownhill } from '../../core/map/grid';
 import { championBoost, championColor, flash, markChampion, roundBody, singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
 
 /** Goblins tell each other apart in the pack rules by this. */

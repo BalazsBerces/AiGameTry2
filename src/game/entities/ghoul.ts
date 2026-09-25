@@ -1,6 +1,6 @@
 import type Phaser from 'phaser';
-import { createGhoul as createGhoulState, stepGhoul } from '../../core/ghoul';
-import { stepDownhill } from '../../core/grid';
+import { createGhoul as createGhoulState, stepGhoul } from '../../core/enemies/ghoul';
+import { stepDownhill } from '../../core/map/grid';
 import { COLORS, TUNING } from '../config';
 import { championBoost, championColor, singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
 

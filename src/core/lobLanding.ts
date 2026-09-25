@@ -1,0 +1,55 @@
+import { cellKey, type Cell } from './floorGenerator';
+import type { Rng } from './rng';
+import type { Door, Tile } from './roomGenerator';
+import { doorApproach } from './roomValidator';
+import { isWalkable } from './tiles';
+
+export interface LobTarget {
+  /** Things come down this many tiles (8-way) around the player. */
+  spread: number;
+  count: number;
+  /** Cells nothing may land on, besides the rules every lob follows. */
+  keepOff: (c: Cell) => boolean;
+  /** What a landing turns its cell into, picked as it is chosen; the next landings plan around it. */
+  lands: (c: Cell) => Tile;
+  /**
+   * Whether a landing needs walkable ground on all 8 sides: one that stays for good (a sprout)
+   * must, so it can never cut any walkable tile or door off from the rest of the room.
+   */
+  openAround: boolean;
+}
+
+/**
+ * Where things lobbed around the player come down (a Treant's seed pods, a worm boss's eggs): up
+ * to `count` different cells, each on floor, never on the player's tile or a door's approach,
+ * and with open ground all around (counting the earlier landings) if `openAround`.
+ */
+export function planLandings(tiles: Tile[][], doors: Door[], player: Cell, rng: Rng, target: LobTarget): { cell: Cell; tile: Tile }[] {
+  const planned = tiles.map((row) => [...row]);
+  const approaches = new Set(doors.flatMap(doorApproach).map(cellKey));
+  const walkableAt = (c: Cell) => {
+    const tile = planned[c.y]?.[c.x];
+    return tile !== undefined && isWalkable(tile);
+  };
+  const openAround = (c: Cell) => [-1, 0, 1].every((dx) => [-1, 0, 1].every((dy) => walkableAt({ x: c.x + dx, y: c.y + dy })));
+  const landable = (c: Cell) =>
+    planned[c.y]?.[c.x] === 'floor' &&
+    !(c.x === player.x && c.y === player.y) &&
+    !target.keepOff(c) &&
+    !approaches.has(cellKey(c)) &&
+    (!target.openAround || openAround(c));
+
+  const candidates: Cell[] = [];
+  for (let dy = -target.spread; dy <= target.spread; dy++) {
+    for (let dx = -target.spread; dx <= target.spread; dx++) candidates.push({ x: player.x + dx, y: player.y + dy });
+  }
+  const landings: { cell: Cell; tile: Tile }[] = [];
+  while (landings.length < target.count && candidates.length) {
+    const cell = candidates.splice(rng.int(0, candidates.length - 1), 1)[0];
+    if (!landable(cell)) continue;
+    const tile = target.lands(cell);
+    planned[cell.y][cell.x] = tile;
+    landings.push({ cell, tile });
+  }
+  return landings;
+}

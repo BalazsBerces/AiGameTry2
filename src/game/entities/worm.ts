@@ -3,7 +3,7 @@ import { DIRECTIONS, STEP, type Cell, type Direction } from '../../core/floorGen
 import { createRng, type Rng } from '../../core/rng';
 import { WORM_BOSS_LENGTH } from '../../core/roomGenerator';
 import { createWorm, killSegment, splitBoss, nextStepDue, stepWorm, type Worm, type WormPiece } from '../../core/wormChain';
-import { broodTick, eggStage, WORM_BROOD } from '../../core/wormBrood';
+import { broodTick, eggStage, planEggLob, WORM_BROOD } from '../../core/wormBrood';
 import {
   absorbHit,
   bossCrawl,
@@ -95,6 +95,10 @@ interface WormBossShared {
   holeCells: Cell[];
   /** The parts of each egg and hatchling from before its split; one counts while any of its parts lives. */
   brood: EnemySprite[][];
+  /** Eggs in the air, lobbed from where its head was at `start`; they count toward the brood. */
+  lobs: { from: { x: number; y: number }; cells: Cell[]; start: number }[];
+  /** Eggs in flight, over everything, redrawn every frame. */
+  air: Phaser.GameObjects.Graphics;
   /** Its health bar (core/bossBar), kept up to date in place: the scene shows this very object. */
   bar: BossBarSnapshot;
   tickedAt: number;
@@ -143,12 +147,16 @@ interface WormState {
   boss?: BossPiece;
 }
 
-/** Draws falling rocks' shadows and lands them; once per frame, whichever piece asks first. */
-function tickRocks(ctx: EnemyContext, shared: WormBossShared) {
+/**
+ * Draws falling rocks' shadows and lands them, and eggs in flight; once per frame, whichever
+ * piece asks first.
+ */
+function tickGround(scene: Phaser.Scene, ctx: EnemyContext, shared: WormBossShared) {
   if (shared.tickedAt === ctx.time) return;
   shared.tickedAt = ctx.time;
   const t = TUNING.tile;
   const g = shared.ground.clear();
+  flyEggs(scene, ctx, shared);
   const onWorm = (c: Cell) => [...shared.bodies.values()].some((body) => body.some((b) => sameCell(b, c)));
   shared.rocks = shared.rocks.filter((fall) => {
     const { shadow, landed } = rockfallAt(ctx.time - fall.start);
@@ -160,6 +168,31 @@ function tickRocks(ctx: EnemyContext, shared: WormBossShared) {
     for (const c of fall.cells) {
       const p = ctx.tileCenter(c);
       g.fillStyle(0x000000, 0.15 + 0.35 * shadow).fillEllipse(p.x, p.y + t * 0.1, t * (0.3 + 0.5 * shadow), t * (0.18 + 0.3 * shadow));
+    }
+    return true;
+  });
+}
+
+/**
+ * Eggs arc from where the head was to their cells like a Treant's seed pods, each landing spot
+ * shadowed until it comes down; there it lands, harmless, as an egg.
+ */
+function flyEggs(scene: Phaser.Scene, ctx: EnemyContext, shared: WormBossShared) {
+  const air = shared.air.clear();
+  shared.lobs = shared.lobs.filter((lob) => {
+    const k = (ctx.time - lob.start) / WORM_BROOD.flightMs;
+    if (k >= 1) {
+      for (const cell of lob.cells) ctx.spawnEnemy(wormEgg(scene, ctx, shared, cell));
+      return false;
+    }
+    for (const cell of lob.cells) {
+      const p = ctx.tileCenter(cell);
+      shared.ground.fillStyle(COLORS.podShadow, 0.2 + 0.4 * k).fillEllipse(p.x, p.y + 6, 12 + 26 * k, 6 + 12 * k);
+      const lift = Math.sin(Math.PI * k) * TUNING.tile * 2.5;
+      const x = lob.from.x + (p.x - lob.from.x) * k;
+      const y = lob.from.y + (p.y - lob.from.y) * k - lift;
+      air.fillStyle(COLORS.wormEgg, 1).fillEllipse(x, y, 16, 20);
+      air.lineStyle(2, COLORS.wormBossBody, 1).strokeEllipse(x, y, 16, 20);
     }
     return true;
   });
@@ -233,17 +266,23 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
   };
   const inWalls = (ctx: EnemyContext) => state.worm.segments.some((c) => !inRoom(ctx, c));
 
-  /** Before its split: drops eggs from its tail end now and then, while it is all out of the walls. */
-  const layEggs = (ctx: EnemyContext, b: BossPiece) => {
-    const { segments } = state.worm;
-    const tail = segments[segments.length - 1];
+  /** Before its split: lobs eggs out of its head around the player now and then, while it is all out of the walls. */
+  const lobEggs = (ctx: EnemyContext, b: BossPiece) => {
+    const { shared } = b;
+    const living = shared.brood.filter((parts) => parts.some((p) => p.active));
+    const inFlight = shared.lobs.flatMap((lob) => lob.cells);
     const tick = broodTick(b.nextEggAt, ctx.time, {
       split: b.pool !== undefined,
-      aboveGround: !b.rampage && !inWalls(ctx) && ctx.isWalkable(tail),
-      brood: b.shared.brood.filter((parts) => parts.some((p) => p.active)).length,
+      aboveGround: !b.rampage && !inWalls(ctx),
+      brood: living.length + inFlight.length,
     });
     b.nextEggAt = tick.nextLobAt;
-    for (const cell of segments.slice(segments.length - tick.eggs)) ctx.spawnEnemy(wormEgg(scene, ctx, b.shared, cell));
+    if (!tick.eggs) return;
+    // Never onto the worm, an egg on its way down, or anything of the brood already there.
+    const taken = [...[...shared.bodies.values()].flat(), ...inFlight, ...living.flat().filter((p) => p.active).map((p) => ctx.tileOf(p.x, p.y))];
+    const cells = planEggLob(ctx.tiles, ctx.doors, ctx.playerTile, taken, tick.eggs, shared.rng);
+    const head = state.parts[0];
+    if (cells.length) shared.lobs.push({ from: { x: head.x, y: head.y }, cells, start: ctx.time });
   };
 
   /** Starts a rampage round on the shared clock; this piece joins it if it is long enough. */
@@ -440,14 +479,14 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
 
   /** Runs the boss; true while the piece holds still. */
   const updateBoss = (ctx: EnemyContext, b: BossPiece): boolean => {
-    tickRocks(ctx, b.shared);
+    tickGround(scene, ctx, b.shared);
     ctx.showBossBar(b.shared.bar);
     fireSpit(ctx, b);
     if (lastStandRoar(ctx, b)) return true;
     if (b.roar?.phase === 'waiting' && !b.rampage) return false;
     joinRampage(ctx, b);
     if (b.rampage) return updateRampage(ctx, b, b.rampage);
-    layEggs(ctx, b);
+    lobEggs(ctx, b);
     return false;
   };
 
@@ -600,7 +639,7 @@ function tethered(enemy: Enemy, shared: WormBossShared): Enemy {
 }
 
 /**
- * An egg dropped on `cell`: it breaks in about two shots, wobbles for its last stretch and then
+ * An egg lobbed onto `cell`: it breaks in about two shots, wobbles for its last stretch and then
  * hatches into a regular worm, coiled on the egg's cell.
  */
 function wormEgg(scene: Phaser.Scene, ctx: EnemyContext, shared: WormBossShared, cell: Cell): Enemy {
@@ -635,6 +674,7 @@ function dropPiece(shared: WormBossShared) {
   if (shared.pieces > 0) return;
   shared.ground.destroy();
   shared.holes.destroy();
+  shared.air.destroy();
 }
 
 /** A regular worm splits wherever a segment dies: the pieces in front of and behind it. */
@@ -702,6 +742,8 @@ export function spawnWorm(
         holes,
         holeCells: [],
         brood: [],
+        lobs: [],
+        air: scene.add.graphics().setDepth(12),
         bar: { maxHp: cells.length * style.segmentHp, hp: cells.length * style.segmentHp, rage: false },
         tickedAt: -1,
         rng: rng.fork('attacks'),

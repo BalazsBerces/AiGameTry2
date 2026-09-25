@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { broodTick, eggStage, WORM_BROOD, type BroodPiece } from './wormBrood';
+import type { Cell } from './floorGenerator';
+import { createRng } from './rng';
+import type { Tile } from './roomGenerator';
+import { doorApproach } from './roomValidator';
+import { createWorld } from './world';
+import { broodTick, eggStage, planEggLob, WORM_BROOD, type BroodPiece } from './wormBrood';
 
 /** The whole worm, before its split, out of the walls, with no brood about. */
 const thrower = (over: Partial<BroodPiece> = {}): BroodPiece => ({ split: false, aboveGround: true, brood: 0, ...over });
@@ -52,6 +57,47 @@ describe('worm boss eggs', () => {
       [6000, 2],
       [11000, 2],
     ]);
+  });
+});
+
+describe('worm boss egg lob landing', () => {
+  const key = (c: Cell) => `${c.x},${c.y}`;
+  /** The worm boss's arena on floor 2 of a run, with the worm's body as it lies at the start. */
+  const arena = (seed: number) => {
+    const room = [...createWorld(seed).rooms.values()].find((r) => r.floorRoom.kind === 'boss' && r.floorIndex === 1)!;
+    const worm = room.layout.enemies[0];
+    return { tiles: room.layout.tiles, doors: room.layout.doors, body: [worm.cell, ...(worm.tail ?? [])] };
+  };
+  const floorCells = (tiles: Tile[][]) => tiles.flatMap((row, y) => row.map((tile, x) => ({ x, y, tile }))).filter((c) => c.tile === 'floor');
+
+  it('lands eggs on open floor near the player, never on them, the worm or a door approach', () => {
+    let landed = 0;
+    for (let seed = 1; seed <= 10; seed++) {
+      const { tiles, doors, body } = arena(seed);
+      const rng = createRng(seed);
+      const approaches = new Set(doors.flatMap(doorApproach).map(key));
+      const worm = new Set(body.map(key));
+      for (const player of floorCells(tiles).filter((_, i) => i % 7 === 0)) {
+        const eggs = planEggLob(tiles, doors, player, body, 2, rng);
+        expect(eggs.length).toBeLessThanOrEqual(2);
+        landed += eggs.length;
+        expect(new Set(eggs.map(key)).size).toBe(eggs.length);
+        for (const c of eggs) {
+          expect(tiles[c.y][c.x], `seed ${seed} ${key(c)}`).toBe('floor');
+          expect(Math.max(Math.abs(c.x - player.x), Math.abs(c.y - player.y))).toBeLessThanOrEqual(WORM_BROOD.lobSpread);
+          expect(key(c)).not.toBe(key(player));
+          expect(worm.has(key(c)), `seed ${seed} ${key(c)}`).toBe(false);
+          expect(approaches.has(key(c)), `seed ${seed} ${key(c)}`).toBe(false);
+        }
+      }
+    }
+    expect(landed).toBeGreaterThan(0);
+  });
+
+  it('lobs fewer when there is no more open floor near the player, each egg on a cell of its own', () => {
+    // `.` floor, `r` rock: the player at 2,1 has one free cell beside it, 3,1; the worm lies on 1,1.
+    const tiles: Tile[][] = ['rrrrrrr', 'r...rrr', 'rrrrrrr'].map((row) => [...row].map((ch): Tile => (ch === 'r' ? 'rock' : 'floor')));
+    expect(planEggLob(tiles, [], { x: 2, y: 1 }, [{ x: 1, y: 1 }], 2, createRng(1))).toEqual([{ x: 3, y: 1 }]);
   });
 });
 

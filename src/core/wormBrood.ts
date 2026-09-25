@@ -1,8 +1,16 @@
+import type { Cell } from './floorGenerator';
+import { planLandings } from './lobLanding';
+import type { Rng } from './rng';
+import type { Door, Tile } from './roomGenerator';
+
 /** The worm boss's phase-one eggs; placeholders for playtest tuning. */
 export const WORM_BROOD = {
-  /** Before it splits, it lobs this many eggs out of its head this often. */
+  /** Before it splits, it lobs this many eggs out of its head this often... */
   lobEveryMs: 5000,
   eggsPerLob: 2,
+  /** ...coming down this many tiles (8-way) around the player, after flying this long. */
+  lobSpread: 2,
+  flightMs: 900,
   /** An egg hatches this long after it lands, wobbling for the last `wobbleMs`. */
   hatchMs: 4000,
   wobbleMs: 1000,
@@ -34,6 +42,21 @@ export function broodTick(nextLobAt: number | undefined, now: number, piece: Bro
   const room = WORM_BROOD.cap - piece.brood;
   if (now < nextLobAt || !piece.aboveGround || room <= 0) return { eggs: 0, nextLobAt };
   return { eggs: Math.min(WORM_BROOD.eggsPerLob, room), nextLobAt: now + WORM_BROOD.lobEveryMs };
+}
+
+/**
+ * Where a lob of `count` eggs comes down: around the player like a Treant's seed pods
+ * (core/lobLanding), never on `taken` (the worm's body, eggs already down). An egg may land in a
+ * narrow way: it is shot open or hatches soon, so it never cuts anything off for good.
+ */
+export function planEggLob(tiles: Tile[][], doors: Door[], player: Cell, taken: Cell[], count: number, rng: Rng): Cell[] {
+  return planLandings(tiles, doors, player, rng, {
+    spread: WORM_BROOD.lobSpread,
+    count,
+    keepOff: (c) => taken.some((b) => b.x === c.x && b.y === c.y),
+    lands: () => 'rock',
+    openAround: false,
+  }).map(({ cell }) => cell);
 }
 
 /** Where an egg laid at `laidAt` stands at `now`. */

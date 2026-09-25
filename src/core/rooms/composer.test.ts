@@ -97,16 +97,15 @@ describe('composeRoom for wide rooms', () => {
       composeRoom({ shape: '2x1', doors: wideDoors(WIDE_DOOR_SETS[seed % WIDE_DOOR_SETS.length]), theme, floorIndex, rng: createRng(seed) })!,
     );
 
-  it('stands every enemy on a spawn spot of a tag its encounter asked for (a swarm within 3 tiles of one)', () => {
+  it('stands every enemy on a spawn spot of a tag its encounter asked for (a swarm within 3 tiles of a spot it nests on)', () => {
     for (const room of sample('rift', 1, 100)) {
       const asks = ENCOUNTERS.find((e) => e.id === room.encounter)!.asks;
       const asked = new Set(asks.filter((a) => !a.swarm).map((a) => a.tag));
-      const nested = new Set(asks.filter((a) => a.swarm).map((a) => a.tag));
+      const swarms = new Set(asks.filter((a) => a.swarm).map((a) => a.cast));
       for (const e of room.enemies) {
         const onSpot = room.spots.some((s) => s.cell.x === e.cell.x && s.cell.y === e.cell.y && asked.has(s.tag));
-        const byNest = room.spots.some(
-          (s) => nested.has(s.tag) && Math.max(Math.abs(s.cell.x - e.cell.x), Math.abs(s.cell.y - e.cell.y)) <= 3,
-        );
+        // A swarm nests on its own tag's spots, or any spot when those crowd a door.
+        const byNest = swarms.has(e.type) && room.spots.some((s) => Math.max(Math.abs(s.cell.x - e.cell.x), Math.abs(s.cell.y - e.cell.y)) <= 3);
         expect(onSpot || byNest, `${room.layout} + ${room.encounter} ${e.type} at ${e.cell.x},${e.cell.y}`).toBe(true);
       }
     }
@@ -250,6 +249,11 @@ describe('swarms in big rooms', () => {
         expect(swarm.length, where).toBeGreaterThanOrEqual(8);
         expect(swarm.length, where).toBeLessThanOrEqual(12);
         expect(packsRoundTwoNests(swarm), where).toBe(true);
+        // Never on top of a door: whoever walks in has a moment before the swarm arrives.
+        for (const c of swarm) {
+          const nearest = Math.min(...doors.map((d) => Math.max(Math.abs(d.cell.x - c.x), Math.abs(d.cell.y - c.y))));
+          expect(nearest, `${where} ${type} at ${c.x},${c.y}`).toBeGreaterThanOrEqual(4);
+        }
         expect(validateRoom({ ...room, doors }, room.symmetry), where).toEqual([]);
       }
     }

@@ -1529,6 +1529,13 @@ if (scenario === 'rooms') {
   for (const id of (process.env.SMOKE_ROOMS ?? 'track,serpentGarden,twinJars').split(',')) {
     await goToRoom(id);
     await page.waitForTimeout(700);
+    if (process.env.SMOKE_FIT) {
+      // The whole room on screen, enemies held where they spawned.
+      await page.evaluate(`(() => { const s = ${scene()}; const cam = s.cameras.main; const b = cam.getBounds();
+        s.enemiesWakeAt = Infinity; cam.stopFollow(); cam.removeBounds();
+        cam.setZoom(Math.min(cam.width / b.width, cam.height / b.height)); cam.centerOn(b.centerX, b.centerY); })()`);
+      await page.waitForTimeout(100);
+    }
     await shot(`room-${id}`);
     console.log(id, 'enemies', (await cast()).length);
   }

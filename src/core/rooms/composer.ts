@@ -606,6 +606,8 @@ const EIGHT_WAY = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [
 
 /** How far from its nest a swarm may pack, in tiles (8-way). */
 export const SWARM_RADIUS = 3;
+/** How close to a door any of a swarm may start, in tiles (8-way): whoever walks in gets a moment first. */
+export const SWARM_DOOR_CLEARANCE = 4;
 
 /**
  * Up to `count` free floor cells packed round `nest`: breadth-first outward, 8-way, within
@@ -648,23 +650,32 @@ function cast(
   const enemies: EnemySpawn[] = [];
   for (const ask of encounter.asks) {
     if (ask.swarm) {
-      const nests = shuffled(spots.filter((s) => s.tag === ask.tag && !taken.has(key(s.cell))), rng).slice(0, rng.int(1, 2));
+      const clear = (c: Cell) => doors.every((d) => Math.max(Math.abs(d.cell.x - c.x), Math.abs(d.cell.y - c.y)) >= SWARM_DOOR_CLEARANCE);
       const wanted = rng.int(...ask.count);
+      const shares = rng.next() < 0.5 ? [wanted] : [Math.ceil(wanted / 2), Math.floor(wanted / 2)];
       // Off the room's edge (bar the nest itself), which is left for the theme's dressing.
       const edge = (c: Cell) =>
         EIGHT_WAY.slice(0, 4).some(([dx, dy]) => (tiles[c.y + dy]?.[c.x + dx] ?? 'wall') === 'wall');
-      const open = (c: Cell) => tiles[c.y]?.[c.x] === 'floor' && !taken.has(key(c)) && !nearDoor(doors, c);
-      // Split between the nests (a lone nest takes them all); each packs its share round itself.
-      const shares = nests.length === 1 ? [wanted] : [Math.ceil(wanted / 2), Math.floor(wanted / 2)];
+      const open = (c: Cell) => tiles[c.y]?.[c.x] === 'floor' && !taken.has(key(c)) && clear(c);
+      // Nests on its own tag's spots clear of the doors, else any clear spot (every door open), and
+      // only where its share fits: a nook too cramped for the swarm is passed over.
+      const clearSpots = shuffled(spots.filter((s) => clear(s.cell)), rng);
+      const candidates = [...clearSpots.filter((s) => s.tag === ask.tag), ...clearSpots.filter((s) => s.tag !== ask.tag)];
       let placed = 0;
-      nests.forEach(({ cell }, i) => {
-        const packable = (c: Cell) => open(c) && (!edge(c) || key(c) === key(cell));
-        for (const c of clump(cell, shares[i], packable, tiles)) {
-          take(c);
-          enemies.push({ type: typeOf(ask.cast), cell: c });
-          placed++;
+      for (const share of shares) {
+        for (const { cell } of candidates) {
+          if (taken.has(key(cell))) continue;
+          const packable = (c: Cell) => open(c) && (!edge(c) || key(c) === key(cell));
+          const pack = clump(cell, share, packable, tiles);
+          if (pack.length < share) continue;
+          for (const c of pack) {
+            take(c);
+            enemies.push({ type: typeOf(ask.cast), cell: c });
+          }
+          placed += pack.length;
+          break;
         }
-      });
+      }
       if (placed < ask.count[0]) return undefined;
       continue;
     }

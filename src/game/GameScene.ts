@@ -256,8 +256,8 @@ export class GameScene extends Phaser.Scene {
   private flyers!: Phaser.Physics.Arcade.Group;
   /** The star drawn over each currently stunned enemy. */
   private stunMarks = new Map<Enemy, Shape>();
-  /** Enemies the Poison passive is working on. */
-  private poisoned = new Map<Enemy, Poison>();
+  /** Enemies the Poison passive is working on; a many-part body (the worm boss, split or whole) by its hit group. */
+  private poisoned = new Map<object, Poison>();
   /** Rolls for the Freeze passive. */
   private hitRng = createRng(Math.floor(Math.random() * 2 ** 31));
   /** The Orbital passive's orbs, and how often they may hurt each part or body. */
@@ -635,8 +635,10 @@ export class GameScene extends Phaser.Scene {
     const weapon = resolveWeapon(this.world.player.passives, this.world.player.statUps);
     const time = this.time.now;
     const alive = this.enemies.includes(enemy);
-    if (weapon.poison && alive) {
-      this.poisoned.set(enemy, applyPoison(this.poisoned.get(enemy), time, weapon.poison));
+    // A many-part body carries one poison, whichever piece of it was struck and still standing.
+    const body = enemy.hitGroup ?? enemy;
+    if (weapon.poison && this.piecesOf(body).length) {
+      this.poisoned.set(body, applyPoison(this.poisoned.get(body), time, weapon.poison));
     }
     if (weapon.freeze && alive && rollsFreeze(weapon.freeze.chance, this.hitRng)) stun(enemy, time, weapon.freeze.stunMs);
     if (weapon.chain) this.chainLightning(enemy, at, damage * weapon.chain.damageFactor, weapon.chain);
@@ -665,18 +667,28 @@ export class GameScene extends Phaser.Scene {
     this.tweens.add({ targets: g, alpha: 0, duration: 220, onComplete: () => g.destroy() });
   }
 
-  /** Poison ticks away on every poisoned enemy, a green puff with each tick. */
+  /** The living enemies that make up `body`: a many-part body's pieces (by hit group), or the enemy itself. */
+  private piecesOf(body: object): Enemy[] {
+    return this.enemies.filter((e) => (e.hitGroup ?? e) === body);
+  }
+
+  /**
+   * Poison ticks away on every poisoned enemy, a green puff with each tick. A many-part body's
+   * one poison lands each tick on a piece that can be hurt right now; if none can, that tick is lost.
+   */
   private tickPoison(time: number) {
     const rules = resolveWeapon(this.world.player.passives, this.world.player.statUps).poison;
-    for (const [enemy, poison] of this.poisoned) {
-      if (!this.enemies.includes(enemy) || !rules) {
-        this.poisoned.delete(enemy);
+    for (const [body, poison] of this.poisoned) {
+      const pieces = this.piecesOf(body);
+      if (!pieces.length || !rules) {
+        this.poisoned.delete(body);
         continue;
       }
       const tick = poisonTick(poison, time, rules);
-      if (tick.poison) this.poisoned.set(enemy, tick.poison);
-      else this.poisoned.delete(enemy);
-      const part = enemy.parts.find((p) => p.active);
+      if (tick.poison) this.poisoned.set(body, tick.poison);
+      else this.poisoned.delete(body);
+      const part = pieces
+        .flatMap((e) => e.parts.filter((p) => p.active && (!e.hitGroup || (p.body.enable && !e.invulnerable?.(p)))))[0];
       if (tick.damage <= 0 || !part) continue;
       const puff = this.add.circle(part.x, part.y - 8, 7, COLORS.passive.poison, 0.8).setDepth(DEPTH.player + 1);
       this.tweens.add({ targets: puff, y: puff.y - 18, alpha: 0, duration: 380, onComplete: () => puff.destroy() });

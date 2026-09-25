@@ -1,6 +1,7 @@
 import type Phaser from 'phaser';
 import { DIRECTIONS, STEP, type Cell, type Direction } from '../../core/floorGenerator';
 import { createRng, type Rng } from '../../core/rng';
+import { WORM_BOSS_LENGTH } from '../../core/roomGenerator';
 import { createWorm, killSegment, splitBoss, nextStepDue, stepWorm, type Worm, type WormPiece } from '../../core/wormChain';
 import { broodTick, eggStage, WORM_BROOD } from '../../core/wormBrood';
 import {
@@ -41,7 +42,8 @@ export const REGULAR_WORM: WormStyle = {
 
 export const BOSS_WORM: WormStyle = {
   segmentSize: TUNING.wormBoss.segmentSize,
-  segmentHp: TUNING.wormBoss.segmentHp,
+  // Its hit points are the whole worm's, shared out only to size its pool.
+  segmentHp: TUNING.wormBoss.hp / WORM_BOSS_LENGTH,
   stepMs: TUNING.wormBoss.stepMs,
   headColor: COLORS.wormBossHead,
   bodyColor: COLORS.wormBossBody,

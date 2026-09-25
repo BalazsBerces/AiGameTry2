@@ -24,8 +24,8 @@ export const TUNING = {
   /** Damage to enemy parts is a placeholder; the player always loses a full heart. */
   bomb: { fuseMs: 1500, enemyDamage: 6, playerDamage: 2, radius: 12 },
   worm: { segmentSize: 30, segmentHp: 2, stepMs: 300 },
-  /** Twenty segments long; its attacks and their timing live in core/wormBossAttack. */
-  wormBoss: { segmentSize: 38, segmentHp: 2.5, stepMs: 230, shotSpeed: 185 },
+  /** Hit points of the whole worm, however long; its attacks and their timing live in core/wormBossAttack. */
+  wormBoss: { segmentSize: 38, hp: 50, stepMs: 230, shotSpeed: 185 },
   /** Its walk/open cycle, stomps, volleys, spikes and chains live in core/ironMaiden. */
   ironMaiden: { hp: 60, width: 40, height: 46, speed: 70, shotSpeed: 175 },
   /** Candles, patterns, relighting and the dark live in core/candleWitch. */

@@ -14,6 +14,7 @@ describe('worm step timing', () => {
   });
 });
 import { createRng } from './rng';
+import { WORM_BOSS_LENGTH } from './roomGenerator';
 import { createWorm, killSegment, splitBoss, stepWorm } from './wormChain';
 
 /** A 5-segment worm heading right, head at x=4, tail at x=0. */
@@ -119,6 +120,13 @@ describe('splitBoss', () => {
       const [a, b] = pieces.map((p) => p.worm.segments.length);
       expect(a + b, `index ${index}`).toBe(19);
       expect(Math.abs(a - b), `index ${index}`).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('leaves two halves of 11 from the boss as the arena spawns it', () => {
+    const spawned = createWorm(Array.from({ length: WORM_BOSS_LENGTH }, (_, x) => ({ x, y: 0 })), 'left');
+    for (const index of [1, 11, WORM_BOSS_LENGTH - 2]) {
+      expect(splitBoss(spawned, index).map((p) => p.worm.segments.length), `index ${index}`).toEqual([11, 11]);
     }
   });
 

@@ -1210,7 +1210,8 @@ export class GameScene extends Phaser.Scene {
 
     if (!this.world.cleared.has(room.floorRoom.id)) {
       this.spawnEnemies(room);
-      this.enemiesWakeAt = time + TUNING.enemyWakeMs;
+      // The wait counts from when the room is on screen, once the camera has slid in.
+      this.enemiesWakeAt = time + TUNING.roomSlideMs + TUNING.enemyWakeMs;
       this.lockDoors(room);
     }
     this.showPickups();

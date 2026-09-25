@@ -155,7 +155,7 @@ describe('addFiller', () => {
     const big = amounts(bigCases);
     const small = amounts(smallRooms());
     const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
-    expect(Math.min(...big)).toBeGreaterThanOrEqual(6);
+    bigCases.forEach((c, i) => expect(big[i], c.where).toBeGreaterThanOrEqual(6));
     expect(mean(big)).toBeGreaterThanOrEqual(12);
     // Never more than a quarter of a big room's floor, however big the room.
     bigCases.forEach((c, i) => expect(big[i], c.where).toBeLessThanOrEqual(0.25 * c.room.tiles.flat().filter((t) => t !== 'wall').length));

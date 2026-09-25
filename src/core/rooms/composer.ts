@@ -48,6 +48,11 @@ export interface Ask {
   cast: Cast;
   /** How many, inclusive; fewer spots than `min` of the tag and the pairing can't host it. */
   count: [min: number, max: number];
+  /**
+   * A swarm: `count` flyers (never scaled by area) packed round one or two nests on spots of the
+   * tag, filling the free floor outward from each nest, rather than one to a spot.
+   */
+  swarm?: boolean;
 }
 
 /** A big room's fight: who stands where, asked for by spot tag so any layout can host it. */
@@ -439,13 +444,12 @@ export const LAYOUTS: readonly Layout[] = [
 
 /** True if normal rooms of this shape are composed (rather than built from an archetype). */
 export const composes = (shape: RoomShape) => LAYOUTS.some((l) => l.shapes.includes(shape));
-/** Floor 1: a wasp swarm hangs off the posts and nooks, with a goblin or two on the ground. */
+/** Floor 1: a wasp swarm (or two) hangs off the posts, with goblins on the ground. */
 const waspSwarm: Encounter = {
   id: 'waspSwarm',
   floor: 0,
   asks: [
-    { tag: 'perch', cast: 'wasp', count: [2, 3] },
-    { tag: 'lurk', cast: 'wasp', count: [1, 2] },
+    { tag: 'perch', cast: 'wasp', count: [8, 12], swarm: true },
     { tag: 'open', cast: 'walker', count: [0, 2] },
   ],
 };
@@ -460,13 +464,12 @@ const boarCharge: Encounter = {
   ],
 };
 
-/** Floor 2: a bat colony roosting in the nooks and on the posts, ghouls down below. */
+/** Floor 2: a bat colony (or two) roosting in the nooks, ghouls down below. */
 const batColony: Encounter = {
   id: 'batColony',
   floor: 1,
   asks: [
-    { tag: 'lurk', cast: 'bat', count: [2, 3] },
-    { tag: 'perch', cast: 'bat', count: [1, 2] },
+    { tag: 'lurk', cast: 'bat', count: [8, 12], swarm: true },
     { tag: 'centre', cast: 'walker', count: [0, 2] },
   ],
 };
@@ -594,14 +597,72 @@ export function scaleCount([min, max]: readonly [number, number], shape: RoomSha
   return [Math.round(min * scale), Math.round(max * scale)];
 }
 
+const EIGHT_WAY = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+
+/** How far from its nest a swarm may pack, in tiles (8-way). */
+export const SWARM_RADIUS = 3;
+
+/**
+ * Up to `count` free floor cells packed round `nest`: breadth-first outward, 8-way, within
+ * `SWARM_RADIUS`. Flyers cross pits, so the clump spreads over anything but wall to reach floor.
+ */
+function clump(nest: Cell, count: number, free: (c: Cell) => boolean, tiles: Tile[][]): Cell[] {
+  const out: Cell[] = [];
+  const seen = new Set([key(nest)]);
+  const queue = [nest];
+  while (queue.length && out.length < count) {
+    const c = queue.shift()!;
+    if (free(c)) out.push(c);
+    for (const [dx, dy] of EIGHT_WAY) {
+      const n = { x: c.x + dx, y: c.y + dy };
+      const within = Math.max(Math.abs(n.x - nest.x), Math.abs(n.y - nest.y)) <= SWARM_RADIUS;
+      const tile = tiles[n.y]?.[n.x];
+      if (within && tile !== undefined && tile !== 'wall' && !seen.has(key(n))) {
+        seen.add(key(n));
+        queue.push(n);
+      }
+    }
+  }
+  return out;
+}
+
 /** The encounter's cast on free spots of the tags it asks for; undefined if a tag runs short. */
-function cast(encounter: Encounter, spots: Spot[], tiles: Tile[][], floorIndex: number, shape: RoomShape, rng: Rng): EnemySpawn[] | undefined {
+function cast(
+  encounter: Encounter,
+  spots: Spot[],
+  tiles: Tile[][],
+  doors: Door[],
+  floorIndex: number,
+  shape: RoomShape,
+  rng: Rng,
+): EnemySpawn[] | undefined {
   const floor = themeForFloor(floorIndex);
   const typeOf = (c: Cast): EnemyType => (c === 'walker' ? floor.walker : c === 'turret' ? floor.turret : c);
   const taken = new Set<string>();
   const take = (c: Cell) => taken.add(key(c));
   const enemies: EnemySpawn[] = [];
   for (const ask of encounter.asks) {
+    if (ask.swarm) {
+      const nests = shuffled(spots.filter((s) => s.tag === ask.tag && !taken.has(key(s.cell))), rng).slice(0, rng.int(1, 2));
+      const wanted = rng.int(...ask.count);
+      // Off the room's edge (bar the nest itself), which is left for the theme's dressing.
+      const edge = (c: Cell) =>
+        EIGHT_WAY.slice(0, 4).some(([dx, dy]) => (tiles[c.y + dy]?.[c.x + dx] ?? 'wall') === 'wall');
+      const open = (c: Cell) => tiles[c.y]?.[c.x] === 'floor' && !taken.has(key(c)) && !nearDoor(doors, c);
+      // Split between the nests (a lone nest takes them all); each packs its share round itself.
+      const shares = nests.length === 1 ? [wanted] : [Math.ceil(wanted / 2), Math.floor(wanted / 2)];
+      let placed = 0;
+      nests.forEach(({ cell }, i) => {
+        const packable = (c: Cell) => open(c) && (!edge(c) || key(c) === key(cell));
+        for (const c of clump(cell, shares[i], packable, tiles)) {
+          take(c);
+          enemies.push({ type: typeOf(ask.cast), cell: c });
+          placed++;
+        }
+      });
+      if (placed < ask.count[0]) return undefined;
+      continue;
+    }
     const free = shuffled(spots.filter((s) => s.tag === ask.tag && !taken.has(key(s.cell))), rng);
     const count = scaleCount(ask.count, shape);
     const wanted = rng.int(...count);
@@ -643,7 +704,7 @@ export function composeRoom(req: ComposeRequest): Composition | undefined {
     );
     // Spots on terrain, or crowding a door, could never pass validation: drop them before casting.
     const spots = drawn.spots.filter((s) => tiles[s.cell.y][s.cell.x] === 'floor' && !nearDoor(req.doors, s.cell));
-    const enemies = cast(encounter, spots, tiles, req.floorIndex, req.shape, rng);
+    const enemies = cast(encounter, spots, tiles, req.doors, req.floorIndex, req.shape, rng);
     if (!enemies) continue;
     const room = { tiles, enemies, pickups: [] as PickupSpawn[], symmetry: drawn.symmetry };
     if (validateRoom({ ...room, doors: req.doors }, room.symmetry).length === 0) {

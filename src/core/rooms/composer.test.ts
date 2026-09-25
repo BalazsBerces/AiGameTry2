@@ -97,12 +97,17 @@ describe('composeRoom for wide rooms', () => {
       composeRoom({ shape: '2x1', doors: wideDoors(WIDE_DOOR_SETS[seed % WIDE_DOOR_SETS.length]), theme, floorIndex, rng: createRng(seed) })!,
     );
 
-  it('stands every enemy on a spawn spot of a tag its encounter asked for', () => {
+  it('stands every enemy on a spawn spot of a tag its encounter asked for (a swarm within 3 tiles of one)', () => {
     for (const room of sample('rift', 1, 100)) {
-      const asked = new Set(ENCOUNTERS.find((e) => e.id === room.encounter)!.asks.map((a) => a.tag));
+      const asks = ENCOUNTERS.find((e) => e.id === room.encounter)!.asks;
+      const asked = new Set(asks.filter((a) => !a.swarm).map((a) => a.tag));
+      const nested = new Set(asks.filter((a) => a.swarm).map((a) => a.tag));
       for (const e of room.enemies) {
-        const spot = room.spots.find((s) => s.cell.x === e.cell.x && s.cell.y === e.cell.y);
-        expect(spot && asked.has(spot.tag), `${room.layout} + ${room.encounter} ${e.type} at ${e.cell.x},${e.cell.y}`).toBe(true);
+        const onSpot = room.spots.some((s) => s.cell.x === e.cell.x && s.cell.y === e.cell.y && asked.has(s.tag));
+        const byNest = room.spots.some(
+          (s) => nested.has(s.tag) && Math.max(Math.abs(s.cell.x - e.cell.x), Math.abs(s.cell.y - e.cell.y)) <= 3,
+        );
+        expect(onSpot || byNest, `${room.layout} + ${room.encounter} ${e.type} at ${e.cell.x},${e.cell.y}`).toBe(true);
       }
     }
   });
@@ -164,6 +169,33 @@ describe('enemy counts by room area', () => {
     }
     // Well past the old most of six.
     expect(Math.max(...counts)).toBeGreaterThan(6);
+  });
+});
+
+describe('swarms in big rooms', () => {
+  type Cell = { x: number; y: number };
+  const near = (a: Cell, b: Cell) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)) <= 3;
+  /** Whether one or two of the cells can stand as nests with every cell within 3 tiles of one. */
+  const packsRoundTwoNests = (cells: Cell[]) =>
+    cells.some((a) => cells.some((b) => cells.every((c) => near(c, a) || near(c, b))));
+
+  it.each([
+    ['waspSwarm', 0, 'wasp', 'marsh'],
+    ['batColony', 1, 'bat', 'hollow'],
+  ] as const)('%s sends 8-12 in one or two tight clusters, in every big shape', (encounter, floorIndex, type, theme) => {
+    for (const shape of BIG_SHAPES) {
+      for (const [i, specs] of doorSets(shape, 12).entries()) {
+        const doors = doorsFor(shape, specs);
+        const room = composeRoom({ shape, doors, theme, floorIndex, rng: createRng(i), encounter })!;
+        const where = `${shape} ${room?.layout} doors ${JSON.stringify(specs)}`;
+        expect(room, where).toBeDefined();
+        const swarm = room.enemies.filter((e) => e.type === type).map((e) => e.cell);
+        expect(swarm.length, where).toBeGreaterThanOrEqual(8);
+        expect(swarm.length, where).toBeLessThanOrEqual(12);
+        expect(packsRoundTwoNests(swarm), where).toBe(true);
+        expect(validateRoom({ ...room, doors }, room.symmetry), where).toEqual([]);
+      }
+    }
   });
 });
 

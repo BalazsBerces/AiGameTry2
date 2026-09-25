@@ -87,9 +87,6 @@ export function lastStandPool(atRoarStart: number, startPool: number, sinceMs: n
 /** Roaring: it holds still and can't be hurt. */
 export const isRoaring = (roar: Roar | undefined, now: number) => roar?.phase === 'roaring' && now < roar.until;
 
-/** Phase two: the whole worm, all its pieces together, is down to half its hit points. */
-export const inPhaseTwo = (hp: number, maxHp: number) => hp <= maxHp / 2;
-
 /** The next cell from `c` along `heading`. */
 const ahead = (c: Cell, heading: Direction): Cell => ({ x: c.x + STEP[heading].x, y: c.y + STEP[heading].y });
 const outside = (tiles: Tile[][], c: Cell) => c.y < 0 || c.x < 0 || c.y >= tiles.length || c.x >= tiles[0].length;

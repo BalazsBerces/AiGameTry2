@@ -11,7 +11,6 @@ import {
   canAttack,
   halfPools,
   inLastStand,
-  inPhaseTwo,
   isRoaring,
   lastStandPool,
   lungeCracks,
@@ -73,9 +72,9 @@ const OPPOSITE: Record<Direction, Direction> = { up: 'down', down: 'up', left: '
 const inRoom = (ctx: EnemyContext, c: Cell) => c.y >= 0 && c.x >= 0 && c.y < ctx.tiles.length && c.x < ctx.tiles[0].length;
 
 /**
- * What every piece of the worm boss shares: its hit points (phase two is judged on the whole
- * worm), the rocks it shakes loose, the rampage clock, and the holes its lunges leave in the
- * walls, which stay for the whole fight.
+ * What every piece of the worm boss shares: its hit points (its split is judged on the whole
+ * worm), the rocks it shakes loose, the rampage clock, its brood, and the holes its lunges leave
+ * in the walls, which stay for the whole fight.
  */
 interface WormBossShared {
   maxHp: number;
@@ -94,7 +93,7 @@ interface WormBossShared {
   /** Hole-and-rubble decals, each drawn once. */
   holes: Phaser.GameObjects.Graphics;
   holeCells: Cell[];
-  /** The parts of each egg and hatchling laid in phase two; one counts while any of its parts lives. */
+  /** The parts of each egg and hatchling from before its split; one counts while any of its parts lives. */
   brood: EnemySprite[][];
   /** Its health bar (core/bossBar), kept up to date in place: the scene shows this very object. */
   bar: BossBarSnapshot;
@@ -234,18 +233,17 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
   };
   const inWalls = (ctx: EnemyContext) => state.worm.segments.some((c) => !inRoom(ctx, c));
 
-  /** Phase two: drops an egg from its tail now and then, while it is all out of the walls. */
+  /** Before its split: drops eggs from its tail end now and then, while it is all out of the walls. */
   const layEggs = (ctx: EnemyContext, b: BossPiece) => {
     const { segments } = state.worm;
     const tail = segments[segments.length - 1];
     const tick = broodTick(b.nextEggAt, ctx.time, {
-      length: segments.length,
+      split: b.pool !== undefined,
       aboveGround: !b.rampage && !inWalls(ctx) && ctx.isWalkable(tail),
-      phaseTwo: inPhaseTwo(b.shared.hp, b.shared.maxHp),
       brood: b.shared.brood.filter((parts) => parts.some((p) => p.active)).length,
     });
-    b.nextEggAt = tick.nextLayAt;
-    if (tick.lay) ctx.spawnEnemy(wormEgg(scene, ctx, b.shared, tail));
+    b.nextEggAt = tick.nextLobAt;
+    for (const cell of segments.slice(segments.length - tick.eggs)) ctx.spawnEnemy(wormEgg(scene, ctx, b.shared, cell));
   };
 
   /** Starts a rampage round on the shared clock; this piece joins it if it is long enough. */

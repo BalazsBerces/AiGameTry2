@@ -277,7 +277,7 @@ if (scenario === 'worm-boss') {
   await hitPart(0, 9, 1);
   await hitPart(0, 4, 3);
   console.log('after splitting', JSON.stringify(await status()));
-  // Down to half its hit points: hit the halves (each has its own pool now, and dies whole once it is empty).
+  // Hit the halves and the brood (each half has its own pool now, and dies whole once it is empty); it makes no more eggs.
   for (let killed = 2; killed < 11; ) {
     killed += await page.evaluate(`(() => { const s = ${scene()};
       const p = s.enemies.flatMap((e) => e.parts.slice(1, 2)).find((p) => p.body.enable);
@@ -286,10 +286,10 @@ if (scenario === 'worm-boss') {
       return 1; })()`);
     await page.waitForTimeout(100);
   }
-  console.log('at half', JSON.stringify(await status()));
+  console.log('after hitting the halves', JSON.stringify(await status()));
   for (let i = 0; i < 24; i++) {
     await page.waitForTimeout(500);
-    if (i % 3 === 2) console.log(`phase-2 t=${(i + 1) * 0.5}s`, JSON.stringify(await status()));
+    if (i % 3 === 2) console.log(`after the split t=${(i + 1) * 0.5}s`, JSON.stringify(await status()));
   }
   await shot('worm-boss-split');
   // Kill only the boss's pieces (its segments are the big ones): its eggs and hatchlings go with it.

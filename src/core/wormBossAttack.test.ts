@@ -9,7 +9,6 @@ import {
   canAttack,
   halfPools,
   inLastStand,
-  inPhaseTwo,
   lungeCracks,
   lungeFrom,
   planLunge,
@@ -300,12 +299,6 @@ describe('worm boss half hit points', () => {
 describe('worm boss pieces', () => {
   it('lets only pieces of four or more segments attack', () => {
     expect([1, 2, 3, 4, 5, 20].map(canAttack)).toEqual([false, false, false, true, true, true]);
-  });
-
-  it('enters phase two once the whole worm is down to half its hit points', () => {
-    expect(inPhaseTwo(51, 100)).toBe(false);
-    expect(inPhaseTwo(50, 100)).toBe(true);
-    expect(inPhaseTwo(10, 100)).toBe(true);
   });
 });
 

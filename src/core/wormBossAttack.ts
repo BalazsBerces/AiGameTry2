@@ -30,7 +30,7 @@ export const WORM_BOSS = {
   lungeStepMs: 30,
   /** The warning crack flows out along a lunge's path one cell per this long, from the start of the pause before it. */
   crackStepMs: 25,
-  lungePauseMs: 300,
+  lungePauseMs: 350,
   rampageDazeMs: 1000,
   /** A lunge into rock takes this share of its hit points. */
   lungeRockShare: 0.5,

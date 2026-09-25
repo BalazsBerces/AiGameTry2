@@ -81,6 +81,12 @@ export interface Enemy extends Stunnable {
    * included, and player shots bounce off it and drop to the ground.
    */
   invulnerable?(part: EnemySprite): boolean;
+  /**
+   * One body, many parts sharing one pool (the worm boss and every piece it splits into): the
+   * enemies with the same group count as one against attacks that touch many parts (core/multiHit),
+   * orbitals, the dash and poison. Most enemies have none.
+   */
+  hitGroup?: object;
   /** Flyers (with `collidesWithTerrain` false) still hit walls and stone, but cross holes and thorns. */
   flies?: boolean;
   /** Parts that don't hurt the player on touch (the Candle Witch's candles); every part hurts if left out. */

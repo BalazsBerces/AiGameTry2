@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { DIRECTIONS, STEP, type Cell, type Direction, type RoomKind } from '../core/floorGenerator';
 import { distanceField, lineOfSight } from '../core/grid';
-import type { ChampionDrop, EnemySpawn, EnemyType, Tile } from '../core/roomGenerator';
+import type { LootDrop, EnemySpawn, EnemyType, Tile } from '../core/roomGenerator';
 import { themeForFloor, type Palette, type TileLook } from '../core/themes';
 import { roomLooks, roomThemeById, type DecorKind } from '../core/roomThemes';
 import { blocksShots, blocksSight, hurtsOnTouch, isWalkable } from '../core/tiles';
@@ -23,10 +23,11 @@ import {
 } from '../core/shotFlight';
 import {
   BOMB_RADIUS,
+  BOSS_DROPS,
   createWorld,
   damagePlayer,
   detonateBomb,
-  dropChampionLoot,
+  dropLoot,
   enterRoom,
   hitTile,
   isFinalFloor,
@@ -70,6 +71,7 @@ import type { Stunnable } from '../core/stun';
 import { createBat } from './entities/bat';
 import { softPush } from '../core/softPush';
 import { updateGoblinPack } from '../core/forestCast';
+import { createFalloff, createHitGate, type Falloff } from '../core/multiHit';
 
 type Keys = Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
 type PhysicsArc = Phaser.GameObjects.Arc & { body: Phaser.Physics.Arcade.Body };
@@ -80,6 +82,8 @@ const DEPTH = { player: 10 };
 interface Flight {
   mods: ShotMods;
   hits: HitLog;
+  /** Each leg of its flight is one attack for the falloff on many-part bodies (core/multiHit). */
+  falloff: Record<Leg, Falloff>;
   born: number;
   speed: number;
   boomerang?: Weapon['boomerang'];
@@ -116,6 +120,15 @@ const PICKUP_SHAPES: Record<WorldPickup['type'], (scene: Phaser.Scene, x: number
   passive: (s, x, y, p) =>
     s.add.star(x, y, 5, 8, 18, COLORS.passive[p.passive ?? 'homing']).setStrokeStyle(2, 0xffffff),
   heart: (s, x, y) => s.add.circle(x, y, 10, COLORS.heart),
+  heartContainer: (s, x, y) => {
+    // The forest's gift: a heart-red orb with a gold-green rim and two leaves sprouting on top.
+    const orb = s.add.circle(x, y, 13, COLORS.heart).setStrokeStyle(3, COLORS.heartContainerRim);
+    const leaves = [-1, 1].map((side) =>
+      s.add.ellipse(x + side * 6, y - 15, 13, 7, COLORS.heartContainerLeaf).setAngle(side * -30).setStrokeStyle(1, COLORS.heartContainerRim),
+    );
+    orb.once('destroy', () => leaves.forEach((l) => l.destroy()));
+    return orb;
+  },
   key: (s, x, y) => s.add.rectangle(x, y, 10, 22, COLORS.key),
   bomb: (s, x, y) => s.add.circle(x, y, 11, COLORS.bomb).setStrokeStyle(3, COLORS.bombFuse),
   chest: (s, x, y) => s.add.rectangle(x, y, 34, 26, COLORS.chest),
@@ -228,8 +241,8 @@ export class GameScene extends Phaser.Scene {
   private walkers!: Phaser.Physics.Arcade.Group;
   private enemyShots!: Phaser.Physics.Arcade.Group;
   private enemies: Enemy[] = [];
-  /** Living champions (a split worm's pieces all count) and the pickup each drops once fully dead. */
-  private champions = new Map<Enemy, ChampionDrop>();
+  /** Living enemies carrying loot (champions, bosses with a drop; a split worm's pieces all count) and the pickup each drops once fully dead. */
+  private lootCarriers = new Map<Enemy, LootDrop>();
   private doorLocks: Phaser.GameObjects.GameObject[] = [];
   private pickupGroup!: Phaser.Physics.Arcade.Group;
   private itemLockoutUntil = 0;
@@ -243,16 +256,17 @@ export class GameScene extends Phaser.Scene {
   private flyers!: Phaser.Physics.Arcade.Group;
   /** The star drawn over each currently stunned enemy. */
   private stunMarks = new Map<Enemy, Shape>();
-  /** Enemies the Poison passive is working on. */
-  private poisoned = new Map<Enemy, Poison>();
+  /** Enemies the Poison passive is working on; a many-part body (the worm boss, split or whole) by its hit group. */
+  private poisoned = new Map<object, Poison>();
   /** Rolls for the Freeze passive. */
   private hitRng = createRng(Math.floor(Math.random() * 2 ** 31));
-  /** The Orbital passive's orbs. */
+  /** The Orbital passive's orbs, and how often they may hurt each part or body. */
   private orbs!: Phaser.Physics.Arcade.Group;
-  /** The player's current or last dash, and the enemies an upgraded one has already hurt. */
+  private orbGate = createHitGate();
+  /** The player's current or last dash, and the enemies (or many-part bodies, by hit group) an upgraded one has already hurt. */
   private dash?: Dash;
   private momentum?: Momentum;
-  private dashHits = new Set<Enemy>();
+  private dashHits = new Set<object>();
   /** The health bar of the boss fought in this room (the worm boss's), for the HUD; kept after it dies so the bar can crumble. */
   bossBar?: BossBarSnapshot;
   /** The player's share of the stun (a glowshroom cloud): no moving or shooting until it wears off. */
@@ -272,7 +286,7 @@ export class GameScene extends Phaser.Scene {
     const seed = data.seed ?? (Number.isFinite(urlSeed) ? urlSeed : Math.floor(Math.random() * 2 ** 31));
     this.world = createWorld(seed);
     this.enemies = [];
-    this.champions = new Map();
+    this.lootCarriers = new Map();
     this.doorLocks = [];
     this.nextShotAt = 0;
     this.invincibleUntil = 0;
@@ -365,6 +379,7 @@ export class GameScene extends Phaser.Scene {
 
     // The Orbital passive's orbs: they soak up enemy shots and nick what they touch.
     this.orbs = this.physics.add.group();
+    this.orbGate = createHitGate();
     this.physics.add.overlap(this.orbs, this.enemyShots, (_o, shot) => shot.destroy());
     this.physics.add.overlap(this.orbs, this.enemyParts, (_o, part) => this.orbHits(part as EnemySprite));
     this.dash = undefined;
@@ -441,11 +456,11 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  /** An orb touches an enemy part: a small hit, at most so often per part. */
+  /** An orb touches an enemy part: a small hit, at most so often per part, or per body for a many-part one (its hit group). */
   private orbHits(part: EnemySprite) {
-    const now = this.time.now;
-    if (!part.active || now < ((part.getData('orbSafeUntil') as number | undefined) ?? 0)) return;
-    part.setData('orbSafeUntil', now + TUNING.orbital.hitEveryMs);
+    if (!part.active) return;
+    const group = this.enemies.find((e) => e.parts.includes(part))?.hitGroup ?? part;
+    if (!this.orbGate.pass(group, this.time.now, TUNING.orbital.hitEveryMs)) return;
     this.damagePart(part, TUNING.orbital.damage);
   }
 
@@ -473,8 +488,9 @@ export class GameScene extends Phaser.Scene {
     if (enemy?.harmless?.(part)) return;
     const dash = resolveWeapon(this.world.player.passives, this.world.player.statUps).dash;
     if (enemy && dash?.damage && isDashing(this.dash, this.time.now)) {
-      if (!this.dashHits.has(enemy)) {
-        this.dashHits.add(enemy);
+      const body = enemy.hitGroup ?? enemy;
+      if (!this.dashHits.has(body)) {
+        this.dashHits.add(body);
         this.damagePart(part, dash.damage);
       }
       return;
@@ -524,6 +540,7 @@ export class GameScene extends Phaser.Scene {
           bouncesLeft: weapon.bounces,
         },
         hits: createHitLog(),
+        falloff: { out: createFalloff(), back: createFalloff() },
         born: time,
         speed,
         boomerang: weapon.boomerang,
@@ -596,10 +613,12 @@ export class GameScene extends Phaser.Scene {
    */
   private swingSword(aim: Direction, damage: number, arcDeg: number) {
     const inArc = this.sweepArc(this.player, aim, COLORS.passive.sword, arcDeg);
-    for (const part of this.enemies.flatMap((e) => e.parts).filter(inArc)) {
+    // One swing is one attack: across a many-part body it falls off from the part nearest the player.
+    const falloff = createFalloff();
+    for (const part of this.nearestFirst(this.enemies.flatMap((e) => e.parts).filter(inArc), this.player)) {
       const heading = { x: part.x - this.player.x, y: part.y - this.player.y };
       if (this.shieldBlocks(part, heading)) this.clink(part.x - heading.x * 0.3, part.y - heading.y * 0.3);
-      else this.strike(part, damage);
+      else this.strike(part, this.fallOff(falloff, part, damage));
     }
   }
 
@@ -616,8 +635,10 @@ export class GameScene extends Phaser.Scene {
     const weapon = resolveWeapon(this.world.player.passives, this.world.player.statUps);
     const time = this.time.now;
     const alive = this.enemies.includes(enemy);
-    if (weapon.poison && alive) {
-      this.poisoned.set(enemy, applyPoison(this.poisoned.get(enemy), time, weapon.poison));
+    // A many-part body carries one poison, whichever piece of it was struck and still standing.
+    const body = enemy.hitGroup ?? enemy;
+    if (weapon.poison && this.piecesOf(body).length) {
+      this.poisoned.set(body, applyPoison(this.poisoned.get(body), time, weapon.poison));
     }
     if (weapon.freeze && alive && rollsFreeze(weapon.freeze.chance, this.hitRng)) stun(enemy, time, weapon.freeze.stunMs);
     if (weapon.chain) this.chainLightning(enemy, at, damage * weapon.chain.damageFactor, weapon.chain);
@@ -646,18 +667,28 @@ export class GameScene extends Phaser.Scene {
     this.tweens.add({ targets: g, alpha: 0, duration: 220, onComplete: () => g.destroy() });
   }
 
-  /** Poison ticks away on every poisoned enemy, a green puff with each tick. */
+  /** The living enemies that make up `body`: a many-part body's pieces (by hit group), or the enemy itself. */
+  private piecesOf(body: object): Enemy[] {
+    return this.enemies.filter((e) => (e.hitGroup ?? e) === body);
+  }
+
+  /**
+   * Poison ticks away on every poisoned enemy, a green puff with each tick. A many-part body's
+   * one poison lands each tick on a piece that can be hurt right now; if none can, that tick is lost.
+   */
   private tickPoison(time: number) {
     const rules = resolveWeapon(this.world.player.passives, this.world.player.statUps).poison;
-    for (const [enemy, poison] of this.poisoned) {
-      if (!this.enemies.includes(enemy) || !rules) {
-        this.poisoned.delete(enemy);
+    for (const [body, poison] of this.poisoned) {
+      const pieces = this.piecesOf(body);
+      if (!pieces.length || !rules) {
+        this.poisoned.delete(body);
         continue;
       }
       const tick = poisonTick(poison, time, rules);
-      if (tick.poison) this.poisoned.set(enemy, tick.poison);
-      else this.poisoned.delete(enemy);
-      const part = enemy.parts.find((p) => p.active);
+      if (tick.poison) this.poisoned.set(body, tick.poison);
+      else this.poisoned.delete(body);
+      const part = pieces
+        .flatMap((e) => e.parts.filter((p) => p.active && (!e.hitGroup || (p.body.enable && !e.invulnerable?.(p)))))[0];
       if (tick.damage <= 0 || !part) continue;
       const puff = this.add.circle(part.x, part.y - 8, 7, COLORS.passive.poison, 0.8).setDepth(DEPTH.player + 1);
       this.tweens.add({ targets: puff, y: puff.y - 18, alpha: 0, duration: 380, onComplete: () => puff.destroy() });
@@ -932,8 +963,18 @@ export class GameScene extends Phaser.Scene {
     const { damages, continues } = meetEnemy(flight?.mods ?? PLAIN_SHOT, shielded);
     const at = { x: shot.x, y: shot.y };
     if (!continues) shot.destroy();
-    if (damages) this.strike(part, damage);
+    if (damages) this.strike(part, flight ? this.fallOff(flight.falloff[leg], part, damage) : damage);
     else this.clink(at.x, at.y);
+  }
+
+  /**
+   * `full` damage to `part` after the attack's falloff on its enemy's hit group (core/multiHit).
+   * A part that can't be hurt right now (inside a wall, a half blowing apart) doesn't count toward it.
+   */
+  private fallOff(falloff: Falloff, part: EnemySprite, full: number): number {
+    const enemy = this.enemies.find((e) => e.parts.includes(part));
+    if (!enemy?.hitGroup || !part.active || !part.body.enable || enemy.invulnerable?.(part)) return full;
+    return falloff.damage(enemy.hitGroup, full);
   }
 
   /**
@@ -1066,7 +1107,17 @@ export class GameScene extends Phaser.Scene {
     if (Phaser.Math.Distance.Between(at.x, at.y, this.player.x, this.player.y) <= reach + TUNING.playerHurtRadius) {
       this.hurtPlayer(TUNING.bomb.playerDamage);
     }
-    for (const part of this.enemies.flatMap((e) => e.parts).filter(caught)) this.damagePart(part, TUNING.bomb.enemyDamage);
+    // One blast is one attack: across a many-part body it falls off from the part nearest the bomb.
+    const falloff = createFalloff();
+    for (const part of this.nearestFirst(this.enemies.flatMap((e) => e.parts).filter(caught), at)) {
+      this.damagePart(part, this.fallOff(falloff, part, TUNING.bomb.enemyDamage));
+    }
+  }
+
+  /** `parts` ordered nearest `to` first. */
+  private nearestFirst(parts: EnemySprite[], to: { x: number; y: number }): EnemySprite[] {
+    const dist = (p: EnemySprite) => Phaser.Math.Distance.Between(to.x, to.y, p.x, p.y);
+    return [...parts].sort((a, b) => dist(a) - dist(b));
   }
 
   private damagePart(part: EnemySprite, damage: number) {
@@ -1075,12 +1126,12 @@ export class GameScene extends Phaser.Scene {
     const where = { x: part.x, y: part.y };
     const replacements = enemy.hit(part, damage);
     this.enemies = this.enemies.flatMap((e) => (e === enemy ? replacements : [e]));
-    const drop = this.champions.get(enemy);
+    const drop = this.lootCarriers.get(enemy);
     if (drop) {
-      this.champions.delete(enemy);
-      for (const r of replacements) this.champions.set(r, drop);
-      if (![...this.champions.values()].includes(drop)) {
-        dropChampionLoot(this.world, this.world.currentRoomId, drop, tileAt(this.currentRoom, where.x, where.y));
+      this.lootCarriers.delete(enemy);
+      for (const r of replacements) this.lootCarriers.set(r, drop);
+      if (![...this.lootCarriers.values()].includes(drop)) {
+        dropLoot(this.world, this.world.currentRoomId, drop, tileAt(this.currentRoom, where.x, where.y));
         this.showPickups();
       }
     }
@@ -1189,6 +1240,7 @@ export class GameScene extends Phaser.Scene {
     if (result === 'opened') this.itemLockoutUntil = this.time.now + TUNING.chestLockoutMs;
     if (result === 'damageUp') this.announce('Damage up', COLORS.damageUp);
     if (result === 'rateUp') this.announce('Fire rate up', COLORS.rateUp);
+    if (result === 'heartContainer') this.announce('+1 heart!', COLORS.heartUp);
     this.showPickups();
   }
 
@@ -1196,7 +1248,8 @@ export class GameScene extends Phaser.Scene {
     const at = (c: Cell) => tileCenter(room, c.x, c.y);
     for (const spawn of room.layout.enemies) {
       const enemy = ENEMY_FACTORIES[spawn.type](this, spawn, at, room.layout);
-      if (spawn.champion) this.champions.set(enemy, spawn.champion.drop);
+      const drop = spawn.champion?.drop ?? BOSS_DROPS[spawn.type];
+      if (drop) this.lootCarriers.set(enemy, drop);
       this.addEnemy(enemy);
     }
   }
@@ -1372,6 +1425,8 @@ export class GameScene extends Phaser.Scene {
     const { windupMs, msPerTile, cooldownMs, enemyDamage, playerDamage } = TUNING.crusher;
     const body = c.shape.body as Phaser.Physics.Arcade.StaticBody;
     const crushed = new Set<object>();
+    // One crush is one attack: across a many-part body it falls off, part after part as it slides over them.
+    const falloff = createFalloff();
     const under = (o: { x: number; y: number; width: number; height: number }) =>
       Math.abs(o.x - c.shape.x) < (TUNING.tile + o.width) / 2 - 4 && Math.abs(o.y - c.shape.y) < (TUNING.tile + o.height) / 2 - 4;
     this.tweens.add({ targets: c.shape, scale: 1.1, duration: windupMs / 2, yoyo: true });
@@ -1394,7 +1449,7 @@ export class GameScene extends Phaser.Scene {
         for (const part of this.enemies.flatMap((e) => e.parts)) {
           if (crushed.has(part) || !part.active || !under(part)) continue;
           crushed.add(part);
-          this.damagePart(part, enemyDamage);
+          this.damagePart(part, this.fallOff(falloff, part, enemyDamage));
         }
       },
       onComplete: () => {

@@ -219,11 +219,11 @@ function flyEggs(scene: Phaser.Scene, ctx: EnemyContext, shared: WormBossShared)
   });
 }
 
-/** A lunge tunnelling into the wall shakes rocks loose over the player, if the shared rockfall cooldown is up; none land on `avoid`. */
+/** A lunge tunnelling into the wall shakes rocks loose across the room, if the shared rockfall cooldown is up; none land on `avoid`. */
 function shakeRocksLoose(ctx: EnemyContext, shared: WormBossShared, avoid: Cell[]) {
   if (ctx.time < shared.nextRockfallAt) return;
   shared.nextRockfallAt = ctx.time + WORM_BOSS.rockfallCooldownMs;
-  const cells = planRockfall(ctx.tiles, ctx.playerTile, [...[...shared.bodies.values()].flat(), ...avoid], ctx.doors, shared.rng);
+  const cells = planRockfall(ctx.tiles, [...[...shared.bodies.values()].flat(), ...avoid], ctx.doors, shared.rng);
   shared.rocks.push({ cells, start: ctx.time });
 }
 
@@ -626,6 +626,8 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
   const enemy: Enemy = {
     parts: state.parts,
     collidesWithTerrain: false,
+    // The boss's pieces are one body: their shared fight state stands for it.
+    hitGroup: state.boss?.shared,
     invulnerable: () => !!state.boss?.dying || !canBeHurt(state.boss?.moment, scene.time.now),
     // Blowing apart, it no longer hurts on touch.
     harmless: () => !!state.boss?.dying,

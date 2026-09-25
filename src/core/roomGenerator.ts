@@ -121,7 +121,8 @@ export interface RoomLayout {
 /** Stackable stat-ups a chest can hold instead of one of its items. */
 export type StatUpType = 'damageUp' | 'rateUp';
 
-export type PickupType = 'heart' | 'key' | 'bomb' | 'chest' | 'lockedChest' | 'passive' | StatUpType;
+/** A heart container raises max health by one heart; only a boss drops one (core/world `BOSS_DROPS`). */
+export type PickupType = 'heart' | 'key' | 'bomb' | 'chest' | 'lockedChest' | 'passive' | 'heartContainer' | StatUpType;
 
 /** Something a chest releases. */
 /** A passive with no `passive` yet is decided when it comes out (core/world). */
@@ -182,13 +183,13 @@ export interface EnemySpawn {
   /** Fixed cells the enemy works from: the Candle Witch's candles. */
   anchors?: Cell[];
   /** Tougher and always drops `drop` (from the normal room-clear pool) when killed. */
-  champion?: { drop: ChampionDrop };
+  champion?: { drop: LootDrop };
   /** Hit points overriding the type's default: a floor's tougher variant (the dungeon's zombies). */
   hp?: number;
 }
 
-/** A champion's extra pickup; it lands wherever the champion dies. */
-export type ChampionDrop = Omit<PickupSpawn, 'cell'>;
+/** A pickup an enemy carries (a champion's extra one, a boss's drop); it lands wherever the enemy dies. */
+export type LootDrop = Omit<PickupSpawn, 'cell'>;
 
 /** Doors sit at the centre of the wall of the map cell they belong to. */
 function doorCell({ side, at }: DoorSpec, width: number, height: number): Cell {

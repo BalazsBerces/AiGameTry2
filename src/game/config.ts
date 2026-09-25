@@ -34,7 +34,7 @@ export const TUNING = {
    * Hit points of the whole worm, however long; its attacks and their timing live in
    * core/wormBossAttack. Its spit is a little smaller than other enemy shots (`shotRadius`).
    */
-  wormBoss: { segmentSize: 38, hp: 100, stepMs: 230, shotSpeed: 155, shotRadius: 5 },
+  wormBoss: { segmentSize: 38, hp: 200, stepMs: 230, shotSpeed: 155, shotRadius: 5 },
   /**
    * The worm boss's roar (its length lives in core/wormBossAttack): the head swells to `headScale`
    * and throbs, and rings spread from it, each `ringMs` long, `ringEveryMs` apart, out to `ringTiles`.
@@ -149,6 +149,10 @@ export const COLORS = {
   enemyShot: 0xff6b5a,
   lockedDoor: 0x3a2515,
   heart: 0xd8323c,
+  /** The Treant's heart container: its gold-green rim, its leaves, and the "+1 heart!" it announces. */
+  heartContainerRim: 0xc8d84a,
+  heartContainerLeaf: 0x4fae34,
+  heartUp: 0x8af06a,
   key: 0xf2c94c,
   bomb: 0x2a2a33,
   bombFuse: 0xff9a3c,

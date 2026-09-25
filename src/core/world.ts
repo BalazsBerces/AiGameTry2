@@ -11,7 +11,7 @@ import {
   type FloorRoom,
   type RoomDoor,
 } from './floorGenerator';
-import { generateRoom, type ChampionDrop, type ChestItem, type PickupType, type RoomLayout } from './roomGenerator';
+import { generateRoom, type ChestItem, type EnemyType, type LootDrop, type PickupType, type RoomLayout } from './roomGenerator';
 import { bombDestructible, hitsToBreak, isWalkable } from './tiles';
 import { floodFill } from './grid';
 import type { Passive, PassiveLevels, StatUps } from './weaponModel';
@@ -126,7 +126,7 @@ function buildFloor(world: World, rng: Rng, floor: FloorLayout) {
   }
 }
 
-export type PickupResult = 'none' | 'healed' | 'key' | 'bomb' | 'opened' | 'passive' | 'damageUp' | 'rateUp';
+export type PickupResult = 'none' | 'healed' | 'key' | 'bomb' | 'opened' | 'passive' | 'damageUp' | 'rateUp' | 'heartContainer';
 
 /** The player touched a pickup. Applies its effect and updates the room's pickups. */
 export function touchPickup(world: World, roomId: string, pickupId: number): PickupResult {
@@ -141,6 +141,12 @@ export function touchPickup(world: World, roomId: string, pickupId: number): Pic
       player.health = Math.min(player.maxHealth, player.health + HEART_HEAL);
       remove();
       return 'healed';
+    case 'heartContainer':
+      // One more heart, and it comes filled; full health or not.
+      player.maxHealth += HEART_HEAL;
+      player.health += HEART_HEAL;
+      remove();
+      return 'heartContainer';
     case 'key':
       player.keys++;
       remove();
@@ -221,11 +227,17 @@ export function upgradeAfterBoss(world: World, roomId: string): Passive | undefi
   return upgrade;
 }
 
+/** What a boss drops where it dies, on top of the passive upgrade every boss kill gives. */
+export const BOSS_DROPS: Partial<Record<EnemyType, LootDrop>> = {
+  treantBoss: { type: 'heartContainer' },
+};
+
 /**
- * A champion died on `cell`: its extra pickup lands there, in plain sight, or on the nearest
- * floor the player can walk to if it died somewhere they can't (a flyer over a pond, a ghost in stone).
+ * An enemy carrying loot (a champion, a boss with a drop) died on `cell`: its pickup lands there,
+ * in plain sight, or on the nearest floor the player can walk to if it died somewhere they can't
+ * (a flyer over a pond, a ghost in stone).
  */
-export function dropChampionLoot(world: World, roomId: string, drop: ChampionDrop, cell: Cell) {
+export function dropLoot(world: World, roomId: string, drop: LootDrop, cell: Cell) {
   const list = world.pickups.get(roomId) ?? [];
   list.push({ id: world.nextPickupId++, ...drop, cell: reachableNear(world.rooms.get(roomId)!.layout, cell), visible: true });
   world.pickups.set(roomId, list);

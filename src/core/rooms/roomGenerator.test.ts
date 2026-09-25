@@ -617,6 +617,59 @@ describe('Sentry Island (floor 1)', () => {
   });
 });
 
+describe('cave slime rooms (floor 2)', () => {
+  const cave = (archetype: string, seed: number, doors: readonly (typeof SIDES)[number][]) =>
+    generateRoom({ id: '0,0', kind: 'normal', doors: [...doors], archetype }, 1, createRng(seed));
+  const slimes = (r: ReturnType<typeof room>) => r.enemies.filter((e) => e.type === 'slime');
+
+  it('track: two stone spines make a loop of lanes, a big slime at each of two opposite corners', () => {
+    for (const doors of EVERY_DOOR_SET) {
+      for (let seed = 0; seed < 20; seed++) {
+        const r = cave('track', seed, doors);
+        const where = `seed ${seed} doors ${doors}`;
+        expect(r.archetype, where).toBe('track');
+        expect(r.tiles[2].slice(3, 10).every((t) => t === 'obstacle'), where).toBe(true);
+        expect(r.tiles[4].slice(3, 10).every((t) => t === 'obstacle'), where).toBe(true);
+        expect(r.tiles[3].every((t) => t === 'floor'), where).toBe(true);
+        const [a, b] = slimes(r).map((e) => e.cell);
+        expect(slimes(r).length, where).toBe(2);
+        expect([a.x + b.x, a.y + b.y], where).toEqual([12, 6]);
+        expect(r.enemies.length, where).toBe(2);
+      }
+    }
+  });
+
+  it('serpentGarden: a grove of stalagmites with two big slimes hopping between them', () => {
+    for (const doors of EVERY_DOOR_SET) {
+      for (let seed = 0; seed < 20; seed++) {
+        const r = cave('serpentGarden', seed, doors);
+        const where = `seed ${seed} doors ${doors}`;
+        expect(count(r, 'obstacle') + count(r, 'rock'), where).toBeGreaterThanOrEqual(14);
+        expect(slimes(r).length, where).toBe(2);
+        expect(r.enemies.every((e) => e.type === 'slime'), where).toBe(true);
+      }
+    }
+  });
+
+  it('twinJars: a big slime in each of two loose-rock pens that open only onto the middle, two ghouls in the corners', () => {
+    for (const doors of EVERY_DOOR_SET) {
+      for (let seed = 0; seed < 20; seed++) {
+        const r = cave('twinJars', seed, doors);
+        const where = `seed ${seed} doors ${doors}`;
+        const pens = slimes(r).map((e) => e.cell);
+        expect(pens.map((c) => c.x).sort((x, y) => x - y), where).toEqual([4, 8]);
+        const ghouls = r.enemies.filter((e) => e.type === 'ghoul');
+        expect(ghouls.length, where).toBe(2);
+        expect(count(r, 'rock'), where).toBeGreaterThanOrEqual(18);
+        // Walling off the middle column cuts both slimes off from every door: the pens open only onto it.
+        const middleWalled = { ...r, tiles: r.tiles.map((row) => row.map((t, x) => (x >= 5 && x <= 7 ? 'obstacle' : t))) };
+        const outside = reachable(middleWalled, r.doors.find((d) => d.side === 'left' || d.side === 'right')?.cell ?? { x: 0, y: 0 });
+        for (const c of pens) expect(outside.has(`${c.x},${c.y}`), where).toBe(false);
+      }
+    }
+  });
+});
+
 describe('turret rooms', () => {
   it.each([
     ['sentryIsland', 0, 'goblin', 3, 4],

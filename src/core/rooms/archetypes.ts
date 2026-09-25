@@ -276,8 +276,9 @@ const opposite = (c: Cell, width: number, height: number): Cell => ({ x: width -
 const slimesOf = (cells: Cell[]): EnemySpawn[] => cells.map((cell) => ({ type: 'slime', cell }));
 
 /**
- * Floor 2: a stone block fills the middle, leaving a loop of floor around it for slimes to hop
- * laps on. They start on opposite straights.
+ * Floor 2, the slime track: two stone spines run the length of the room, chasm at their ends,
+ * making a loop of three narrow lanes. Two big slimes start in opposite corners and hop laps at
+ * the player; every split crowds the lanes further.
  */
 const track: Archetype = {
   id: 'track',
@@ -288,19 +289,20 @@ const track: Archetype = {
   build({ width, height, rng }) {
     const axes: MirrorAxis[] = ['vertical', 'horizontal'];
     const canvas = new Canvas(width, height, axes);
-    const halfWidth = rng.int(2, 3);
-    const block = Array.from({ length: halfWidth + 1 }, (_, i) => [{ x: 6 - i, y: 2 }, { x: 6 - i, y: 3 }]).flat();
-    canvas.paint(block, 'obstacle');
-    // Rock kerbs at the ends of the block, sometimes.
-    if (rng.next() < 0.5) canvas.paint([{ x: 6 - halfWidth - 1, y: 2 }], 'rock');
-    const first = { x: rng.int(3, 4), y: rng.pick([0, 1]) };
-    return { tiles: canvas.tiles, enemies: slimesOf([first, opposite(first, width, height)]), pickups: [], symmetry: { axes } };
+    canvas.paint([3, 4, 5, 6].map((x) => ({ x, y: 2 })), 'obstacle');
+    canvas.paint([{ x: 2, y: 2 }], rng.next() < 0.7 ? 'hole' : 'rock');
+    // Loose rock in the outer lanes' corners, sometimes.
+    if (rng.next() < 0.6) canvas.paint([{ x: 2, y: 0 }], 'rock');
+    const corners = canvas.images({ x: 1, y: 1 });
+    const pair = rng.next() < 0.5 ? [corners[0], corners[3]] : [corners[1], corners[2]];
+    return { tiles: canvas.tiles, enemies: slimesOf(pair), pickups: [], symmetry: { axes } };
   },
 };
 
 /**
- * Floor 2: two jars facing each other across the middle of the room. One holds ghouls, the
- * other a big slime; both spill into the same narrow gap between them.
+ * Floor 2, the twin pens: two pens of loose rock either side of the middle, a big slime in each,
+ * both opening onto the middle column; a pair of ghouls wait in opposite corners. The slimes come out through
+ * the middle, unless the player shoots a way into a pen first.
  */
 const twinJars: Archetype = {
   id: 'twinJars',
@@ -310,15 +312,18 @@ const twinJars: Archetype = {
   fits: fitsAll,
   build({ width, height, rng }) {
     const axes: MirrorAxis[] = ['vertical', 'horizontal'];
-    const left = sideJar('left', 1);
-    const right = sideJar('right', 1);
-    const canvas = new Canvas(width, height, []);
-    canvas.paint([...jarWall(left), ...jarWall(right)], 'obstacle');
-    canvas.paint([left.openings.right, right.openings.left], 'floor');
-    const [hordeJar, slimeJar] = rng.next() < 0.5 ? [left, right] : [right, left];
-    const horde = shuffled(jarInside(hordeJar), rng).slice(0, rng.int(3, 4));
-    const slime = rng.pick(jarInside(slimeJar));
-    return { tiles: canvas.tiles, enemies: [...caveWalkers(horde), ...slimesOf([slime])], pickups: [], symmetry: { axes } };
+    const canvas = new Canvas(width, height, axes);
+    // A quarter of the left pen: its top wall, its outer wall, and its inner wall down to the opening.
+    canvas.paint([2, 3, 4, 5].map((x) => ({ x, y: 1 })).concat({ x: 2, y: 2 }, { x: 5, y: 2 }, { x: 2, y: 3 }), 'rock');
+    // A diagonal pair of corners; two big slimes are already a crowd.
+    const corners = canvas.images({ x: 0, y: 0 });
+    const ghouls = rng.next() < 0.5 ? [corners[0], corners[3]] : [corners[1], corners[2]];
+    return {
+      tiles: canvas.tiles,
+      enemies: [...slimesOf(canvas.images({ x: 4, y: 3 })), ...caveWalkers(ghouls)],
+      pickups: [],
+      symmetry: { axes },
+    };
   },
 };
 
@@ -348,7 +353,11 @@ const gallery: Archetype = {
   },
 };
 
-/** Floor 2: a grid of pillars with big slimes hopping between them. */
+/**
+ * Floor 2, the stalagmite grove: rows of stalagmites fill the room, and two big slimes hop
+ * between them. A slime's hop is straight, so a stalagmite between it and the player stops it
+ * dead: the grove is a shield to fight from.
+ */
 const serpentGarden: Archetype = {
   id: 'serpentGarden',
   floor: 1,
@@ -358,10 +367,9 @@ const serpentGarden: Archetype = {
   build({ width, height, rng }) {
     const axes: MirrorAxis[] = ['vertical', 'horizontal'];
     const canvas = new Canvas(width, height, axes);
-    const cols = rng.pick([[2, 4, 6], [3, 5]]);
-    canvas.paint(cols.map((x) => ({ x, y: 2 })), rng.next() < 0.3 ? 'rock' : 'obstacle');
-    const lanes = shuffled(canvas.images({ x: rng.int(2, 4), y: 1 }), rng).slice(0, rng.int(2, 3));
-    return { tiles: canvas.tiles, enemies: slimesOf(lanes), pickups: [], symmetry: { axes } };
+    canvas.paint([1, 3, 5].map((x) => ({ x, y: 1 })).concat({ x: 3, y: 3 }, { x: 5, y: 3 }), rng.next() < 0.3 ? 'rock' : 'obstacle');
+    const clearings = [...canvas.images({ x: 2, y: 2 }), { x: 6, y: 3 }];
+    return { tiles: canvas.tiles, enemies: slimesOf(shuffled(clearings, rng).slice(0, 2)), pickups: [], symmetry: { axes } };
   },
 };
 

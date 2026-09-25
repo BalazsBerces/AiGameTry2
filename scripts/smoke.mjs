@@ -1524,5 +1524,15 @@ if (scenario === 'swarms') {
   }
 }
 
+if (scenario === 'rooms') {
+  // Screenshots each room in SMOKE_ROOMS (comma-separated archetype, layout or encounter ids) just after entering.
+  for (const id of (process.env.SMOKE_ROOMS ?? 'track,serpentGarden,twinJars').split(',')) {
+    await goToRoom(id);
+    await page.waitForTimeout(700);
+    await shot(`room-${id}`);
+    console.log(id, 'enemies', (await cast()).length);
+  }
+}
+
 console.log(errors.length ? `ERRORS:\n${errors.join('\n')}` : 'no console errors');
 await browser.close();

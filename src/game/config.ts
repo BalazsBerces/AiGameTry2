@@ -47,6 +47,27 @@ export const TUNING = {
    * it flashes white for `rageFlashMs`, then throbs once every `heartbeatMs`.
    */
   bossBar: { width: 360, height: 10, gapPx: 10, entryMs: 700, tearMs: 300, crumbleMs: 700, rageFlashMs: 160, heartbeatMs: 900 },
+  /**
+   * The worm boss's flesh burst, by size: `chunks` of flesh (each `chunkPx` across) and `drops` of
+   * dark blood flung up to `reachTiles`, leaving a splat `splatTiles` across. Chunks fly and bounce
+   * over `flightMs`, lie `restMs`, then fade over `fadeMs`. A split's raw ends spurt every `spurtEveryMs`.
+   */
+  fleshBurst: {
+    pop: { chunks: 6, drops: 7, chunkPx: [6, 10], reachTiles: 1.1, splatTiles: 0.55 },
+    head: { chunks: 16, drops: 20, chunkPx: [9, 16], reachTiles: 2.1, splatTiles: 1.1 },
+    split: { chunks: 13, drops: 20, chunkPx: [8, 14], reachTiles: 1.8, splatTiles: 0.95 },
+    flightMs: 520,
+    restMs: 900,
+    fadeMs: 400,
+    spurtEveryMs: 170,
+  },
+  /** Screen shakes: how long, and how hard (a share of the view). There is none on ordinary hits. */
+  shake: {
+    split: { ms: 380, intensity: 0.014 },
+    pop: { ms: 110, intensity: 0.004 },
+    head: { ms: 400, intensity: 0.016 },
+    roar: { ms: 2000, intensity: 0.005 },
+  },
   /** Its walk/open cycle, stomps, volleys, spikes and chains live in core/ironMaiden. */
   ironMaiden: { hp: 60, width: 40, height: 46, speed: 70, shotSpeed: 175 },
   /** Candles, patterns, relighting and the dark live in core/candleWitch. */
@@ -200,6 +221,11 @@ export const COLORS = {
   fallingRock: 0x8a7458,
   wormHole: 0x14100c,
   wormEgg: 0xe8dcc0,
+  /** The flesh burst's droplets, and the splat it leaves on the floor. */
+  wormBlood: 0x2a0806,
+  wormSplat: 0x4a0e0a,
+  /** Raw flesh inside the worm boss, paler than its skin. */
+  wormFlesh: 0xd0685a,
   maidenIron: 0x5c6068,
   maidenRivets: 0xb8bcc4,
   maidenInside: 0x7a1c20,

@@ -1331,7 +1331,9 @@ if (scenario === 'worm-split') {
       : `${boss}[0].parts[0].scale > 1.05`;
   for (let i = 0; i < 300 && !(await page.evaluate(ready)); i++) await page.waitForTimeout(50);
   console.log('ready to split', splitAt, await page.evaluate(ready));
-  await page.evaluate(`(() => { const s = ${scene()}; const ps = ${boss}[0].parts; const p = ps.slice(1, -1).find((p) => p.body.enable); s.damagePart(p, 1); })()`);
+  // Stand a little off the segment hit, so the camera shows the burst.
+  await page.evaluate(`(() => { const s = ${scene()}; const ps = ${boss}[0].parts; const p = ps.slice(1, -1).find((p) => p.body.enable);
+    s.player.body.reset(p.x - 100, p.y + 60); s.damagePart(p, 1); })()`);
   const look = () =>
     page.evaluate(`(() => { const s = ${scene()}; return {
       pieces: ${boss}.map((e) => e.parts.length),
@@ -1360,6 +1362,8 @@ if (scenario === 'worm-split') {
   for (let i = 0; i < 8; i++) {
     await page.waitForTimeout(100);
     trail.push(JSON.stringify((await look()).heads));
+    if (i === 0) await shot('split-01b-burst');
+    if (i === 5) await shot('split-01c-spurt');
   }
   console.log('heads during the stop', trail.join(' '));
   const mid = await look();

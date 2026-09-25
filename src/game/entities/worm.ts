@@ -30,6 +30,7 @@ import {
 import type { BarHalf, BossBarSnapshot } from '../../core/bossBar';
 import { hitsToBreak } from '../../core/tiles';
 import { COLORS, TUNING } from '../config';
+import { fleshBurst, shakeScreen, spray } from '../fleshBurst';
 import { championBoost, championColor, flash, singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
 
 export interface WormStyle {
@@ -92,8 +93,8 @@ interface WormBossShared {
   nextRampageAt: number;
   /** Falling rocks' shadows, redrawn every frame. */
   ground: Phaser.GameObjects.Graphics;
-  /** Hole-and-rubble decals, each drawn once. */
-  holes: Phaser.GameObjects.Graphics;
+  /** Floor decals, each drawn once and kept for the whole fight: holes and rubble, and flesh splats. */
+  marks: Phaser.GameObjects.Graphics;
   holeCells: Cell[];
   /** The parts of each egg and hatchling from before its split; one counts while any of its parts lives. */
   brood: EnemySprite[][];
@@ -119,6 +120,9 @@ interface BossPiece {
   half?: BarHalf;
   /** The moments it holds still for (its split, its roar), and its pool as the roar began (it heals from there). */
   moment?: BossMoment;
+  /** A half's end torn open at the split, which twitches and spurts through the stop, and when it next spurts. */
+  rawEnd?: 'head' | 'tail';
+  nextSpurtAt?: number;
   poolAtRoar?: number;
   /** The last rampage round it has joined, or sat out (too short). */
   rampageRound: number;
@@ -244,7 +248,7 @@ function drawHole(ctx: EnemyContext, shared: WormBossShared, wall: Cell, inward:
   const step = STEP[inward];
   const at = ctx.tileCenter(wall);
   const front = ctx.tileCenter({ x: wall.x + step.x, y: wall.y + step.y });
-  const g = shared.holes;
+  const g = shared.marks;
   // The mouth sits against the room, a little into the wall.
   g.fillStyle(COLORS.wormHole, 1).fillCircle(at.x + step.x * t * 0.2, at.y + step.y * t * 0.2, t * 0.38);
   g.fillStyle(COLORS.fallingRock, 0.8);
@@ -428,6 +432,17 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
     hideInWalls(ctx, state.worm.segments);
   };
 
+  /** Its end torn open at the split twitches on its cell and spurts dark droplets now and then. */
+  const twitchRawEnd = (ctx: EnemyContext, b: BossPiece) => {
+    const part = b.rawEnd && state.parts[b.rawEnd === 'head' ? 0 : state.parts.length - 1];
+    if (!part?.visible) return;
+    const twitch = 5;
+    part.body.reset(part.x + (Math.random() - 0.5) * twitch, part.y + (Math.random() - 0.5) * twitch);
+    if (ctx.time < (b.nextSpurtAt ?? 0)) return;
+    b.nextSpurtAt = ctx.time + TUNING.fleshBurst.spurtEveryMs * (0.6 + Math.random() * 0.8);
+    spray(scene, part, 2 + Math.floor(Math.random() * 3));
+  };
+
   /**
    * The moments it holds still for, unhurtable (core/wormBossAttack `momentTick`): the stop at
    * its split, after which it crawls on (out of any wall), and the roar that opens its last stand.
@@ -443,6 +458,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
       // Caught charging up, its head goes back to size.
       head.setScale(1);
       holdStill(ctx);
+      twitchRawEnd(ctx, b);
       return true;
     }
     if (was?.phase === 'splitStop') state.nextStepAt = ctx.time;
@@ -621,6 +637,9 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
       flash(scene, part);
       return [enemy];
     }
+    // It tears apart: the segment hit bursts, and the screen shakes.
+    fleshBurst(scene, part, 'split', style.bodyColor, shared.marks);
+    shakeScreen(scene, 'split');
     part.destroy();
     shared.bodies.delete(state);
     const halves = splitBoss(state.worm, index);
@@ -637,7 +656,8 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
         hp: from.map((k) => state.hp[k]),
         rng: state.rng.fork(`split ${index} ${i}`),
         nextStepAt: state.nextStepAt,
-        boss: { ...splitPiece(b, scene.time.now), pool: pools[i], half: bars[i] },
+        // The front half was torn off at its tail, the back half at its head.
+        boss: { ...splitPiece(b, scene.time.now), pool: pools[i], half: bars[i], rawEnd: i === 0 ? 'tail' : 'head' },
       }),
     );
   };
@@ -695,7 +715,7 @@ function dropPiece(shared: WormBossShared) {
   shared.pieces--;
   if (shared.pieces > 0) return;
   shared.ground.destroy();
-  shared.holes.destroy();
+  shared.marks.destroy();
   shared.air.destroy();
 }
 
@@ -728,8 +748,8 @@ export function spawnWorm(
   style: WormStyle = REGULAR_WORM,
   boss = false,
 ): Enemy {
-  // Made before the body so the worm crawls over its own holes.
-  const holes = boss ? scene.add.graphics() : undefined;
+  // Made before the body so the worm crawls over its own holes and splats.
+  const marks = boss ? scene.add.graphics() : undefined;
   const parts = cells.map((c) => {
     const p = tileCenter(c);
     const sprite = scene.add.rectangle(p.x, p.y, style.segmentSize, style.segmentSize, style.bodyColor) as unknown as EnemySprite;
@@ -739,7 +759,7 @@ export function spawnWorm(
   // A worm still coiled on one cell (a hatchling) heads off any way; it turns if that is blocked.
   const heading = (cells.length > 1 && DIRECTIONS.find((d) => sameCell(cells[0], { x: cells[1].x + STEP[d].x, y: cells[1].y + STEP[d].y }))) || 'right';
   const rng = createRng(Math.floor(Math.random() * 2 ** 31));
-  const shared: WormBossShared | undefined = holes
+  const shared: WormBossShared | undefined = marks
     ? {
         maxHp: cells.length * style.segmentHp,
         hp: cells.length * style.segmentHp,
@@ -750,7 +770,7 @@ export function spawnWorm(
         rampageRound: 0,
         nextRampageAt: 0,
         ground: scene.add.graphics().setDepth(1),
-        holes,
+        marks,
         holeCells: [],
         brood: [],
         lobs: [],

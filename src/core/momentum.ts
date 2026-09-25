@@ -33,7 +33,8 @@ export interface MomentumInput {
 
 /** Advances momentum by one frame. */
 export function stepMomentum(m: Momentum | undefined, input: MomentumInput, rules: MomentumRules): Momentum {
-  const { dir, time } = input;
+  const { time } = input;
+  const dir = { x: input.dir.x, y: input.dir.y }; // a copy: callers may reuse their vector
   const moving = dir.x !== 0 || dir.y !== 0;
   if (input.stunned) return { speed: 0, built: 0, time, dir: m?.dir ?? dir };
   if (input.dashing) return { speed: rules.topSpeed, built: rules.topSpeed, time, dir: moving ? dir : (m?.dir ?? dir) };

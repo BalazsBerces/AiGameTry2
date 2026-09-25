@@ -8,6 +8,7 @@ import {
   breakOut,
   canAttack,
   halfPools,
+  inLastStand,
   inPhaseTwo,
   lungeCracks,
   lungeFrom,
@@ -271,6 +272,14 @@ describe('worm boss splitting', () => {
 
   it('shares the hit points it has left between the halves by their length', () => {
     expect(halfPools(38, [10, 9])).toEqual([20, 18]);
+  });
+});
+
+describe('worm boss last stand', () => {
+  it('begins only once it has split and one half is left', () => {
+    expect(inLastStand(false, 1)).toBe(false);
+    expect(inLastStand(true, 2)).toBe(false);
+    expect(inLastStand(true, 1)).toBe(true);
   });
 });
 

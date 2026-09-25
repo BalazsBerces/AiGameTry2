@@ -58,6 +58,9 @@ export function absorbHit(pool: number, damage: number): { pool: number; breaks:
   return { pool: left, breaks: left === 0 };
 }
 
+/** Its last stand: split, and one half of it left, which rampages without end. */
+export const inLastStand = (split: boolean, halvesLeft: number) => split && halvesLeft === 1;
+
 /** Phase two: the whole worm, all its pieces together, is down to half its hit points. */
 export const inPhaseTwo = (hp: number, maxHp: number) => hp <= maxHp / 2;
 

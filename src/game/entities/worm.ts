@@ -10,6 +10,7 @@ import {
   breakOut,
   canAttack,
   halfPools,
+  inLastStand,
   inPhaseTwo,
   lungeCracks,
   planLunge,
@@ -96,7 +97,7 @@ interface WormBossShared {
 
 interface BossPiece {
   shared: WormBossShared;
-  /** Phase two: a wave of spit running down the body, from where each segment lies as it fires. */
+  /** Its last stand: a wave of spit running down the body, from where each segment lies as it fires. */
   spit?: { start: number; shots: SpitShot[]; fired: number };
   /** When it next drops an egg (core/wormBrood); off while it can't. */
   nextEggAt?: number;
@@ -110,9 +111,11 @@ interface BossPiece {
 /** A rampage: charge up, then lunges with a pause between each; over as the last one ends. */
 interface Rampage {
   phase: 'charging' | 'lunging' | 'pausing' | 'over';
-  /** When a charge, pause or daze ends. */
+  /** When a charge or pause ends. */
   until: number;
   lunges: number;
+  /** Its last stand: it never stops lunging, and spits after each lunge through the walls. */
+  endless?: boolean;
   lunge?: Lunge;
   /** The next lunge, planned as the pause before it starts; null if it has nowhere to go. */
   next?: Lunge | null;
@@ -236,6 +239,12 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
   /** Starts a rampage round on the shared clock; this piece joins it if it is long enough. */
   const joinRampage = (ctx: EnemyContext, b: BossPiece) => {
     const { shared } = b;
+    // The last half left rampages without end, from wherever it is in the rampage now.
+    if (inLastStand(b.pool !== undefined, shared.pieces)) {
+      b.rampage ??= { phase: 'charging', until: ctx.time + WORM_BOSS.rampageChargeMs, lunges: 0 };
+      b.rampage.endless = true;
+      return;
+    }
     if (shared.nextRampageAt === 0) shared.nextRampageAt = ctx.time + WORM_BOSS.rampageEveryMs;
     if (ctx.time >= shared.nextRampageAt) {
       shared.rampageRound++;
@@ -266,7 +275,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
     r.lunge = undefined;
     r.crack = undefined;
     r.lunges++;
-    const last = r.lunges >= WORM_BOSS.rampageLunges;
+    const last = !r.endless && r.lunges >= WORM_BOSS.rampageLunges;
     r.phase = last ? 'over' : 'pausing';
     r.until = ctx.time + (last ? 0 : WORM_BOSS.lungePauseMs);
     if (!last) planNext(ctx, b, r);
@@ -301,8 +310,8 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
         drawLungeCrack(ctx, b, r);
         return false;
       }
-      // Phase two: out of the walls and stretched along its lane, it spits down its whole length.
-      if (r.lunge!.wrap && inPhaseTwo(b.shared.hp, b.shared.maxHp)) {
+      // Its last stand: out of the walls and stretched along its lane, it spits down its whole length.
+      if (r.lunge!.wrap && r.endless) {
         b.spit = { start: ctx.time, shots: spitWave(state.worm.segments, state.worm.heading), fired: 0 };
       }
       endLunge(ctx, b, r);

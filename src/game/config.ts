@@ -4,9 +4,9 @@ import type { Passive } from '../core/weaponModel';
 export const TUNING = {
   tile: 48,
   playerSpeed: 220,
-  playerSize: 26,
+  playerSize: 22,
   /** What hurts the player only counts inside this smaller circle (core/hurtbox): room to slip between two shots a tile apart. */
-  playerHurtRadius: 11,
+  playerHurtRadius: 9,
   roomSlideMs: 280,
   shotSpeed: 420,
   shotRadius: 7,

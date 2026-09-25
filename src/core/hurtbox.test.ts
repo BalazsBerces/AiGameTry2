@@ -13,7 +13,7 @@ describe('player hurtbox', () => {
     // Shots 6px round, from tile centres 48px apart; the player midway between them.
     const tile = 48;
     for (const dx of [-tile / 2, tile / 2]) {
-      expect(hurtboxMeetsCircle(player, 11, { x: player.x + dx, y: player.y }, 6)).toBe(false);
+      expect(hurtboxMeetsCircle(player, 9, { x: player.x + dx, y: player.y }, 6)).toBe(false);
     }
   });
 

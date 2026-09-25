@@ -11,6 +11,8 @@ export interface Momentum {
   speed: number;
   /** When this frame was stepped. */
   time: number;
+  /** The direction last moved in. */
+  dir: { x: number; y: number };
 }
 
 export interface MomentumInput {
@@ -22,8 +24,10 @@ export interface MomentumInput {
 /** Advances momentum by one frame. */
 export function stepMomentum(m: Momentum | undefined, input: MomentumInput, rules: MomentumRules): Momentum {
   const { dir, time } = input;
-  if (dir.x === 0 && dir.y === 0) return { speed: 0, time };
-  if (!m || m.speed === 0) return { speed: rules.startSpeed, time };
+  if (dir.x === 0 && dir.y === 0) return { speed: 0, time, dir: m?.dir ?? dir };
+  // Turns up to 90° keep the speed; anything sharper is a reversal and starts over.
+  const reversed = m && dir.x * m.dir.x + dir.y * m.dir.y < 0;
+  if (!m || m.speed === 0 || reversed) return { speed: rules.startSpeed, time, dir };
   const perMs = (rules.topSpeed - rules.startSpeed) / rules.rampMs;
-  return { speed: Math.min(rules.topSpeed, m.speed + perMs * (time - m.time)), time };
+  return { speed: Math.min(rules.topSpeed, m.speed + perMs * (time - m.time)), time, dir };
 }

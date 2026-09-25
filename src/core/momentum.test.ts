@@ -3,6 +3,9 @@ import { stepMomentum, type Momentum, type MomentumRules } from './momentum';
 
 const RULES: MomentumRules = { startSpeed: 190, topSpeed: 260, rampMs: 800 };
 const RIGHT = { x: 1, y: 0 };
+const LEFT = { x: -1, y: 0 };
+const DOWN = { x: 0, y: 1 };
+const DOWN_RIGHT = { x: Math.SQRT1_2, y: Math.SQRT1_2 };
 const STILL = { x: 0, y: 0 };
 
 /** Hold `dir` from `from` to `to` in 16ms frames; returns the momentum at `to`. */
@@ -33,5 +36,20 @@ describe('momentum', () => {
   it('starts over after standing still', () => {
     const stopped = hold(hold(undefined, RIGHT, 1000, 2000), STILL, 2016, 3000);
     expect(stepMomentum(stopped, { dir: RIGHT, time: 3016 }, RULES).speed).toBe(190);
+  });
+
+  it('keeps its speed through a right-angle turn', () => {
+    const running = hold(undefined, RIGHT, 1000, 2000);
+    expect(stepMomentum(running, { dir: DOWN, time: 2016 }, RULES).speed).toBeCloseTo(260);
+  });
+
+  it('keeps its speed between diagonal and straight', () => {
+    const running = hold(undefined, DOWN_RIGHT, 1000, 2000);
+    expect(stepMomentum(running, { dir: RIGHT, time: 2016 }, RULES).speed).toBeCloseTo(260);
+  });
+
+  it('drops back to start speed on reversing', () => {
+    const running = hold(undefined, RIGHT, 1000, 2000);
+    expect(stepMomentum(running, { dir: LEFT, time: 2016 }, RULES).speed).toBe(190);
   });
 });

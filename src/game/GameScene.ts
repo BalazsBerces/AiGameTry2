@@ -9,6 +9,7 @@ import { crusherWakes, settleCrusher, slideCrusher, type Crusher } from '../core
 import { launchVelocity, resolveWeapon, type Weapon } from '../core/weaponModel';
 import { fan, ring } from '../core/bulletPatterns';
 import { isDashing, tryDash, type Dash } from '../core/dash';
+import { stepMomentum, type Momentum } from '../core/momentum';
 import {
   boomerangLeg,
   createHitLog,
@@ -249,6 +250,7 @@ export class GameScene extends Phaser.Scene {
   private orbs!: Phaser.Physics.Arcade.Group;
   /** The player's current or last dash, and the enemies an upgraded one has already hurt. */
   private dash?: Dash;
+  private momentum?: Momentum;
   private dashHits = new Set<Enemy>();
   /** The player's share of the stun (a glowshroom cloud): no moving or shooting until it wears off. */
   private playerStun: Stunnable = {};
@@ -361,6 +363,7 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.overlap(this.orbs, this.enemyShots, (_o, shot) => shot.destroy());
     this.physics.add.overlap(this.orbs, this.enemyParts, (_o, part) => this.orbHits(part as EnemySprite));
     this.dash = undefined;
+    this.momentum = undefined;
     for (const key of ['SPACE', 'SHIFT']) kb.addKey(key).on('down', () => this.requestDash());
 
     this.pickupGroup = this.physics.add.group();
@@ -391,7 +394,9 @@ export class GameScene extends Phaser.Scene {
       (this.move.right.isDown ? 1 : 0) - (this.move.left.isDown ? 1 : 0),
       (this.move.down.isDown ? 1 : 0) - (this.move.up.isDown ? 1 : 0),
     );
-    if (dir.lengthSq() > 0) dir.normalize().scale(TUNING.playerSpeed);
+    if (dir.lengthSq() > 0) dir.normalize();
+    this.momentum = stepMomentum(this.momentum, { dir, time }, TUNING.momentum);
+    dir.scale(this.momentum.speed);
     // The shared stun (core/stun) holds the player too: no moving, no shooting.
     const stunned = isStunned(this.playerStun, time);
     if (stunned) dir.set(0, 0);

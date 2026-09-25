@@ -69,9 +69,34 @@ export interface Encounter {
 const mirrored = (canvas: Canvas<Role>, cells: Cell[], tag: SpotTag): Spot[] =>
   cells.flatMap((c) => canvas.images(c)).map((cell) => ({ cell, tag }));
 
+/** A sketch's terrain letters: `#` stone, `%` breakable, `o` pit, `^` the theme's hazard, `*` its feature. */
+const SKETCH_ROLES: Record<string, Role> = { '#': 'cover', '%': 'breakable', o: 'pit', '^': 'hazard', '*': 'feature' };
+/** A sketch's spawn spots, on floor: `P` perch, `C` centre, `O` open, `L` lurk. */
+const SKETCH_TAGS: Record<string, SpotTag> = { P: 'perch', C: 'centre', O: 'open', L: 'lurk' };
+
+/**
+ * Paints a top-left quarter, drawn as rows of sketch letters (`.` floor), mirrored into the whole
+ * room, and returns its spots. `swap` turns a letter into another role (or floor) for a variant.
+ */
+function sketch(canvas: Canvas<Role>, quarter: readonly string[], swap: Partial<Record<string, Role | 'floor'>> = {}): Spot[] {
+  const spots: Spot[] = [];
+  quarter.forEach((row, y) =>
+    [...row].forEach((letter, x) => {
+      const role = letter in swap ? swap[letter] : SKETCH_ROLES[letter];
+      if (role) canvas.paint([{ x, y }], role);
+      if (SKETCH_TAGS[letter]) spots.push(...mirrored(canvas, [{ x, y }], SKETCH_TAGS[letter]));
+    }),
+  );
+  return spots;
+}
+
+/** Stone or breakable, a coin flip: cover that may or may not be shot away. */
+const coverOf = (rng: Rng, stone = 0.5): Role => (rng.next() < stone ? 'cover' : 'breakable');
+
 /**
  * The gauntlet, a long hall: ledges along the top and bottom walls behind a moat of pits, with
- * scattered cover breaking up the lane. Door columns (5, 20) and the side doors' row stay clear.
+ * cover and bushes breaking up the lane, and a walled pocket in the middle for the pack to hold.
+ * Door columns (5, 20) and the side doors' row stay clear.
  */
 const gauntlet: Layout = {
   id: 'gauntlet',
@@ -79,26 +104,21 @@ const gauntlet: Layout = {
   draw({ width, height, rng }) {
     const axes: MirrorAxis[] = ['vertical', 'horizontal'];
     const canvas = new Canvas<Role>(width, height, axes);
-    // The ledge spans the middle of each long wall, sealed at its ends.
-    const ledgeEnd = rng.int(8, 9);
-    canvas.paint([{ x: ledgeEnd, y: 0 }, ...Array.from({ length: 13 - ledgeEnd }, (_, i) => ({ x: ledgeEnd + i, y: 1 }))], 'pit');
-    const cover = rng.pick([[{ x: 3, y: 2 }], [{ x: 2, y: 2 }, { x: 8, y: 3 }], [{ x: 7, y: 2 }], [{ x: 3, y: 2 }, { x: 10, y: 3 }]]);
-    canvas.paint(cover, rng.next() < 0.5 ? 'breakable' : 'cover');
-    const posts = Array.from({ length: 11 - ledgeEnd }, (_, i) => ({ x: ledgeEnd + 2 + i, y: 0 }));
-    const spots = [
-      ...mirrored(canvas, posts, 'perch'),
-      ...mirrored(canvas, [{ x: 12, y: 3 }, { x: 12, y: 2 }, { x: 11, y: 3 }], 'centre'),
-      ...mirrored(canvas, [{ x: 5, y: 3 }, { x: 8, y: 2 }], 'open'),
-      ...mirrored(canvas, [{ x: 0, y: 0 }, { x: 1, y: 0 }], 'lurk'),
-    ];
+    // prettier-ignore
+    const spots = sketch(canvas, [
+      'LL.......oPPP',
+      '..#.....ooooo',
+      '.O.#.%..O..#C',
+      '....O..#O...C',
+    ], { '%': coverOf(rng, 0.3) });
     return { roles: canvas.tiles, spots, symmetry: { axes } };
   },
 };
 
 /**
- * The island hall: a ring of pits in the middle of the hall around an island nobody can walk
- * to, with lanes along both long walls; cover (and sometimes the theme's hazard) breaks up the
- * ends. Nothing touches a door approach, so it fits every door set.
+ * The island hall: a ring of pits in the middle of the hall around a long island of turret posts
+ * nobody can walk to, with lanes along both long walls broken up by cover (and sometimes the
+ * theme's hazard). Nothing touches a door approach, so it fits every door set.
  */
 const islandHall: Layout = {
   id: 'islandHall',
@@ -106,25 +126,20 @@ const islandHall: Layout = {
   draw({ width, height, rng }) {
     const axes: MirrorAxis[] = ['vertical', 'horizontal'];
     const canvas = new Canvas<Role>(width, height, axes);
-    // A quarter of the ring: along row 2 to the middle, then down its end; the island is row 3 inside it.
-    const from = rng.int(9, 10);
-    canvas.paint([...Array.from({ length: 13 - from }, (_, i) => ({ x: from + i, y: 2 })), { x: from, y: 3 }], 'pit');
-    canvas.paint(rng.pick([[{ x: 6, y: 1 }], [{ x: 6, y: 2 }], [{ x: 4, y: 2 }, { x: 7, y: 1 }]]), rng.next() < 0.5 ? 'breakable' : 'cover');
-    if (rng.next() < 0.6) canvas.paint(rng.pick([[{ x: 3, y: 1 }], [{ x: 7, y: 3 }], [{ x: 3, y: 1 }, { x: 7, y: 3 }]]), 'hazard');
-    const island = Array.from({ length: 12 - from }, (_, i) => ({ x: from + 1 + i, y: 3 }));
-    const spots = [
-      ...mirrored(canvas, island, 'perch'),
-      ...mirrored(canvas, [{ x: 11, y: 1 }, { x: 12, y: 1 }], 'centre'),
-      ...mirrored(canvas, [{ x: 4, y: 3 }, { x: 7, y: 0 }], 'open'),
-      ...mirrored(canvas, [{ x: 0, y: 0 }, { x: 0, y: 1 }], 'lurk'),
-    ];
+    // prettier-ignore
+    const spots = sketch(canvas, [
+      'LL.....#O....',
+      '..#.^....#.CC',
+      '...O...oooooo',
+      '..%#...oPPPPP',
+    ], { '%': coverOf(rng), '^': rng.next() < 0.6 ? 'hazard' : 'floor' });
     return { roles: canvas.tiles, spots, symmetry: { axes } };
   },
 };
 
 /**
- * The descent, a tall room down three terraces: two drops of pits cross the room, crossed only at
- * stairs (the gaps), with a landing between them and posts in the corners covering the stairs.
+ * The descent, a tall room down three terraces: two drops of pits cross the room, each crossed only
+ * at two narrow stairs, with a landing between them and posts in the corners covering the stairs.
  * Doors sit on the terraces, clear of the drops.
  */
 const descent: Layout = {
@@ -133,17 +148,16 @@ const descent: Layout = {
   draw({ width, height, rng }) {
     const axes: MirrorAxis[] = ['vertical', 'horizontal'];
     const canvas = new Canvas<Role>(width, height, axes);
-    // Drops on rows 4 and 9 (mirror images); stairs in the middle or down both sides.
-    const centreStairs = rng.next() < 0.5;
-    canvas.paint((centreStairs ? [0, 1, 2, 3, 4] : [2, 3, 4, 5, 6]).map((x) => ({ x, y: 4 })), 'pit');
-    if (rng.next() < 0.5) canvas.paint([{ x: rng.int(3, 4), y: 2 }], rng.next() < 0.5 ? 'breakable' : 'cover');
-    const landing = centreStairs ? [{ x: 2, y: 6 }, { x: 3, y: 6 }] : [{ x: 5, y: 6 }, { x: 4, y: 6 }];
-    const spots = [
-      ...mirrored(canvas, [{ x: 0, y: 0 }, { x: 1, y: 0 }], 'perch'),
-      ...mirrored(canvas, landing, 'centre'),
-      ...mirrored(canvas, [{ x: 2, y: 2 }, { x: 5, y: 2 }], 'open'),
-      ...mirrored(canvas, [{ x: 0, y: 6 }, { x: 0, y: 5 }], 'lurk'),
-    ];
+    // prettier-ignore
+    const spots = sketch(canvas, [
+      'PP.....',
+      '..#..#.',
+      '....O..',
+      '.%.#...',
+      'oooo.oo',
+      'L....C.',
+      'L.O.#.C',
+    ], { '%': coverOf(rng, 0.3) });
     return { roles: canvas.tiles, spots, symmetry: { axes } };
   },
 };
@@ -213,9 +227,9 @@ const ambush: Layout = {
 };
 
 /**
- * The colonnade, a wide hall: two rows of pillars run its length, leaving a lane down the middle
- * and aisles along the walls, with posts between the pillars and the theme's hazard now and then
- * in the aisles. Door columns (5, 20) and the side doors' row stay clear.
+ * The colonnade, a wide hall: two ranks of pillars run its length, meeting in a block at the
+ * centre, leaving a lane down the middle and aisles along the walls, with posts in the aisles and
+ * the theme's hazard now and then. Door columns (5, 20) and the side doors' row stay clear.
  */
 const colonnade: Layout = {
   id: 'colonnade',
@@ -223,22 +237,20 @@ const colonnade: Layout = {
   draw({ width, height, rng }) {
     const axes: MirrorAxis[] = ['vertical', 'horizontal'];
     const canvas = new Canvas<Role>(width, height, axes);
-    const pillars = rng.pick([[3, 7, 11], [2, 8, 11], [3, 9]]);
-    canvas.paint(pillars.map((x) => ({ x, y: 2 })), rng.next() < 0.6 ? 'cover' : 'breakable');
-    if (rng.next() < 0.5) canvas.paint([{ x: rng.pick([9, 10]), y: 0 }], 'hazard');
-    const spots = [
-      ...mirrored(canvas, [{ x: 7, y: 1 }, { x: 11, y: 1 }], 'perch'),
-      ...mirrored(canvas, [{ x: 12, y: 3 }, { x: 10, y: 3 }], 'centre'),
-      ...mirrored(canvas, [{ x: 5, y: 3 }, { x: 8, y: 3 }, { x: 9, y: 1 }], 'open'),
-      ...mirrored(canvas, [{ x: 0, y: 0 }, { x: 1, y: 0 }], 'lurk'),
-    ];
+    // prettier-ignore
+    const spots = sketch(canvas, [
+      'LLO......^...',
+      '...P...P...P.',
+      '..#..#..#..##',
+      '...O..OC..C.C',
+    ], { '#': coverOf(rng, 0.6) });
     return { roles: canvas.tiles, spots, symmetry: { axes } };
   },
 };
 
 /**
- * The cloister, a tall room round a solid centre block: a ring of corridor runs all the way round
- * it, with a pillar or two in the side walks. Doors sit mid-wall, clear of the block.
+ * The cloister, a tall room round a big centre block (or sunken pit): a ring of corridor runs all
+ * the way round it, with pillars in the walks. Doors sit mid-wall, clear of the block.
  */
 const cloister: Layout = {
   id: 'cloister',
@@ -246,27 +258,25 @@ const cloister: Layout = {
   draw({ width, height, rng }) {
     const axes: MirrorAxis[] = ['vertical', 'horizontal'];
     const canvas = new Canvas<Role>(width, height, axes);
-    // The block's top-left quarter: 3 or 5 wide, 4 or 6 tall in all.
-    const block = rng.pick([
-      [{ x: 5, y: 5 }, { x: 6, y: 5 }, { x: 5, y: 6 }, { x: 6, y: 6 }],
-      [{ x: 4, y: 5 }, { x: 5, y: 5 }, { x: 6, y: 5 }, { x: 4, y: 6 }, { x: 5, y: 6 }, { x: 6, y: 6 }],
-      [{ x: 5, y: 4 }, { x: 6, y: 4 }, { x: 5, y: 5 }, { x: 6, y: 5 }, { x: 5, y: 6 }, { x: 6, y: 6 }],
-    ]);
-    canvas.paint(block, rng.next() < 0.7 ? 'cover' : 'pit');
-    if (rng.next() < 0.6) canvas.paint([{ x: 2, y: 4 }], rng.next() < 0.5 ? 'breakable' : 'hazard');
-    const spots = [
-      ...mirrored(canvas, [{ x: 1, y: 0 }, { x: 0, y: 5 }], 'perch'),
-      ...mirrored(canvas, [{ x: 3, y: 6 }, { x: 6, y: 3 }], 'centre'),
-      ...mirrored(canvas, [{ x: 3, y: 2 }, { x: 2, y: 6 }], 'open'),
-      ...mirrored(canvas, [{ x: 0, y: 0 }, { x: 0, y: 6 }], 'lurk'),
-    ];
+    // `B` is the centre block: mostly solid stone, sometimes a sunken pit.
+    // prettier-ignore
+    const spots = sketch(canvas, [
+      'LP.....',
+      '...O...',
+      '..#....',
+      '...C..C',
+      'P.#.BBB',
+      'L...BBB',
+      'L.%OBBB',
+    ], { B: rng.next() < 0.7 ? 'cover' : 'pit', '%': rng.next() < 0.5 ? 'breakable' : 'hazard' });
     return { roles: canvas.tiles, spots, symmetry: { axes } };
   },
 };
 
 /**
- * The crossing, a tall room split across the middle by a chasm with a bridge (or two) over it:
- * whoever holds the far side holds the bridge. Doors sit well clear of the drop.
+ * The crossing, a tall room split across the middle by a chasm with one wide bridge over it,
+ * posts on both banks covering it: whoever holds the far side holds the bridge. Doors sit well
+ * clear of the drop.
  */
 const crossing: Layout = {
   id: 'crossing',
@@ -274,16 +284,16 @@ const crossing: Layout = {
   draw({ width, height, rng }) {
     const axes: MirrorAxis[] = ['vertical', 'horizontal'];
     const canvas = new Canvas<Role>(width, height, axes);
-    // The drop fills rows 6 and 7; one wide bridge in the middle, or two narrow ones at the sides.
-    const drop = rng.next() < 0.5 ? [0, 1, 2, 3, 4] : [2, 3, 4, 5, 6];
-    canvas.paint(drop.map((x) => ({ x, y: 6 })), 'pit');
-    if (rng.next() < 0.5) canvas.paint([{ x: 3, y: 3 }], rng.next() < 0.5 ? 'cover' : 'breakable');
-    const spots = [
-      ...mirrored(canvas, [{ x: 0, y: 5 }, { x: 1, y: 5 }, { x: 6, y: 4 }], 'perch'),
-      ...mirrored(canvas, [{ x: 6, y: 5 }, { x: 5, y: 5 }, { x: 1, y: 5 }], 'centre'),
-      ...mirrored(canvas, [{ x: 4, y: 3 }, { x: 2, y: 4 }, { x: 5, y: 2 }], 'open'),
-      ...mirrored(canvas, [{ x: 0, y: 0 }, { x: 1, y: 0 }], 'lurk'),
-    ];
+    // prettier-ignore
+    const spots = sketch(canvas, [
+      'LL.....',
+      '..#....',
+      '....O..',
+      '.#..%..',
+      '.O..#..',
+      'PP..^CC',
+      'ooooo..',
+    ], { '%': coverOf(rng, 0.3), '^': rng.next() < 0.6 ? 'hazard' : 'floor' });
     return { roles: canvas.tiles, spots, symmetry: { axes } };
   },
 };

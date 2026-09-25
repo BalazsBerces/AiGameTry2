@@ -172,6 +172,35 @@ describe('enemy counts by room area', () => {
   });
 });
 
+describe('dense big layouts', () => {
+  // The most any encounter asks of a tag at its least, scaled by area: ledge sentries, siege and
+  // knights want 2 perches / centres, prowlers, ambushes and hauntings 2 lurkers, slime pits 3 on the open.
+  const NEED: Record<string, Record<string, number>> = {
+    '2x1': { perch: 3, centre: 3, open: 5, lurk: 3 },
+    '1x2': { perch: 3, centre: 3, open: 5, lurk: 3 },
+  };
+  const cases = LAYOUTS.flatMap((l) => l.shapes.filter((s) => s in NEED).map((shape) => [l.id, shape] as const));
+
+  it.each(cases)('%s (%s) is dense, with room for every scaled cast even with every door open', (id, shape) => {
+    const layout = LAYOUTS.find((l) => l.id === id)!;
+    const { width, height } = roomSize('normal', shape);
+    const doors = doorsFor(shape, slots(shape));
+    const outside = outsideRoom(shape, width, height);
+    for (let seed = 0; seed < 20; seed++) {
+      const drawn = layout.draw({ width, height, doors, rng: createRng(seed), shape });
+      const inside = drawn.roles.flatMap((row, y) => row.filter((_, x) => !outside({ x, y })));
+      const terrain = inside.filter((r) => r !== 'floor').length;
+      expect(terrain / inside.length, `${id} seed ${seed}`).toBeGreaterThanOrEqual(0.12);
+      const usable = drawn.spots.filter(
+        (s) => !outside(s.cell) && drawn.roles[s.cell.y][s.cell.x] === 'floor' && !doors.some((d) => Math.abs(d.cell.x - s.cell.x) <= 1 && Math.abs(d.cell.y - s.cell.y) <= 1),
+      );
+      for (const [tag, least] of Object.entries(NEED[shape])) {
+        expect(usable.filter((s) => s.tag === tag).length, `${id} seed ${seed} ${tag}`).toBeGreaterThanOrEqual(least);
+      }
+    }
+  });
+});
+
 describe('worms in big rooms', () => {
   it.each([
     ['2x1', 6],

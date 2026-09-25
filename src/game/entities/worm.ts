@@ -626,6 +626,8 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
   const enemy: Enemy = {
     parts: state.parts,
     collidesWithTerrain: false,
+    // The boss's pieces are one body: their shared fight state stands for it.
+    hitGroup: state.boss?.shared,
     invulnerable: () => !!state.boss?.dying || !canBeHurt(state.boss?.moment, scene.time.now),
     // Blowing apart, it no longer hurts on touch.
     harmless: () => !!state.boss?.dying,

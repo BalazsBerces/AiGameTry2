@@ -71,6 +71,7 @@ import type { Stunnable } from '../core/stun';
 import { createBat } from './entities/bat';
 import { softPush } from '../core/softPush';
 import { updateGoblinPack } from '../core/forestCast';
+import { createFalloff, type Falloff } from '../core/multiHit';
 
 type Keys = Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
 type PhysicsArc = Phaser.GameObjects.Arc & { body: Phaser.Physics.Arcade.Body };
@@ -81,6 +82,8 @@ const DEPTH = { player: 10 };
 interface Flight {
   mods: ShotMods;
   hits: HitLog;
+  /** Each leg of its flight is one attack for the falloff on many-part bodies (core/multiHit). */
+  falloff: Record<Leg, Falloff>;
   born: number;
   speed: number;
   boomerang?: Weapon['boomerang'];
@@ -534,6 +537,7 @@ export class GameScene extends Phaser.Scene {
           bouncesLeft: weapon.bounces,
         },
         hits: createHitLog(),
+        falloff: { out: createFalloff(), back: createFalloff() },
         born: time,
         speed,
         boomerang: weapon.boomerang,
@@ -942,8 +946,18 @@ export class GameScene extends Phaser.Scene {
     const { damages, continues } = meetEnemy(flight?.mods ?? PLAIN_SHOT, shielded);
     const at = { x: shot.x, y: shot.y };
     if (!continues) shot.destroy();
-    if (damages) this.strike(part, damage);
+    if (damages) this.strike(part, flight ? this.fallOff(flight.falloff[leg], part, damage) : damage);
     else this.clink(at.x, at.y);
+  }
+
+  /**
+   * `full` damage to `part` after the attack's falloff on its enemy's hit group (core/multiHit).
+   * A part that can't be hurt right now (inside a wall, a half blowing apart) doesn't count toward it.
+   */
+  private fallOff(falloff: Falloff, part: EnemySprite, full: number): number {
+    const enemy = this.enemies.find((e) => e.parts.includes(part));
+    if (!enemy?.hitGroup || !part.body.enable || enemy.invulnerable?.(part)) return full;
+    return falloff.damage(enemy.hitGroup, full);
   }
 
   /**

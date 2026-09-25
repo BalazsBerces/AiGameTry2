@@ -8,10 +8,10 @@ import {
   snuffCandle,
   updateWitch,
   type Witch,
-} from '../../core/enemies/candleWitch';
-import type { Cell } from '../../core/map/floorGenerator';
-import { COLORS, TUNING } from '../config';
-import { flash, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
+} from '../../../core/bosses/candleWitch';
+import type { Cell } from '../../../core/map/floorGenerator';
+import { COLORS, TUNING } from '../../config';
+import { flash, type Enemy, type EnemyContext, type EnemySprite } from '../enemy';
 
 /** Soft round brushes the dark is erased with: a flame's glow and the player's own small circle of sight. */
 const LIGHTS = { flame: { key: 'witch-light-flame', tiles: 3.4 }, player: { key: 'witch-light-player', tiles: 1.5 } };

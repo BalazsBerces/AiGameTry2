@@ -1,4 +1,4 @@
-import { beats, fan, ring, spiral } from '../bulletPatterns';
+import { beats, fan, ring, spiral } from './bulletPatterns';
 import type { Cell } from '../map/floorGenerator';
 import type { Tile } from '../rooms/roomGenerator';
 import type { Rng } from '../rng';

@@ -1,4 +1,4 @@
-import { ring } from '../bulletPatterns';
+import { ring } from './bulletPatterns';
 import { DIRECTIONS, STEP, type Cell, type Direction } from '../map/floorGenerator';
 import type { Door, Tile } from '../rooms/roomGenerator';
 import { isWalkable } from '../map/tiles';

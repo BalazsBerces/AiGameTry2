@@ -7,7 +7,7 @@ import type { Rng } from '../rng';
 import { themeForFloor } from '../map/themes';
 import { isWalkable } from '../map/tiles';
 import type { Crusher } from '../enemies/crusher';
-import { candleCells } from '../enemies/candleWitch';
+import { candleCells } from '../bosses/candleWitch';
 import { composeRoom, composes, type Spot } from './composer';
 import { addFiller } from './filler';
 import { dressRoom, type Decor, type Region } from './dressing';

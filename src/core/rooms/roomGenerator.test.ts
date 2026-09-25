@@ -8,7 +8,7 @@ import { AXIS_DIRECTIONS, slideCrusher } from '../enemies/crusher';
 import { validateRoom } from './roomValidator';
 import { GLOWSHROOM_RADIUS } from '../enemies/glowshroom';
 import { themeForFloor } from '../map/themes';
-import { candleCells } from '../enemies/candleWitch';
+import { candleCells } from '../bosses/candleWitch';
 
 const ALL_DOORS = ['up', 'down', 'left', 'right'] as const;
 const room = (seed: number, doors: readonly (typeof ALL_DOORS)[number][] = ALL_DOORS) =>

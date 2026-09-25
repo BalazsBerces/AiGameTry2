@@ -7,7 +7,7 @@ import { roomLooks, roomThemeById, type DecorKind } from '../../core/rooms/roomT
 import { blocksShots, blocksSight, hurtsOnTouch, isWalkable } from '../../core/map/tiles';
 import { crusherWakes, settleCrusher, slideCrusher, type Crusher } from '../../core/enemies/crusher';
 import { launchVelocity, resolveWeapon, type Weapon } from '../../core/player/weaponModel';
-import { fan, ring } from '../../core/bulletPatterns';
+import { fan, ring } from '../../core/bosses/bulletPatterns';
 import { isDashing, tryDash, type Dash } from '../../core/player/dash';
 import { stepMomentum, type Momentum } from '../../core/player/momentum';
 import type { BossBarSnapshot } from '../../core/bosses/bossBar';
@@ -43,8 +43,8 @@ import {
 } from '../../core/map/world';
 import { COLORS, PASSIVE_NAMES, TUNING } from '../config';
 import type { Enemy, EnemyContext, EnemySprite } from '../entities/enemy';
-import { createIronMaidenBoss } from '../entities/ironMaiden';
-import { createCandleWitch, DARK_DEPTH } from '../entities/candleWitch';
+import { createIronMaidenBoss } from '../entities/bosses/ironMaiden';
+import { createCandleWitch, DARK_DEPTH } from '../entities/bosses/candleWitch';
 import { createTurret } from '../entities/turret';
 import { BOSS_WORM, championWorm, REGULAR_WORM, spawnWorm } from '../entities/bosses/worm';
 import { createZombie } from '../entities/zombie';

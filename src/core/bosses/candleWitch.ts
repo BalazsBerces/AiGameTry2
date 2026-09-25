@@ -1,4 +1,4 @@
-import { beats, fan, ring, spiral } from '../bulletPatterns';
+import { beats, fan, ring, spiral } from './bulletPatterns';
 import type { Cell } from '../map/floorGenerator';
 
 /** Candle Witch numbers; placeholders for playtest tuning. */

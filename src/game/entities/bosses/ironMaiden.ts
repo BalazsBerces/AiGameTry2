@@ -1,9 +1,9 @@
 import type Phaser from 'phaser';
-import { stepDownhill } from '../../core/map/grid';
-import { canHurtMaiden, createIronMaiden, IRON_MAIDEN, spikeAt, updateIronMaiden, type IronMaiden } from '../../core/enemies/ironMaiden';
-import { createRng } from '../../core/rng';
-import { COLORS, TUNING } from '../config';
-import { flash, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
+import { stepDownhill } from '../../../core/map/grid';
+import { canHurtMaiden, createIronMaiden, IRON_MAIDEN, spikeAt, updateIronMaiden, type IronMaiden } from '../../../core/bosses/ironMaiden';
+import { createRng } from '../../../core/rng';
+import { COLORS, TUNING } from '../../config';
+import { flash, type Enemy, type EnemyContext, type EnemySprite } from '../enemy';
 
 /**
  * Floor 3 boss, a walking torture device (one of the floor's pool): it walks at the player shut,

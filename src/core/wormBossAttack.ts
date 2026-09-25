@@ -28,6 +28,8 @@ export const WORM_BOSS = {
   rampageChargeMs: 1200,
   rampageLunges: 5,
   lungeStepMs: 55,
+  /** The warning crack flows out along a lunge's path one cell per this long, from the start of the pause before it. */
+  crackStepMs: 25,
   lungePauseMs: 300,
   rampageDazeMs: 1000,
   /** A lunge into rock takes this share of its hit points. */
@@ -241,11 +243,12 @@ export function bossCrawl(worm: Worm, tiles: Tile[][], rng: Rng, turnChance?: nu
 }
 
 /**
- * How far a lunge's warning crack has flowed out of the head, `progress` (0 to 1) through the
- * pause before it: the cells it has crossed whole, and the one it is part way through (`share`).
+ * How far a lunge's warning crack has flowed out of the head `elapsedMs` after it started (as the
+ * pause before the lunge began): the cells it has crossed whole, and the one it is part way
+ * through (`share`). It flows on at a steady pace through the lunge, ahead of the worm.
  */
-export function lungeCracks(lunge: Lunge, progress: number): { whole: Cell[]; tip?: { cell: Cell; share: number } } {
-  const reach = lunge.path.length * Math.min(1, Math.max(0, progress));
+export function lungeCracks(lunge: Lunge, elapsedMs: number): { whole: Cell[]; tip?: { cell: Cell; share: number } } {
+  const reach = Math.min(lunge.path.length, Math.max(0, elapsedMs / WORM_BOSS.crackStepMs));
   const whole = lunge.path.slice(0, Math.floor(reach));
   const cell = lunge.path[whole.length];
   return { whole, tip: cell && { cell, share: reach - whole.length } };

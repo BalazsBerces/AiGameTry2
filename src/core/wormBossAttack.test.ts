@@ -203,16 +203,18 @@ describe('worm boss rampage lunges through the walls', () => {
 describe('worm boss lunge warning', () => {
   const lunge = lungeFrom(grid(['......', '......']), [], { x: 0, y: 0 }, 'right', createRng(0));
 
-  it('flows out of the head along the path, reaching its end just as it lunges', () => {
-    const n = lunge.path.length;
-    expect(n).toBeGreaterThan(4);
+  it('flows out of the head along the path at a steady pace, well ahead of the lunge', () => {
+    const { crackStepMs, lungeStepMs } = WORM_BOSS;
+    expect(crackStepMs).toBeLessThan(lungeStepMs);
     expect(lungeCracks(lunge, 0)).toEqual({ whole: [], tip: { cell: lunge.path[0], share: 0 } });
-    // A quarter of the way through a cell, halfway along.
-    const half = lungeCracks(lunge, (Math.floor(n / 2) + 0.25) / n);
-    expect(half.whole).toEqual(lunge.path.slice(0, Math.floor(n / 2)));
-    expect(half.tip?.cell).toEqual(lunge.path[Math.floor(n / 2)]);
-    expect(half.tip?.share).toBeCloseTo(0.25);
-    expect(lungeCracks(lunge, 1)).toEqual({ whole: lunge.path, tip: undefined });
+    const partWay = lungeCracks(lunge, 3.25 * crackStepMs);
+    expect(partWay.whole).toEqual(lunge.path.slice(0, 3));
+    expect(partWay.tip?.cell).toEqual(lunge.path[3]);
+    expect(partWay.tip?.share).toBeCloseTo(0.25);
+  });
+
+  it('stops at the end of the path', () => {
+    expect(lungeCracks(lunge, 1000 * WORM_BOSS.crackStepMs)).toEqual({ whole: lunge.path, tip: undefined });
   });
 });
 

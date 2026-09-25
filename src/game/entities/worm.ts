@@ -111,8 +111,10 @@ interface Rampage {
   until: number;
   lunges: number;
   lunge?: Lunge;
-  /** The next lunge, planned as the pause before it starts and shown as a crack along its path; null if it has nowhere to go. */
+  /** The next lunge, planned as the pause before it starts; null if it has nowhere to go. */
   next?: Lunge | null;
+  /** The warning crack flowing along the next (then current) lunge's path, and when it set off. */
+  crack?: { lunge: Lunge; start: number };
 }
 
 interface WormState {
@@ -259,6 +261,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
   /** A lunge is over (it ran into something, or had nowhere to go): pause for the next, or lie dazed after the last. */
   const endLunge = (ctx: EnemyContext, b: BossPiece, r: Rampage) => {
     r.lunge = undefined;
+    r.crack = undefined;
     r.lunges++;
     const last = r.lunges >= WORM_BOSS.rampageLunges;
     r.phase = last ? 'dazed' : 'pausing';
@@ -269,25 +272,20 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
   /** Plans the next lunge at the start of the pause before it, at the player as they stand now. */
   const planNext = (ctx: EnemyContext, b: BossPiece, r: Rampage) => {
     r.next = planLunge(ctx.tiles, ctx.doors, state.worm, ctx.playerTile, b.shared.rng) ?? null;
+    // The lunge eats its path as it goes; the crack keeps its own.
+    if (r.next) r.crack = { lunge: { ...r.next, path: [...r.next.path] }, start: ctx.time };
   };
 
-  /** The warning before a lunge: its whole lane marked at once, and a crack flowing out of the head along it through the pause. */
+  /** The warning before a lunge: a crack flowing out of the head along its path, on ahead of the worm as it lunges. */
   const drawLungeCrack = (ctx: EnemyContext, b: BossPiece, r: Rampage) => {
-    const lunge = r.next;
-    if (!lunge) return;
-    const progress = 1 - (r.until - ctx.time) / WORM_BOSS.lungePauseMs;
+    if (!r.crack) return;
+    const { lunge, start } = r.crack;
     // Out of the far wall it runs the new way.
     const { wrap } = lunge;
     const exitAt = wrap ? lunge.path.findIndex((c) => sameCell(c, wrap.exit)) : Infinity;
-    const g = b.shared.ground;
-    const t = TUNING.tile;
-    for (const c of lunge.path) {
-      const p = ctx.tileCenter(c);
-      g.fillStyle(COLORS.rootTelegraph, 0.28).fillRect(p.x - t / 2 + 4, p.y - t / 2 + 4, t - 8, t - 8);
-      g.lineStyle(2, COLORS.rootTelegraph, 0.7).strokeRect(p.x - t / 2 + 4, p.y - t / 2 + 4, t - 8, t - 8);
-    }
     const along = (i: number) => (wrap && i >= exitAt ? wrap.heading : lunge.heading);
-    const { whole, tip } = lungeCracks(lunge, progress);
+    const { whole, tip } = lungeCracks(lunge, ctx.time - start);
+    const g = b.shared.ground;
     whole.forEach((c, i) => drawCrack(g, ctx.tileCenter(c), c, along(i)));
     if (tip) drawCrack(g, ctx.tileCenter(tip.cell), tip.cell, along(whole.length), tip.share);
   };
@@ -296,7 +294,10 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
   const updateRampage = (ctx: EnemyContext, b: BossPiece, r: Rampage): boolean => {
     const head = state.parts[0];
     if (r.phase === 'lunging') {
-      if (!dashOver(ctx, r.lunge!)) return false;
+      if (!dashOver(ctx, r.lunge!)) {
+        drawLungeCrack(ctx, b, r);
+        return false;
+      }
       endLunge(ctx, b, r);
     }
     // The first lunge is planned as the charge-up's last stretch begins, like a pause.
@@ -568,7 +569,8 @@ function carryRampage(r: Rampage, front: boolean): Rampage {
   const copy = (lunge: Lunge) => ({ ...lunge, path: [...lunge.path] });
   if (front) return { ...r, lunge: r.lunge && copy(r.lunge), next: r.next && copy(r.next) };
   // A back half plans its own lunges (straight away, if cut off mid-lunge).
-  return r.lunge ? { ...r, phase: 'pausing', until: 0, lunge: undefined, next: undefined } : { ...r, next: undefined };
+  const own = { next: undefined, crack: undefined };
+  return r.lunge ? { ...r, ...own, phase: 'pausing', until: 0, lunge: undefined } : { ...r, ...own };
 }
 
 export function spawnWorm(

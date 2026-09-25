@@ -260,9 +260,9 @@ describe('worm boss crawling out of a hole', () => {
 });
 
 describe('worm boss splitting', () => {
-  it('never splits until it has lost a fifth of its hit points', () => {
-    expect(splitsAt(41, 50, 10, 20)).toBe(false);
-    expect(splitsAt(40, 50, 10, 20)).toBe(true);
+  it('never splits until it has lost two fifths of its hit points', () => {
+    expect(splitsAt(61, 100, 10, 20)).toBe(false);
+    expect(splitsAt(60, 100, 10, 20)).toBe(true);
   });
 
   it('splits only from a blow to its middle, never its head or tail', () => {

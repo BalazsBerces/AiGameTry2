@@ -271,8 +271,8 @@ if (scenario === 'worm-boss') {
       for (let i = 0; i < ${times} && p; i++) s.damagePart(p, 1); })()`);
   // Segments inside the wall can't be hit: wait for the whole worm to be out.
   for (let i = 0; i < 40 && (await status()).hidden.some((n) => n > 0); i++) await page.waitForTimeout(250);
-  // Until it has lost a fifth of its hit points, hits only drain them; then a blow to its middle splits it.
-  await hitPart(0, 9, 9);
+  // Until it has lost two fifths of its hit points, hits only drain them; then a blow to its middle splits it.
+  await hitPart(0, 9, 39);
   console.log('shared pool drained, nothing broken yet', JSON.stringify(await status()));
   await hitPart(0, 9, 1);
   await hitPart(0, 4, 3);
@@ -1245,7 +1245,7 @@ if (scenario === 'worm-bar') {
   const boss = `${scene()}.enemies.filter((e) => e.parts[0]?.width === 38)`;
   const allOut = `${boss}.every((e) => e.parts.every((p) => p.body.enable))`;
   for (let i = 0; i < 80 && !(await page.evaluate(allOut)); i++) await page.waitForTimeout(100);
-  await page.evaluate(`(() => { const s = ${scene()}; const p = ${boss}[0].parts[9]; for (let i = 0; i < 11; i++) s.damagePart(p, 1); })()`);
+  await page.evaluate(`(() => { const s = ${scene()}; const p = ${boss}[0].parts[9]; for (let i = 0; i < 40; i++) s.damagePart(p, 1); })()`);
   await page.waitForTimeout(120);
   await shot('bar-03-tearing');
   await page.waitForTimeout(400);

@@ -10,7 +10,7 @@ export const WORM_BOSS = {
   /** Shorter split pieces only crawl. */
   minAttackLength: 4,
   /** It can't split until it has lost this share of its hit points. */
-  splitAfterShare: 0.2,
+  splitAfterShare: 0.4,
   /**
    * Rocks shaken loose as a lunge tunnels into a wall, on one cooldown shared by every piece: this
    * many, within this many tiles of the player, each marked by its shadow for `rockShadowMs`.
@@ -34,8 +34,6 @@ export const WORM_BOSS = {
   lungeRockShare: 0.5,
   /** The spit wave runs down the body one segment per this long. */
   spitGapMs: 25,
-  /** In phase two it steps this much more often (a factor on its step time). */
-  phaseTwoStepFactor: 0.65,
   /** Its last stand opens with a roar: it holds still this long and can't be hurt. */
   roarMs: 2000,
 };

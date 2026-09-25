@@ -469,8 +469,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
       state.boss?.shared.bodies.set(state, state.worm.segments);
       if (state.boss && updateBoss(ctx, state.boss)) return;
       if (ctx.time < state.nextStepAt) return;
-      const phaseTwo = state.boss && inPhaseTwo(state.boss.shared.hp, state.boss.shared.maxHp);
-      const stepMs = state.boss?.rampage?.lunge ? WORM_BOSS.lungeStepMs : style.stepMs * (phaseTwo ? WORM_BOSS.phaseTwoStepFactor : 1);
+      const stepMs = state.boss?.rampage?.lunge ? WORM_BOSS.lungeStepMs : style.stepMs;
       if (state.nextStepAt === 0) state.nextStepAt = ctx.time;
       state.nextStepAt = nextStepDue(state.nextStepAt, ctx.time, stepMs);
       // Snap to the cells reached, then glide toward the next ones over one step.

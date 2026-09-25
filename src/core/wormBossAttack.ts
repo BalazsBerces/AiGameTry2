@@ -18,7 +18,7 @@ export const WORM_BOSS = {
   rockfallCooldownMs: 6000,
   rockfallCount: 4,
   rockfallRadius: 3,
-  rockShadowMs: 1100,
+  rockShadowMs: 1200,
   /**
    * Every piece rampages together, first this long into the fight and then this long after each
    * rampage ends: it charges up, then lunges this many times, pausing between lunges.

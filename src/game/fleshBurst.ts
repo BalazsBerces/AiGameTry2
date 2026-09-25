@@ -44,12 +44,12 @@ function fling(scene: Phaser.Scene, at: Point, piece: Phaser.GameObjects.Shape, 
 
 /**
  * The worm boss's flesh bursting at `at`: chunks of its skin (`color`) and raw flesh fly, spin and bounce, dark
- * droplets spray, and a dark-red splat is left on `marks` (the fight's floor decals) for good.
+ * droplets spray, and a dark-red splat is left on `marks` (the fight's floor decals), if given, for good.
  */
-export function fleshBurst(scene: Phaser.Scene, at: Point, size: BurstSize, color: number, marks: Phaser.GameObjects.Graphics) {
+export function fleshBurst(scene: Phaser.Scene, at: Point, size: BurstSize, color: number, marks?: Phaser.GameObjects.Graphics) {
   const spec = TUNING.fleshBurst[size];
   const reach = spec.reachTiles * TUNING.tile;
-  splat(marks, at, (spec.splatTiles * TUNING.tile) / 2);
+  if (marks) splat(marks, at, (spec.splatTiles * TUNING.tile) / 2);
   for (let i = 0; i < spec.chunks; i++) {
     const w = rand(spec.chunkPx[0], spec.chunkPx[1]);
     // Skin and the raw flesh under it.

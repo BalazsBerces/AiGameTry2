@@ -36,6 +36,8 @@ export const WORM_BOSS = {
   spitGapMs: 25,
   /** The fight stops this long at the split: both halves hold still and can't be hurt. */
   splitStopMs: 1000,
+  /** A dying half pops from its tail to its head over this long; its twin holds still meanwhile. */
+  deathChainMs: 2000,
   /** Its last stand opens with a roar: it holds still this long and can't be hurt. */
   roarMs: 2000,
   /** Over its roar it wins back this share of the pool it had at the split. */
@@ -66,11 +68,13 @@ export function absorbHit(pool: number, damage: number): { pool: number; breaks:
 export const inLastStand = (split: boolean, halvesLeft: number) => split && halvesLeft === 1;
 
 /**
- * The moments a piece of the worm boss holds still for: the stop at its split (until `until`);
- * then, in its last stand, waiting to be out of the walls, roaring until `until`, and done.
+ * The moments a piece of the worm boss holds still for: the stop at its split, and the hold while
+ * its twin blows apart (each until `until`); then, in its last stand, waiting to be out of the
+ * walls, roaring until `until`, and done.
  */
 export type BossMoment =
   | { phase: 'splitStop'; until: number }
+  | { phase: 'deathHold'; until: number }
   | { phase: 'waiting' }
   | { phase: 'roaring'; until: number }
   | { phase: 'done' };
@@ -78,17 +82,21 @@ export type BossMoment =
 /** Both halves stop dead at the split, from `now`. */
 export const splitStop = (now: number): BossMoment => ({ phase: 'splitStop', until: now + WORM_BOSS.splitStopMs });
 
-/** Advances a piece's moments; it has none (`undefined`) outside them. */
+/**
+ * Advances a piece's moments; it has none (`undefined`) outside them. `deathHoldUntil` is when its
+ * twin's death chain ends, once its twin has died.
+ */
 export function momentTick(
   moment: BossMoment | undefined,
   now: number,
-  piece: { lastStand: boolean; aboveGround: boolean },
+  piece: { lastStand: boolean; aboveGround: boolean; deathHoldUntil?: number },
 ): BossMoment | undefined {
   let m = moment;
-  if (m?.phase === 'splitStop') {
+  if (m?.phase === 'splitStop' || m?.phase === 'deathHold') {
     if (now < m.until) return m;
     m = undefined;
   }
+  if (piece.deathHoldUntil !== undefined && now < piece.deathHoldUntil) return { phase: 'deathHold', until: piece.deathHoldUntil };
   if (!piece.lastStand) return m;
   if (!m || m.phase === 'waiting') return piece.aboveGround ? { phase: 'roaring', until: now + WORM_BOSS.roarMs } : { phase: 'waiting' };
   if (m.phase === 'roaring' && now >= m.until) return { phase: 'done' };
@@ -96,7 +104,8 @@ export function momentTick(
 }
 
 /** Holding still: it doesn't crawl or rampage, every segment sitting on its cell. */
-export const isFrozen = (m: BossMoment | undefined, now: number) => (m?.phase === 'splitStop' || m?.phase === 'roaring') && now < m.until;
+export const isFrozen = (m: BossMoment | undefined, now: number) =>
+  (m?.phase === 'splitStop' || m?.phase === 'deathHold' || m?.phase === 'roaring') && now < m.until;
 
 /** Nothing hurts it while it holds still for a moment. */
 export const canBeHurt = (m: BossMoment | undefined, now: number) => !isFrozen(m, now);
@@ -109,6 +118,32 @@ export function lastStandPool(atRoarStart: number, startPool: number, sinceMs: n
   const healed = Math.min(startPool, atRoarStart + startPool * WORM_BOSS.lastStandHealShare);
   const k = Math.min(1, Math.max(0, sinceMs / WORM_BOSS.roarMs));
   return atRoarStart + (healed - atRoarStart) * k;
+}
+
+export interface Pop {
+  /** The segment that pops, by its index head first. */
+  segment: number;
+  /** When, from the half's death. */
+  atMs: number;
+  /** The head goes last, in the one big burst. */
+  big: boolean;
+}
+
+/**
+ * A half `length` segments long blowing apart as it dies: segment by segment, evenly spaced from
+ * its tail (straight away) to its head (the big one) `deathChainMs` later.
+ */
+export function deathChain(length: number): { pops: Pop[]; totalMs: number } {
+  const gap = length > 1 ? WORM_BOSS.deathChainMs / (length - 1) : 0;
+  const pops = Array.from({ length }, (_, k) => ({ segment: length - 1 - k, atMs: k * gap, big: k === length - 1 }));
+  return { pops, totalMs: pops[pops.length - 1].atMs };
+}
+
+/** The segments of a dying half that have popped `sinceMs` after its death, in order; over once its head has. */
+export function chainAt(length: number, sinceMs: number): { popped: number[]; over: boolean } {
+  const { pops } = deathChain(length);
+  const popped = pops.filter((p) => p.atMs <= sinceMs).map((p) => p.segment);
+  return { popped, over: popped.length === pops.length };
 }
 
 /** Roaring: it holds still and can't be hurt. */

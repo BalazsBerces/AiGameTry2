@@ -8,6 +8,8 @@ import {
   breakOut,
   canAttack,
   canBeHurt,
+  chainAt,
+  deathChain,
   isFrozen,
   momentTick,
   splitStop,
@@ -363,6 +365,72 @@ describe('worm boss last-stand roar', () => {
     roar = momentTick(roar, 3016, { lastStand: true, aboveGround: true });
     expect(isRoaring(roar, 3016)).toBe(false);
     expect(canBeHurt(roar, 3016)).toBe(true);
+  });
+});
+
+describe('worm boss death chain', () => {
+  it('pops the half segment by segment from its tail to its head', () => {
+    expect(deathChain(5).pops.map((p) => p.segment)).toEqual([4, 3, 2, 1, 0]);
+  });
+
+  it('pops each segment later than the one before, over 2 s from the first pop to the head', () => {
+    const { pops, totalMs } = deathChain(11);
+    for (let i = 1; i < pops.length; i++) expect(pops[i].atMs).toBeGreaterThan(pops[i - 1].atMs);
+    expect(pops[0].atMs).toBe(0);
+    expect(pops[pops.length - 1].atMs).toBe(2000);
+    expect(totalMs).toBe(2000);
+  });
+
+  it('pops the head last, in the one big burst', () => {
+    const { pops } = deathChain(5);
+    expect(pops.filter((p) => p.big)).toEqual([pops[pops.length - 1]]);
+    expect(pops[pops.length - 1].segment).toBe(0);
+  });
+
+  it('knows what has popped so far, and is over only once the head has', () => {
+    expect(chainAt(5, 0)).toEqual({ popped: [4], over: false });
+    expect(chainAt(5, 1000)).toEqual({ popped: [4, 3, 2], over: false });
+    expect(chainAt(5, 1999)).toEqual({ popped: [4, 3, 2, 1], over: false });
+    expect(chainAt(5, 2000)).toEqual({ popped: [4, 3, 2, 1, 0], over: true });
+  });
+
+  it('is only a head blast for a lone segment', () => {
+    expect(deathChain(1).pops).toEqual([{ segment: 0, atMs: 0, big: true }]);
+    expect(chainAt(1, 0).over).toBe(true);
+  });
+});
+
+describe('worm boss death hold', () => {
+  const survivor = (aboveGround: boolean) => ({ lastStand: true, aboveGround, deathHoldUntil: 3000 });
+
+  it('holds the survivor frozen and unhurtable until its twin has blown apart', () => {
+    let m: BossMoment | undefined;
+    for (let now = 1000; now < 3000; now += 16) {
+      m = momentTick(m, now, survivor(false));
+      expect(isFrozen(m, now), `${now}`).toBe(true);
+      expect(canBeHurt(m, now), `${now}`).toBe(false);
+      expect(isRoaring(m, now), `${now}`).toBe(false);
+    }
+  });
+
+  it('then waits until it is out of the walls, and roars 2 s', () => {
+    let m = momentTick(undefined, 1000, survivor(true));
+    m = momentTick(m, 3000, survivor(false));
+    expect(isFrozen(m, 3000)).toBe(false);
+    m = momentTick(m, 3400, survivor(true));
+    expect(isRoaring(m, 3400)).toBe(true);
+    expect(canBeHurt(m, 5399)).toBe(false);
+    expect(isRoaring(m, 5400)).toBe(false);
+  });
+
+  it('roars straight after the hold if it is already out of the walls, and only once', () => {
+    let m = momentTick(undefined, 1000, survivor(true));
+    m = momentTick(m, 3000, survivor(true));
+    expect(isRoaring(m, 3000)).toBe(true);
+    m = momentTick(m, 5000, survivor(true));
+    m = momentTick(m, 5016, survivor(true));
+    expect(isRoaring(m, 5016)).toBe(false);
+    expect(canBeHurt(m, 5016)).toBe(true);
   });
 });
 

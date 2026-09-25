@@ -277,6 +277,8 @@ export class GameScene extends Phaser.Scene {
     this.nextShotAt = 0;
     this.invincibleUntil = 0;
     this.runOver = false;
+    // The scene object outlives a run: a boss bar left from the last one would show on.
+    this.bossBar = undefined;
 
     this.walls = this.physics.add.staticGroup();
     this.holes = this.physics.add.staticGroup();

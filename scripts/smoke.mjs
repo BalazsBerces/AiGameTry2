@@ -1451,5 +1451,26 @@ if (scenario === 'worm-death') {
   await shot('death-04-cleared');
 }
 
+if (scenario === 'bar-restart') {
+  // Dies in the worm boss fight and starts a new run: the boss bar must not come along.
+  const id = await page.evaluate(`[...${scene()}.world.rooms.values()].find((r) => r.floorIndex === 1 && r.floorRoom.kind === 'boss').floorRoom.id`);
+  await page.evaluate(`(() => { const s = ${scene()};
+    const room = s.world.rooms.get('${id}');
+    const door = room.layout.doors[0];
+    s.player.body.reset(room.floorRoom.cell.x * 720 + (door.cell.x + 1.5) * 48, room.floorRoom.cell.y * 432 + (door.cell.y + 1.5) * 48);
+    s.enterRoom(room, s.time.now);
+  })()`);
+  await page.waitForTimeout(1000);
+  const hud = () => page.evaluate(`(() => { const s = ${scene()}; return { bar: !!s.bossBar, label: window.game.scene.getScene('hud').roomText.visible }; })()`);
+  console.log('in the fight', JSON.stringify(await hud()));
+  await page.evaluate(`${scene()}.endRun(false)`);
+  await page.waitForTimeout(500);
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(`${scene()}.sys.isActive() && window.game.scene.getScene('hud').sys.isActive()`);
+  await page.waitForTimeout(500);
+  console.log('new run', JSON.stringify(await hud()));
+  await shot('restart-01-new-run');
+}
+
 console.log(errors.length ? `ERRORS:\n${errors.join('\n')}` : 'no console errors');
 await browser.close();

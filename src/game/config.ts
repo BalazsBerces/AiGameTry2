@@ -42,11 +42,33 @@ export const TUNING = {
    */
   wormRoar: { headScale: 1.6, ringMs: 900, ringEveryMs: 700, ringTiles: 3.5, bounceTiles: 1, bounceMs: 200, plopMs: 280 },
   /**
-   * The worm boss's health bar in the strip under the playfield: it fills in over `entryMs`, rips
-   * over `tearMs` leaving a `gapPx` gap, and a dead piece crumbles over `crumbleMs`. Once enraged
-   * it flashes white for `rageFlashMs`, then throbs once every `heartbeatMs`.
+   * The worm boss's health bar in the strip under the playfield: it fills in over `entryMs`, snaps
+   * apart leaving a `gapPx` gap (flashing white for `snapFlashMs`; how it shakes and overshoots
+   * lives in core/bossBar), and a dead piece blows apart over `crumbleMs`. After the roar it
+   * flashes white for `rageFlashMs`, then throbs once every `heartbeatMs`.
    */
-  bossBar: { width: 360, height: 10, gapPx: 10, entryMs: 700, tearMs: 300, crumbleMs: 700, rageFlashMs: 160, heartbeatMs: 900 },
+  bossBar: { width: 360, height: 10, gapPx: 10, entryMs: 700, snapFlashMs: 110, crumbleMs: 700, rageFlashMs: 160, heartbeatMs: 900 },
+  /**
+   * The worm boss's shell burst, by size: `chunks` shards of shell (each `chunkPx` across) and `drops`
+   * of ichor flung up to `reachTiles`, leaving a splat `splatTiles` across. Shards fly and bounce
+   * over `flightMs`, lie `restMs`, then fade over `fadeMs`. A split's raw ends spurt every `spurtEveryMs`.
+   */
+  shellBurst: {
+    pop: { chunks: 6, drops: 7, chunkPx: [6, 10], reachTiles: 1.1, splatTiles: 0.55 },
+    head: { chunks: 16, drops: 20, chunkPx: [9, 16], reachTiles: 2.1, splatTiles: 1.1 },
+    split: { chunks: 13, drops: 20, chunkPx: [8, 14], reachTiles: 1.8, splatTiles: 0.95 },
+    flightMs: 520,
+    restMs: 900,
+    fadeMs: 400,
+    spurtEveryMs: 170,
+  },
+  /** Screen shakes: how long, and how hard (a share of the view). There is none on ordinary hits. */
+  shake: {
+    split: { ms: 380, intensity: 0.014 },
+    pop: { ms: 110, intensity: 0.004 },
+    head: { ms: 400, intensity: 0.016 },
+    roar: { ms: 2000, intensity: 0.005 },
+  },
   /** Its walk/open cycle, stomps, volleys, spikes and chains live in core/ironMaiden. */
   ironMaiden: { hp: 60, width: 40, height: 46, speed: 70, shotSpeed: 175 },
   /** Candles, patterns, relighting and the dark live in core/candleWitch. */
@@ -122,6 +144,7 @@ export const COLORS = {
   /** Saturated, so it stands apart from the worm's brick-red body colour the bar starts in. */
   bossBarRage: 0xd81420,
   bossBarFlash: 0xffffff,
+  bossBarSpark: 0xffe8a0,
   champion: 0xf2b632,
   enemyShot: 0xff6b5a,
   lockedDoor: 0x3a2515,
@@ -200,6 +223,11 @@ export const COLORS = {
   fallingRock: 0x8a7458,
   wormHole: 0x14100c,
   wormEgg: 0xe8dcc0,
+  /** The burst's droplets of orange ichor, and the splat it leaves on the floor. */
+  wormIchor: 0xf08a1c,
+  wormIchorSplat: 0xb8620e,
+  /** The pale rim along a shard of the worm boss's shell. */
+  wormChitinEdge: 0xf0c8a0,
   maidenIron: 0x5c6068,
   maidenRivets: 0xb8bcc4,
   maidenInside: 0x7a1c20,

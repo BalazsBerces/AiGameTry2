@@ -296,8 +296,9 @@ if (scenario === 'worm-boss') {
   // Kill only the boss's pieces (its segments are the big ones): its eggs and hatchlings go with it.
   const bossLeft = `${scene()}.enemies.filter((e) => e.parts[0].width === 38).length`;
   console.log('brood before the boss dies', await page.evaluate(`${scene()}.enemies.length - ${bossLeft}`));
-  for (let i = 0; i < 80 && (await page.evaluate(bossLeft)); i++) {
-    await page.evaluate(`(() => { const s = ${scene()}; const e = s.enemies.find((e) => e.parts[0].visible && e.parts[0].width === 38);
+  // A dead half blows apart for 2 s and its twin holds still, then roars: hit only what can be hurt, until the last has blown apart.
+  for (let i = 0; i < 250 && (await page.evaluate(bossLeft)); i++) {
+    await page.evaluate(`(() => { const s = ${scene()}; const e = s.enemies.find((e) => e.parts[0].visible && e.parts[0].width === 38 && !e.invulnerable(e.parts[0]));
       if (e) for (let k = 0; k < 3; k++) s.damagePart(e.parts[0], 1); })()`);
     await page.waitForTimeout(60);
   }
@@ -1247,9 +1248,12 @@ if (scenario === 'worm-bar') {
   const allOut = `${boss}.every((e) => e.parts.every((p) => p.body.enable))`;
   for (let i = 0; i < 80 && !(await page.evaluate(allOut)); i++) await page.waitForTimeout(100);
   await page.evaluate(`(() => { const s = ${scene()}; const p = ${boss}[0].parts[9]; for (let i = 0; i < 40; i++) s.damagePart(p, 1); })()`);
-  await page.waitForTimeout(120);
-  await shot('bar-03-tearing');
-  await page.waitForTimeout(400);
+  // It snaps apart: a white flash and sparks, the halves flying apart past their gap, then slamming back.
+  await page.waitForTimeout(40);
+  await shot('bar-03-snap');
+  await page.waitForTimeout(90);
+  await shot('bar-03b-flying-apart');
+  await page.waitForTimeout(500);
   await shot('bar-04-torn');
   console.log('after split', JSON.stringify(await bar()));
   // Wear the front half down to its last 2 hit points, so its last stand has something to win back.
@@ -1257,13 +1261,18 @@ if (scenario === 'worm-bar') {
     await page.evaluate(`(() => { const s = ${scene()}; const e = ${boss}[0]; const p = e?.parts.find((p) => p.body.enable); if (p) s.damagePart(p, 1); })()`);
     await page.waitForTimeout(20);
   }
-  // Kill the back half off; the front one is left for its last stand.
-  for (let i = 0; i < 200 && (await page.evaluate(`${boss}.length`)) > 1; i++) {
+  // Kill the back half off; the front one is left for its last stand. Its piece trembles and
+  // flickers harder with each pop while the half blows apart, then explodes at the head blast.
+  for (let i = 0; i < 200 && (await page.evaluate(`${scene()}.bossBar.halves[1].alive`)); i++) {
     await page.evaluate(`(() => { const s = ${scene()}; const e = ${boss}[1]; const p = e?.parts.find((p) => p.body.enable); if (p) s.damagePart(p, 1); })()`);
     await page.waitForTimeout(20);
   }
-  await page.waitForTimeout(200);
-  await shot('bar-05-half-crumbling');
+  await page.waitForTimeout(1200);
+  await shot('bar-05-half-dying');
+  console.log('one half dying', JSON.stringify(await bar()));
+  for (let i = 0; i < 100 && !(await page.evaluate(`${scene()}.bossBar.halves[1].death.blown`)); i++) await page.waitForTimeout(20);
+  await page.waitForTimeout(90);
+  await shot('bar-05b-half-exploding');
   console.log('one half dead', JSON.stringify(await bar()));
   for (let i = 0; i < 100 && !(await page.evaluate(`${boss}[0]?.invulnerable?.()`)); i++) await page.waitForTimeout(100);
   console.log('roaring:', await page.evaluate(`${boss}[0]?.invulnerable?.()`));
@@ -1292,19 +1301,175 @@ if (scenario === 'worm-bar') {
   console.log('pools before', JSON.stringify(before), 'after hits while roaring', JSON.stringify(await hp()));
   await page.waitForTimeout(250);
   await shot('bar-08-plop');
-  for (let i = 0; i < 40 && (await page.evaluate(`${boss}[0]?.invulnerable?.()`)); i++) await page.waitForTimeout(100);
+  for (let i = 0; i < 80 && (await page.evaluate(`${boss}[0]?.invulnerable?.()`)); i++) await page.waitForTimeout(25);
+  await shot('bar-09a-flash');
   await page.waitForTimeout(600);
   await shot('bar-09-rage');
   console.log('after roar', JSON.stringify(await bar()));
-  for (let i = 0; i < 300 && (await page.evaluate(`${boss}.length`)) > 0; i++) {
+  for (let i = 0; i < 300 && (await page.evaluate(`${scene()}.bossBar.halves[0].alive`)); i++) {
     await page.evaluate(`(() => { const s = ${scene()}; const e = ${boss}[0]; const p = e?.parts.find((p) => p.body.enable); if (p) s.damagePart(p, 1); })()`);
     await page.waitForTimeout(20);
   }
-  await page.waitForTimeout(150);
-  await shot('bar-10-crumble');
+  await page.waitForTimeout(1500);
+  await shot('bar-10-last-dying');
+  // The room clears only after the last head blast; the bar blows apart with it.
+  for (let i = 0; i < 100 && (await page.evaluate(`${boss}.length`)) > 0; i++) await page.waitForTimeout(20);
+  console.log('last head blast: room cleared', await page.evaluate(`${scene()}.world.cleared.has('${id}')`));
+  await page.waitForTimeout(90);
+  await shot('bar-10b-exploding');
   await page.waitForTimeout(1000);
   console.log('dead', JSON.stringify(await bar()));
   await shot('bar-11-label-back');
+}
+
+if (scenario === 'worm-split') {
+  // The split stop: split the worm boss mid-rampage (partly in a wall, if it gets the chance); both
+  // halves hold still for 1 s, shrug off every hit, then crawl on. SMOKE_SPLIT_AT: 'charge' or 'wall'.
+  const id = await page.evaluate(`[...${scene()}.world.rooms.values()].find((r) => r.floorIndex === 1 && r.floorRoom.kind === 'boss').floorRoom.id`);
+  await page.evaluate(`(() => { const s = ${scene()};
+    for (const e of s.enemies) for (const p of e.parts) p.destroy();
+    s.enemies = [];
+    s.invincibleUntil = Infinity;
+    const room = s.world.rooms.get('${id}');
+    const door = room.layout.doors[0];
+    s.player.body.reset(room.floorRoom.cell.x * 720 + (door.cell.x + 1.5) * 48, room.floorRoom.cell.y * 432 + (door.cell.y + 1.5) * 48);
+    s.enterRoom(room, s.time.now);
+  })()`);
+  const boss = `${scene()}.enemies.filter((e) => e.parts[0]?.width === 38)`;
+  const splitAt = process.env.SMOKE_SPLIT_AT ?? 'charge';
+  // Knock it down to just above its split point first.
+  await page.waitForTimeout(500);
+  await page.evaluate(`(() => { const s = ${scene()}; const p = ${boss}[0].parts[0]; for (let i = 0; i < 39; i++) s.damagePart(p, 1); })()`);
+  const ready =
+    splitAt === 'wall'
+      ? `${boss}[0].parts.some((p) => !p.body.enable) && ${boss}[0].parts.slice(1, -1).some((p) => p.body.enable)`
+      : `${boss}[0].parts[0].scale > 1.05`;
+  for (let i = 0; i < 300 && !(await page.evaluate(ready)); i++) await page.waitForTimeout(50);
+  console.log('ready to split', splitAt, await page.evaluate(ready));
+  // Stand a little off the segment hit, so the camera shows the burst.
+  await page.evaluate(`(() => { const s = ${scene()}; const ps = ${boss}[0].parts; const p = ps.slice(1, -1).find((p) => p.body.enable);
+    s.player.body.reset(p.x - 100, p.y + 60); s.damagePart(p, 1); })()`);
+  const look = () =>
+    page.evaluate(`(() => { const s = ${scene()}; return {
+      pieces: ${boss}.map((e) => e.parts.length),
+      hidden: ${boss}.map((e) => e.parts.filter((p) => !p.visible).length),
+      heads: ${boss}.map((e) => [Math.round(e.parts[0].x), Math.round(e.parts[0].y)].join(',')),
+      headScale: ${boss}.map((e) => Math.round(e.parts[0].scale * 100) / 100),
+      invulnerable: ${boss}.map((e) => e.invulnerable(e.parts[0])),
+      pools: (s.bossBar.halves ?? []).map((h) => Math.round(h.pool * 10) / 10),
+    }; })()`);
+  const first = await look();
+  console.log('just split', JSON.stringify(first));
+  await shot('split-01-stop');
+  // Hit every way during the stop: nothing drains.
+  await page.evaluate(`(() => { const s = ${scene()};
+    for (const e of ${boss}) {
+      const part = e.parts.find((p) => p.body.enable);
+      s.damagePart(part, 5);
+      s.strike(part, 5);
+      const shot = s.add.circle(part.x - 60, part.y - 40, 7, 0xfff2a8);
+      s.physics.add.existing(shot);
+      shot.body.setVelocity(420, 280);
+      s.hitEnemy(shot, part);
+    }
+  })()`);
+  const trail = [];
+  for (let i = 0; i < 8; i++) {
+    await page.waitForTimeout(100);
+    trail.push(JSON.stringify((await look()).heads));
+    if (i === 0) await shot('split-01b-burst');
+    if (i === 5) await shot('split-01c-spurt');
+  }
+  console.log('heads during the stop', trail.join(' '));
+  const mid = await look();
+  console.log('mid stop', JSON.stringify(mid));
+  await page.waitForTimeout(800);
+  const after = await look();
+  console.log('after the stop', JSON.stringify(after));
+  await page.waitForTimeout(1000);
+  console.log('a second later', JSON.stringify(await look()));
+  await shot('split-02-after');
+}
+
+if (scenario === 'worm-death') {
+  // Exploding deaths: split the worm boss, kill one half and watch it pop from tail to head while
+  // its twin holds still; then the twin roars, and dies the same way, its brood popping with it,
+  // the room clearing only after its head blast.
+  const id = await page.evaluate(`[...${scene()}.world.rooms.values()].find((r) => r.floorIndex === 1 && r.floorRoom.kind === 'boss').floorRoom.id`);
+  await page.evaluate(`(() => { const s = ${scene()};
+    for (const e of s.enemies) for (const p of e.parts) p.destroy();
+    s.enemies = [];
+    s.invincibleUntil = Infinity;
+    const room = s.world.rooms.get('${id}');
+    const door = room.layout.doors[0];
+    s.player.body.reset(room.floorRoom.cell.x * 720 + (door.cell.x + 1.5) * 48, room.floorRoom.cell.y * 432 + (door.cell.y + 1.5) * 48);
+    s.enterRoom(room, s.time.now);
+  })()`);
+  const boss = `${scene()}.enemies.filter((e) => e.parts[0]?.width === 38)`;
+  const allOut = `${boss}.every((e) => e.parts.every((p) => p.body.enable))`;
+  // Let it lob its first eggs, so there is a brood to pop at the end.
+  await page.waitForTimeout(6000);
+  for (let i = 0; i < 120 && !(await page.evaluate(allOut)); i++) await page.waitForTimeout(100);
+  await page.evaluate(`(() => { const s = ${scene()}; const p = ${boss}[0].parts[9]; for (let i = 0; i < 40; i++) s.damagePart(p, 1); })()`);
+  await page.waitForTimeout(1100);
+  const look = () =>
+    page.evaluate(`(() => { const s = ${scene()}; const cleared = s.world.cleared.has('${id}'); return {
+      shown: ${boss}.map((e) => e.parts.filter((p) => p.visible).length),
+      heads: ${boss}.map((e) => [Math.round(e.parts[0].x), Math.round(e.parts[0].y)].join(',')),
+      invulnerable: ${boss}.map((e) => e.invulnerable(e.parts[0])),
+      harmless: ${boss}.map((e) => !!e.harmless?.(e.parts[0])),
+      brood: s.enemies.length - ${boss}.length,
+      cleared,
+    }; })()`);
+  // Kill the back half outright.
+  await page.evaluate(`(() => { const s = ${scene()}; const e = ${boss}[1]; const p = e.parts.find((p) => p.body.enable); s.player.body.reset(p.x - 120, p.y + 40); s.damagePart(p, 99); })()`);
+  const t0 = Date.now();
+  for (let i = 0; i < 12; i++) {
+    console.log(`chain +${Date.now() - t0}ms`, JSON.stringify(await look()));
+    if (i === 3) await shot('death-01-popping');
+    await page.waitForTimeout(170);
+  }
+  await shot('death-02-head-blast');
+  for (let i = 0; i < 20; i++) {
+    await page.waitForTimeout(200);
+    const now = await look();
+    if (i % 3 === 0) console.log(`after the chain +${Date.now() - t0}ms`, JSON.stringify(now));
+  }
+  // The last half: kill it once it can be hurt again, and watch the room clear only after its head blast.
+  for (let i = 0; i < 60 && (await page.evaluate(`${boss}[0].invulnerable(${boss}[0].parts[0])`)); i++) await page.waitForTimeout(100);
+  await page.evaluate(`(() => { const s = ${scene()}; const e = ${boss}[0]; const p = e.parts.find((p) => p.body.enable); s.player.body.reset(p.x - 120, p.y + 40); s.damagePart(p, 99); })()`);
+  const t1 = Date.now();
+  for (let i = 0; i < 16; i++) {
+    const now = await look();
+    console.log(`last chain +${Date.now() - t1}ms`, JSON.stringify(now));
+    if (i === 6) await shot('death-03-last-popping');
+    if (now.cleared) break;
+    await page.waitForTimeout(170);
+  }
+  await page.waitForTimeout(200);
+  console.log('end', JSON.stringify(await look()));
+  await shot('death-04-cleared');
+}
+
+if (scenario === 'bar-restart') {
+  // Dies in the worm boss fight and starts a new run: the boss bar must not come along.
+  const id = await page.evaluate(`[...${scene()}.world.rooms.values()].find((r) => r.floorIndex === 1 && r.floorRoom.kind === 'boss').floorRoom.id`);
+  await page.evaluate(`(() => { const s = ${scene()};
+    const room = s.world.rooms.get('${id}');
+    const door = room.layout.doors[0];
+    s.player.body.reset(room.floorRoom.cell.x * 720 + (door.cell.x + 1.5) * 48, room.floorRoom.cell.y * 432 + (door.cell.y + 1.5) * 48);
+    s.enterRoom(room, s.time.now);
+  })()`);
+  await page.waitForTimeout(1000);
+  const hud = () => page.evaluate(`(() => { const s = ${scene()}; return { bar: !!s.bossBar, label: window.game.scene.getScene('hud').roomText.visible }; })()`);
+  console.log('in the fight', JSON.stringify(await hud()));
+  await page.evaluate(`${scene()}.endRun(false)`);
+  await page.waitForTimeout(500);
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(`${scene()}.sys.isActive() && window.game.scene.getScene('hud').sys.isActive()`);
+  await page.waitForTimeout(500);
+  console.log('new run', JSON.stringify(await hud()));
+  await shot('restart-01-new-run');
 }
 
 console.log(errors.length ? `ERRORS:\n${errors.join('\n')}` : 'no console errors');

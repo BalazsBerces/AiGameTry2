@@ -234,7 +234,8 @@ const jar: Archetype = {
 
 /**
  * Floor 1: seed-spitters on an island in a pond. Nobody can walk out to them, but shots fly
- * over water both ways, so it's a shootout across the pond; trees offer cover.
+ * over water both ways, so it's a shootout across the pond; trees offer cover, and 3-4 goblins
+ * come off the banks so the player can't just sit behind one.
  */
 const sentryIsland: Archetype = {
   id: 'sentryIsland',
@@ -254,7 +255,13 @@ const sentryIsland: Archetype = {
     ]);
     canvas.paint(layout.moat, 'hole');
     if (rng.next() < 0.5) canvas.paint([{ x: 1, y: 1 }], 'obstacle');
-    return { tiles: canvas.tiles, enemies: turretsOf(0, canvas.images(layout.turret)), pickups: [], symmetry: { axes } };
+    const banks = shuffled(canvas.images({ x: 3, y: 0 }), rng).slice(0, rng.int(3, 4));
+    return {
+      tiles: canvas.tiles,
+      enemies: [...turretsOf(0, canvas.images(layout.turret)), ...walkersOf(0, banks)],
+      pickups: [],
+      symmetry: { axes },
+    };
   },
 };
 
@@ -328,7 +335,8 @@ const twinJars: Archetype = {
 /**
  * Floor 2: a firing line of crystal turrets along one wall, behind a moat of holes, facing open
  * floor with a few rocks to duck behind (which the turrets slowly force you out of). Their shots
- * ricochet off the stone walls, so the far wall is no refuge. The line sits on a wall with no door.
+ * ricochet off the stone walls, so the far wall is no refuge, and three ghouls stalk the open floor
+ * to flush the player out of cover. The line sits on a wall with no door.
  */
 const gallery: Archetype = {
   id: 'gallery',
@@ -345,7 +353,8 @@ const gallery: Archetype = {
     const cover = rng.pick([[{ x: 3, y: 4 }, { x: 4, y: 4 }], [{ x: 2, y: 4 }, { x: 5, y: 4 }], [{ x: 4, y: 3 }, { x: 4, y: 4 }]]);
     canvas.paint(cover.map((c) => ({ x: c.x, y: row(c.y) })), 'rock');
     const turrets = [2, 6, 10].map((x) => caveTurret({ x, y: row(0) }));
-    return { tiles: canvas.tiles, enemies: turrets, pickups: [], symmetry: { axes } };
+    const stalkers = caveWalkers([{ x: 3, y: 5 }, { x: 9, y: 5 }, { x: 6, y: 3 }].map((c) => ({ x: c.x, y: row(c.y) })));
+    return { tiles: canvas.tiles, enemies: [...turrets, ...stalkers], pickups: [], symmetry: { axes } };
   },
 };
 
@@ -395,7 +404,8 @@ const courtyard: Archetype = {
 
 /**
  * Floor 2 puzzle: a locked chest in a stone alcove set into a doorless wall, its mouth plugged
- * with a rock and a crystal turret standing guard on either side.
+ * with a rock and a crystal turret standing guard on either side, while 2-3 ghouls prowl the floor
+ * in front of it.
  */
 const vault: Archetype = {
   id: 'vault',
@@ -412,7 +422,13 @@ const vault: Archetype = {
     canvas.paint([at({ x: 6, y: 1 })], 'rock');
     const guard = rng.pick([{ x: 3, y: 1 }, { x: 3, y: 2 }, { x: 2, y: 1 }]);
     const turrets = [guard, { x: width - 1 - guard.x, y: guard.y }].map((c) => caveTurret(at(c)));
-    return { tiles: canvas.tiles, enemies: turrets, pickups: [{ type: 'lockedChest', cell: at({ x: 6, y: 0 }) }], symmetry: { axes } };
+    const prowl = shuffled([{ x: 2, y: 4 }, { x: 10, y: 4 }, { x: 6, y: 3 }], rng).slice(0, rng.int(2, 3));
+    return {
+      tiles: canvas.tiles,
+      enemies: [...turrets, ...caveWalkers(prowl.map(at))],
+      pickups: [{ type: 'lockedChest', cell: at({ x: 6, y: 0 }) }],
+      symmetry: { axes },
+    };
   },
 };
 
@@ -453,7 +469,8 @@ const fortress: Archetype = {
 
 /**
  * Floor 3: the floor has fallen away except for a cross of narrow walkways joining the doors.
- * Gargoyles on the far corners rake whoever is out on the cross.
+ * Gargoyles on the far corners rake whoever is out on the cross, while 2-3 ghosts drift at the
+ * player over the drop, where nobody on foot can follow.
  */
 const killbox: Archetype = {
   id: 'killbox',
@@ -472,9 +489,10 @@ const killbox: Archetype = {
     // All four corners, or just a diagonal pair; unused perches stay fallen away.
     const chosen = rng.next() < 0.5 ? perches : [perches[0], perches[perches.length - 1]];
     for (const c of chosen) canvas.tiles[c.y][c.x] = 'floor';
+    const haunts = shuffled([{ x: 3, y: 3 }, { x: 9, y: 3 }, { x: 6, y: 3 }], rng).slice(0, rng.int(2, 3));
     return {
       tiles: canvas.tiles,
-      enemies: dungeonTurrets(chosen),
+      enemies: [...dungeonTurrets(chosen), ...ghosts(haunts)],
       pickups: [],
       // A diagonal pair is only point-symmetric; the perches are the idea's own feature.
       symmetry: { axes, feature: chosen },
@@ -520,6 +538,7 @@ const nest: Archetype = {
 /**
  * Floor 3: two lanes along the top and bottom walls, each walled off from the middle and
  * guarded by a gargoyle at both ends, so anyone cutting through a lane is caught between them.
+ * A shielded knight marches down each lane, pushing the player out into the gargoyles' sights.
  */
 const crossfire: Archetype = {
   id: 'crossfire',
@@ -535,7 +554,9 @@ const crossfire: Archetype = {
     if (rng.next() < 0.6) canvas.paint([{ x: 2 + length, y: 2 }], 'rock');
     const end = { x: rng.pick([0, 1]), y: 1 };
     const turrets = dungeonTurrets(canvas.images(end));
-    return { tiles: canvas.tiles, enemies: turrets, pickups: [], symmetry: { axes } };
+    const lanes = canvas.images({ x: rng.int(3, 4), y: 0 });
+    const knights = knightsOf([lanes[0], lanes[lanes.length - 1]]);
+    return { tiles: canvas.tiles, enemies: [...turrets, ...knights], pickups: [], symmetry: { axes } };
   },
 };
 
@@ -570,7 +591,8 @@ const ruins: Archetype = {
 
 /**
  * Floor 3 puzzle: a chest buried in the middle of a dense field of rocks, with gargoyles
- * covering it; digging in means standing still under fire (or spending a bomb).
+ * covering it; digging in means standing still under fire (or spending a bomb), with 2-3 zombies
+ * shambling in among the rocks.
  */
 const minefield: Archetype = {
   id: 'minefield',
@@ -590,7 +612,13 @@ const minefield: Archetype = {
     const guard = rng.pick([{ x: 1, y: 1 }, { x: 2, y: 0 }]);
     const images = canvas.images(guard);
     const turrets = dungeonTurrets([images[0], images[images.length - 1]]);
-    return { tiles: canvas.tiles, enemies: turrets, pickups: [{ type: 'chest', cell: { x: 6, y: 3 } }], symmetry: { axes } };
+    const shamblers = shuffled([{ x: 2, y: 3 }, { x: 10, y: 3 }, { x: 4, y: 0 }, { x: 8, y: 6 }], rng).slice(0, rng.int(2, 3));
+    return {
+      tiles: canvas.tiles,
+      enemies: [...turrets, ...dungeonWalkers(shamblers)],
+      pickups: [{ type: 'chest', cell: { x: 6, y: 3 } }],
+      symmetry: { axes },
+    };
   },
 };
 
@@ -766,7 +794,7 @@ const hauntedHall: Archetype = {
  * Floor 2: a hall of mirrors built around bank shots. Crystals, mirrored into all four quarters,
  * bounce every shot, so each crystal turret sits straight in line with one: its shots come back
  * off it at angles, and the player can bank their own shots off it back at the turret. Ghouls
- * sometimes roam the open middle. Nothing touches a door approach, so it fits every door set.
+ * roam the open middle. Nothing touches a door approach, so it fits every door set.
  */
 const crystalGallery: Archetype = {
   id: 'crystalGallery',
@@ -790,7 +818,7 @@ const crystalGallery: Archetype = {
     const posts = canvas.images(layout.post);
     // Every post manned, or (when there are four) just a diagonal pair.
     const manned = posts.length > 2 && rng.next() < 0.5 ? [posts[0], posts[posts.length - 1]] : posts;
-    const ghouls = rng.next() < 0.5 ? canvas.images(layout.ghoul) : [];
+    const ghouls = canvas.images(layout.ghoul);
     return {
       tiles: canvas.tiles,
       enemies: [...turretsOf(1, manned), ...walkersOf(1, ghouls)],
@@ -930,8 +958,8 @@ const glowshroomCave: Archetype = {
     // Sometimes a stalagmite in each corner too.
     if (rng.next() < 0.5) canvas.paint([{ x: 0, y: 0 }], 'obstacle');
     const posts = canvas.images(layout.ghoul);
-    // Ghouls in every quarter, or just a diagonal pair; a ringed turret sometimes holds the middle alone.
-    const ghouls = layout.ringed && rng.next() < 0.4 ? [] : rng.next() < 0.5 ? posts : [posts[0], posts[posts.length - 1]];
+    // Ghouls in every quarter, or just a diagonal pair.
+    const ghouls = rng.next() < 0.5 ? posts : [posts[0], posts[posts.length - 1]];
     const turrets = layout.ringed ? turretsOf(1, [{ x: (width - 1) / 2, y: (height - 1) / 2 }]) : [];
     return { tiles: canvas.tiles, enemies: [...turrets, ...walkersOf(1, ghouls)], pickups: [], symmetry: { axes } };
   },

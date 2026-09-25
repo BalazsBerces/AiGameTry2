@@ -610,10 +610,53 @@ describe('Sentry Island (floor 1)', () => {
         const r = generateRoom({ id: '0,0', kind: 'normal', doors: [...doors], archetype: 'sentryIsland' }, 0, createRng(seed));
         const where = `seed ${seed} doors ${doors}`;
         expect(r.archetype, where).toBe('sentryIsland');
-        expect(r.enemies.map((e) => e.type), where).toEqual(['seedSpitter', 'seedSpitter']);
+        const spitters = r.enemies.filter((e) => e.type === 'seedSpitter');
+        expect(spitters.length, where).toBe(2);
         const seen = reachable(r, r.doors[0].cell);
-        for (const e of r.enemies) expect(seen.has(`${e.cell.x},${e.cell.y}`), where).toBe(false);
+        for (const e of spitters) expect(seen.has(`${e.cell.x},${e.cell.y}`), where).toBe(false);
         expect(count(r, 'hole'), where).toBeGreaterThan(0);
+      }
+    }
+  });
+});
+
+describe('turret rooms', () => {
+  it.each([
+    ['sentryIsland', 0, 'goblin', 3, 4],
+    ['gallery', 1, 'ghoul', 3, 3],
+    ['vault', 1, 'ghoul', 2, 3],
+    ['killbox', 2, 'ghost', 2, 3],
+    ['crossfire', 2, 'knight', 2, 2],
+    ['minefield', 2, 'zombie', 2, 3],
+    ['crystalGallery', 1, 'ghoul', 2, 4],
+    ['glowshroomCave', 1, 'ghoul', 2, 4],
+  ] as const)('%s (floor index %i) backs its turrets with %s', (archetype, floorIndex, type, min, max) => {
+    let built = 0;
+    for (const doors of EVERY_DOOR_SET) {
+      for (let seed = 0; seed < 20; seed++) {
+        const r = generateRoom({ id: '0,0', kind: 'normal', doors: [...doors], archetype }, floorIndex, createRng(seed));
+        if (r.archetype !== archetype) continue; // it can't fit this door set
+        built++;
+        const where = `seed ${seed} doors ${doors}`;
+        const cast = r.enemies.filter((e) => e.type === type).length;
+        expect(cast, where).toBeGreaterThanOrEqual(min);
+        expect(cast, where).toBeLessThanOrEqual(max);
+      }
+    }
+    expect(built).toBeGreaterThan(50);
+  });
+
+  it('never leaves a normal room to turrets alone: something always comes after the player', () => {
+    for (const floorIndex of [0, 1, 2]) {
+      for (const a of ARCHETYPES.filter((x) => x.floor === floorIndex && x.kind === 'normal')) {
+        for (const doors of EVERY_DOOR_SET) {
+          for (let seed = 0; seed < 20; seed++) {
+            const r = generateRoom({ id: '0,0', kind: 'normal', doors: [...doors], archetype: a.id }, floorIndex, createRng(seed));
+            if (r.archetype !== a.id || !r.enemies.length) continue;
+            const mobile = r.enemies.some((e) => ENEMY_CLASS[e.type] !== 'stationary');
+            expect(mobile, `${a.id} seed ${seed} doors ${doors}`).toBe(true);
+          }
+        }
       }
     }
   });

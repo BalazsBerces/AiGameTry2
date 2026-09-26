@@ -1,5 +1,5 @@
 import type Phaser from 'phaser';
-import { createGargoyle as createGargoyleRules, updateGargoyle } from '../../core/gargoyle';
+import { createGargoyle as createGargoyleRules, updateGargoyle } from '../../core/enemies/gargoyle';
 import { COLORS, TUNING } from '../config';
 import { championBoost, championColor, singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
 

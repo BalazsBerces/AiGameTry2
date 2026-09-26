@@ -1,6 +1,6 @@
 import type Phaser from 'phaser';
 import { createRng } from '../../core/rng';
-import { createWaspFlight, steerWasp } from '../../core/wasp';
+import { createWaspFlight, steerWasp } from '../../core/enemies/wasp';
 import { COLORS, TUNING } from '../config';
 import { championBoost, championColor, markChampion, singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
 

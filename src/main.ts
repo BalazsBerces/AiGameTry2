@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
-import { EndScene } from './game/EndScene';
-import { GameScene } from './game/GameScene';
-import { HudScene } from './game/HudScene';
+import { EndScene } from './game/scenes/EndScene';
+import { GameScene } from './game/scenes/GameScene';
+import { HudScene } from './game/scenes/HudScene';
 import { CELL_PX_H, CELL_PX_W, LABEL_STRIP_H } from './game/geometry';
 
 const game = new Phaser.Game({

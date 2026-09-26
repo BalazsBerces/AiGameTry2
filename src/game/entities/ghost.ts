@@ -1,6 +1,6 @@
 import type Phaser from 'phaser';
-import type { Cell } from '../../core/floorGenerator';
-import { GHOST, ghostAt } from '../../core/ghost';
+import type { Cell } from '../../core/map/floorGenerator';
+import { GHOST, ghostAt } from '../../core/enemies/ghost';
 import { COLORS, TUNING } from '../config';
 import { championBoost, championColor, flash, markChampion, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
 

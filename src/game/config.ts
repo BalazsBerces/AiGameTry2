@@ -1,4 +1,4 @@
-import type { Passive } from '../core/weaponModel';
+import type { Passive } from '../core/player/weaponModel';
 
 /** All tunable numbers for the Phaser layer live here. */
 export const TUNING = {

@@ -1,5 +1,5 @@
 import type Phaser from 'phaser';
-import { stepDownhill } from '../../core/grid';
+import { stepDownhill } from '../../core/map/grid';
 import { COLORS, TUNING } from '../config';
 import { championBoost, championColor, markChampion, roundBody, singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
 

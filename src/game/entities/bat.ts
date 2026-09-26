@@ -1,5 +1,5 @@
 import type Phaser from 'phaser';
-import { createBat as createBatState, updateBat, type Bat } from '../../core/bat';
+import { createBat as createBatState, updateBat, type Bat } from '../../core/enemies/bat';
 import { createRng } from '../../core/rng';
 import { COLORS, TUNING } from '../config';
 import { championBoost, championColor, markChampion, singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from './enemy';

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { DARK, createLights, type Lights } from '../../core/art/lighting';
+import { DARK, createLights, flicker, type Lights } from '../../core/art/lighting';
 import { PAPER } from '../../core/art/palette';
 import { DARK_DEPTH } from '../entities/bosses/candleWitch';
 
@@ -9,6 +9,8 @@ export const ROOM_DARK_DEPTH = DARK_DEPTH - 1;
 const BRUSH = 128;
 /** The dark reaches this far past the view, so the camera never outruns it for a frame. */
 const MARGIN = 64;
+/** The forest's fireflies: a pale yellow-green. */
+const PAPER_FIREFLY = 0xe0f07a;
 /** How strongly a warm light warms what it falls on. */
 const WARMTH = 0.16;
 
@@ -54,6 +56,9 @@ export class LightLayer {
   private dark: Phaser.GameObjects.RenderTexture;
   private stamp: Phaser.GameObjects.Image;
   private glows: Phaser.GameObjects.Image[] = [];
+  private vignette: Phaser.GameObjects.Image;
+  private motes: Phaser.GameObjects.Particles.ParticleEmitter;
+  private dust: Phaser.GameObjects.Particles.ParticleEmitter;
 
   constructor(private scene: Phaser.Scene) {
     makeBrush(scene, 'light-brush', 'rgba(255,255,255,A)');
@@ -62,7 +67,36 @@ export class LightLayer {
     this.dark = scene.add.renderTexture(0, 0, cam.width + MARGIN * 2, cam.height + MARGIN * 2).setOrigin(0).setDepth(ROOM_DARK_DEPTH);
     this.stamp = scene.make.image({ key: 'light-brush', add: false });
     makeVignette(scene, 'vignette', cam.width, cam.height);
-    scene.add.image(0, 0, 'vignette').setOrigin(0).setScrollFactor(0).setDepth(ROOM_DARK_DEPTH + 0.5);
+    this.vignette = scene.add.image(0, 0, 'vignette').setOrigin(0).setScrollFactor(0).setDepth(ROOM_DARK_DEPTH + 0.5);
+    // Ambient motes drifting through every room, cleared ones too: fireflies glowing over the dark
+    // in paper rooms (the forest), faint dust elsewhere. Their randomness is Phaser's own, never the run's.
+    makeBrush(scene, 'mote', 'rgba(255,255,255,A)');
+    const zone = { type: 'random' as const, source: new Phaser.Geom.Rectangle(0, 0, cam.width, cam.height), quantity: 1 };
+    this.motes = scene.add
+      .particles(0, 0, 'mote', {
+        emitZone: zone,
+        lifespan: { min: 3500, max: 6500 },
+        speedX: { min: -10, max: 10 },
+        speedY: { min: -14, max: 6 },
+        scale: { min: 0.02, max: 0.035 },
+        alpha: { start: 0.95, end: 0, ease: 'Sine.easeIn' },
+        tint: PAPER_FIREFLY,
+        blendMode: Phaser.BlendModes.ADD,
+        frequency: 420,
+      })
+      .setDepth(ROOM_DARK_DEPTH + 1);
+    this.dust = scene.add
+      .particles(0, 0, 'mote', {
+        emitZone: zone,
+        lifespan: { min: 5000, max: 8000 },
+        speedX: { min: -6, max: 6 },
+        speedY: { min: -4, max: 8 },
+        scale: { min: 0.012, max: 0.022 },
+        alpha: { start: 0.45, end: 0 },
+        tint: 0xc8c0b0,
+        frequency: 300,
+      })
+      .setDepth(ROOM_DARK_DEPTH - 0.6);
   }
 
   /**
@@ -79,12 +113,20 @@ export class LightLayer {
       .setDepth(ROOM_DARK_DEPTH + 1.5);
   }
 
-  update(player: { x: number; y: number }) {
+  update(player: { x: number; y: number }, time: number, fireflies: boolean) {
     const cam = this.scene.cameras.main;
+    this.motes.setPosition(cam.scrollX, cam.scrollY).emitting = fireflies;
+    this.dust.setPosition(cam.scrollX, cam.scrollY).emitting = !fireflies;
+    // The dark's edges breathe slowly with the lantern.
+    this.vignette.setAlpha(0.85 + 0.15 * flicker(99, time * 0.5).intensity);
     const left = cam.scrollX - MARGIN;
     const top = cam.scrollY - MARGIN;
     this.dark.setPosition(left, top).clear().fill(DARK.color, DARK.alpha);
-    const frame = this.lights.frame(player);
+    const frame = this.lights.frame(player).map((l) => {
+      if (l.flicker === undefined) return l;
+      const f = flicker(l.flicker, time);
+      return { ...l, radius: l.radius * f.radius, intensity: l.intensity * f.intensity };
+    });
     for (const l of frame) {
       this.stamp.setScale(l.radius / BRUSH).setAlpha(l.intensity).setPosition(l.x - left, l.y - top);
       this.dark.erase(this.stamp);

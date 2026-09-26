@@ -1,5 +1,29 @@
 import { describe, expect, it } from 'vitest';
-import { PLAYER_LIGHT, createLights } from './lighting';
+import { FLICKER, PLAYER_LIGHT, createLights, flicker } from './lighting';
+
+describe('flicker', () => {
+  const times = Array.from({ length: 2000 }, (_, i) => i * 37);
+
+  it('is the same for the same light at the same moment', () => {
+    for (const t of [0, 1234, 99_999]) expect(flicker(7, t)).toEqual(flicker(7, t));
+  });
+
+  it('never strays past its bounds: the room stays readable', () => {
+    for (const t of times) {
+      const f = flicker(3, t);
+      expect(f.radius).toBeGreaterThanOrEqual(1 - FLICKER.radius);
+      expect(f.radius).toBeLessThanOrEqual(1 + FLICKER.radius);
+      expect(f.intensity).toBeGreaterThanOrEqual(1 - FLICKER.intensity);
+      expect(f.intensity).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('moves over time, and differently for different lights', () => {
+    const radii = new Set(times.map((t) => flicker(3, t).radius.toFixed(3)));
+    expect(radii.size).toBeGreaterThan(20);
+    expect(times.some((t) => flicker(3, t).radius !== flicker(4, t).radius)).toBe(true);
+  });
+});
 
 describe('light registry', () => {
   it('always lights the player, even with nothing else registered', () => {

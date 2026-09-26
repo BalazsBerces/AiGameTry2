@@ -489,7 +489,7 @@ export class GameScene extends Phaser.Scene {
     this.followPlayerAcrossRooms(time);
     this.paper.update(time);
     this.lightShots();
-    this.light.update(this.player);
+    this.light.update(this.player, time, !!themeForFloor(this.currentRoom.floorIndex).paper);
   }
 
   /**
@@ -530,7 +530,7 @@ export class GameScene extends Phaser.Scene {
     room.layout.tiles.forEach((row, y) =>
       row.forEach((tile, x) => {
         if (tile !== 'glowshroom') return;
-        this.light.lights.set(`${room.floorRoom.id}|${x},${y}`, { ...tileCenter(room, x, y), ...GLOWSHROOM_LIGHT });
+        this.light.lights.set(`${room.floorRoom.id}|${x},${y}`, { ...tileCenter(room, x, y), ...GLOWSHROOM_LIGHT, flicker: x * 31 + y * 17 + 5 });
       }),
     );
   }

@@ -31,6 +31,9 @@ const RING_LOOK = {
   warnSize: 20,
 };
 
+/** How long the Treant's paper puppet shows its throw as a seed volley leaves. */
+const SEED_THROW_MS = 250;
+
 /** Rises past 1 and settles back: a root popping up out of the ground. */
 function easeOutBack(p: number) {
   const c1 = 1.70158;
@@ -299,6 +302,27 @@ export function createTreant(scene: Phaser.Scene, x: number, y: number, _cell: C
       branches.clear();
     }
   });
+  enemy.trim = decor.map((d) => d.shape);
+  // Its paper puppet acts out each attack for exactly as long as the attack's own phases last.
+  const windUp = { hold: { action: 'attack' as const, frame: 0 } };
+  const slam = { hold: { action: 'attack' as const, frame: 1 } };
+  enemy.visual = (time) => {
+    if (!brain) return {};
+    if (brain.ring) return { hold: { action: 'attack', frame: 1 + (Math.floor(time / 180) % 2) } };
+    if (brain.sweep) {
+      const phase = branchSweepPhase(brain.sweep.plan, time - brain.sweep.start);
+      if (phase === 'telegraph') return windUp;
+      if (phase === 'swing') return slam;
+    }
+    const { attack } = brain;
+    if (attack?.kind === 'roots') {
+      const { telegraph, hurting } = rootEruptionAt(attack.plan, time - attack.start);
+      if (hurting.length) return slam;
+      if (telegraph.length) return windUp;
+    }
+    if (attack?.kind === 'seeds' && time - attack.start < SEED_THROW_MS) return slam;
+    return {};
+  };
   const hit = enemy.hit;
   enemy.hit = (part, damage) => {
     // Underground, nothing reaches it.

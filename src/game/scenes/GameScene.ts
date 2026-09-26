@@ -157,6 +157,7 @@ const FLOOR_COLOR: Record<RoomKind, (p: Palette) => number> = {
 /** Enemies drawn in paper: how far below the centre of their body their feet are, and their frame rate if not the usual. */
 const ENEMY_ART: Partial<Record<EnemyType, { footOffset: number; fps?: number }>> = {
   goblin: { footOffset: 7 },
+  treantBoss: { footOffset: 30 },
   seedSpitter: { footOffset: 14 },
   boar: { footOffset: 8 },
   // Beating wings: twice the usual frame rate.
@@ -1317,7 +1318,9 @@ export class GameScene extends Phaser.Scene {
     const look = ENEMY_ART[type];
     if (!look) return;
     const actor = this.paper.actor(enemy.parts[0], type, { ...look, champion, scale: champion ? TUNING.champion.scale : 1 });
-    if (actor && enemy.visual) actor.visual = (time) => enemy.visual!(time);
+    if (!actor) return;
+    if (enemy.visual) actor.visual = (time) => enemy.visual!(time);
+    for (const shape of enemy.trim ?? []) this.cameras.main.ignore(shape);
   }
 
   private lockDoors(room: WorldRoom) {

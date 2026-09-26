@@ -103,6 +103,8 @@ export interface Enemy extends Stunnable {
    * own state, never changing it; plain shapes ignore it.
    */
   visual?(time: number): Visual;
+  /** Shapes drawn along with its parts purely as decoration (the Treant's face), hidden when paper art stands in for it. */
+  trim?: Phaser.GameObjects.GameObject[];
 }
 
 /** What an enemy reports about how it looks: its paper art otherwise animates from its velocity. */

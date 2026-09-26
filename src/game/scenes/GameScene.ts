@@ -74,6 +74,7 @@ import { softPush } from '../../core/enemies/softPush';
 import { updateGoblinPack } from '../../core/enemies/forestCast';
 import { createFalloff, createHitGate, type Falloff } from '../../core/player/multiHit';
 import { PaperLayer, type PaperActor } from '../art/paperLayer';
+import { LightLayer } from '../art/lightLayer';
 import { DECOR_CANVAS, JOIN_LOOKS, TILE_CANVAS, type WallSide } from '../../core/art/terrain';
 import { TILE_VARIANTS, decorKey, doorKey, floorKey, joinKey, tileKey, wallKey, type FloorKind } from '../../core/art/catalogue';
 import { joinsBetween, neighbourMask } from '../../core/art/autotile';
@@ -298,6 +299,8 @@ export class GameScene extends Phaser.Scene {
   /** Paper sprites standing in for shapes that have art; the rest draw themselves. */
   private paper!: PaperLayer;
   private playerArt?: PaperActor;
+  /** Every room is dark but for its lights. */
+  private light!: LightLayer;
   /** The canopy and vine joins touching each terrain cell (`roomId|x,y`), gone once the cell's tile is. */
   private joinArt = new Map<string, Phaser.GameObjects.Image[]>();
 
@@ -433,6 +436,7 @@ export class GameScene extends Phaser.Scene {
 
     // The playfield is one map cell; the label strip under it belongs to the HUD.
     this.cameras.main.setViewport(0, 0, CELL_PX_W, CELL_PX_H);
+    this.light = new LightLayer(this);
     this.cameras.main.setBackgroundColor(themeForFloor(start.floorIndex).palette.background);
     this.showRoomsAround(start);
     this.followInside(start);
@@ -476,6 +480,7 @@ export class GameScene extends Phaser.Scene {
     this.updateCrushers(time);
     this.followPlayerAcrossRooms(time);
     this.paper.update(time);
+    this.light.update(this.player);
   }
 
   /** Keeps one orb per Orbital level circling the player, evenly spaced. */

@@ -1,7 +1,8 @@
 import { CHARACTERS, type Action, type View } from '../core/art/characters';
 import { hudSvg, HEART_CANVAS, ICON_CANVAS, SHOT_CANVAS } from '../core/art/hud';
 import { PAPER } from '../core/art/palette';
-import { DECOR_CANVAS, DOWN, LEFT, RIGHT, TILE, TILE_CANVAS, UP, terrainSvg, type Mask, type WallSide } from '../core/art/terrain';
+import { DOWN, LEFT, RIGHT, UP, type Mask } from '../core/art/autotile';
+import { DECOR_CANVAS, TILE, TILE_CANVAS, terrainSvg, type WallSide } from '../core/art/terrain';
 import { createRng } from '../core/rng';
 
 /**
@@ -124,6 +125,11 @@ function drawRoom(sheet: Sheet, scene: Scene, lit: boolean, id: string): string 
       const svg = tile(terrainSvg.tile(look, variant, mask), c.x, c.y);
       if (look === 'pond') flat.push(svg);
       else standing.push({ y: c.y, svg });
+      // Neighbouring trees and thorns grow into each other across the seam.
+      if (look === 'tree' || look === 'thorn bush') {
+        if (same(1, 0)) standing.push({ y: c.y + 0.1, svg: tile(terrainSvg.join(look, 'across'), c.x + TILE / 2, c.y) });
+        if (same(0, 1)) standing.push({ y: c.y + TILE / 2, svg: tile(terrainSvg.join(look, 'down'), c.x, c.y + TILE / 2) });
+      }
     }),
   );
 

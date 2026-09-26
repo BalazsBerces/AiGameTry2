@@ -74,6 +74,9 @@ import { softPush } from '../../core/enemies/softPush';
 import { updateGoblinPack } from '../../core/enemies/forestCast';
 import { createFalloff, createHitGate, type Falloff } from '../../core/player/multiHit';
 import { PaperLayer, type PaperActor } from '../art/paperLayer';
+import { DECOR_CANVAS, JOIN_LOOKS, TILE_CANVAS, type WallSide } from '../../core/art/terrain';
+import { TILE_VARIANTS, decorKey, doorKey, floorKey, joinKey, tileKey, wallKey, type FloorKind } from '../../core/art/catalogue';
+import { joinsBetween, neighbourMask } from '../../core/art/autotile';
 
 type Keys = Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
 type PhysicsArc = Phaser.GameObjects.Arc & { body: Phaser.Physics.Arcade.Body };
@@ -150,6 +153,11 @@ const FLOOR_COLOR: Record<RoomKind, (p: Palette) => number> = {
   item: (p) => p.itemFloor,
   boss: (p) => p.bossFloor,
 };
+
+/** Which paper floor each kind of room gets. */
+const FLOOR_KIND: Record<RoomKind, FloorKind> = { start: 'normal', normal: 'normal', item: 'item', boss: 'boss' };
+/** A standing terrain piece's foot line (a tree's trunk base) lies this far below its tile's centre. */
+const TERRAIN_FOOT = 14;
 
 /** A non-floor tile drawn in its floor's look. */
 function drawTile(scene: Phaser.Scene, x: number, y: number, look: TileLook): Shape {
@@ -280,6 +288,8 @@ export class GameScene extends Phaser.Scene {
   /** Paper sprites standing in for shapes that have art; the rest draw themselves. */
   private paper!: PaperLayer;
   private playerArt?: PaperActor;
+  /** The canopy and vine joins touching each terrain cell (`roomId|x,y`), gone once the cell's tile is. */
+  private joinArt = new Map<string, Phaser.GameObjects.Image[]>();
 
   constructor() {
     super('game');
@@ -319,6 +329,8 @@ export class GameScene extends Phaser.Scene {
     this.playerStun = {};
     this.playerStunMark = undefined;
     this.roomObjects = new Map();
+    this.paper = new PaperLayer(this);
+    this.joinArt = new Map();
     for (const room of this.world.rooms.values()) {
       const before = this.children.list.length;
       this.drawRoom(room);
@@ -331,7 +343,6 @@ export class GameScene extends Phaser.Scene {
     this.player = this.add.circle(spawn.x, spawn.y, TUNING.playerSize / 2, COLORS.player) as PhysicsArc;
     this.player.setDepth(DEPTH.player);
     this.physics.add.existing(this.player);
-    this.paper = new PaperLayer(this);
     this.playerArt = this.paper.actor(this.player, 'player', { footOffset: PLAYER_FOOT });
     // A round body too, so the ball slides round corners instead of snagging on them.
     this.player.body.setCircle(TUNING.playerSize / 2);
@@ -941,7 +952,7 @@ export class GameScene extends Phaser.Scene {
         const result = hitTile(this.world, roomId, cell, hits);
         if (result === 'broken') this.removeTerrain(roomId, cell);
         const shape = this.terrain.get(`${roomId}|${cell.x},${cell.y}`) as Phaser.GameObjects.Rectangle | undefined;
-        if (result === 'damaged' && shape) shape.setAlpha(shape.alpha - 0.25 * hits);
+        if (result === 'damaged' && shape) this.fadeTerrain(shape, 0.25 * hits);
       },
       spawnEnemy: (enemy) => this.addEnemy(enemy),
       removeEnemy: (enemy) => {
@@ -1043,7 +1054,13 @@ export class GameScene extends Phaser.Scene {
     }
     const result = hitTile(this.world, roomId, cell);
     if (result === 'broken') this.removeTerrain(roomId, cell);
-    else if (result === 'damaged') wall.setAlpha(wall.alpha - 0.25);
+    else if (result === 'damaged') this.fadeTerrain(wall, 0.25);
+  }
+
+  /** A cracked rock fades a step toward breaking, its paper art with it. */
+  private fadeTerrain(shape: Phaser.GameObjects.Shape, by: number) {
+    shape.setAlpha(shape.alpha - by);
+    PaperLayer.artOf(shape)?.setAlpha(shape.alpha);
   }
 
   /**
@@ -1097,6 +1114,8 @@ export class GameScene extends Phaser.Scene {
     const key = `${roomId}|${cell.x},${cell.y}`;
     this.terrain.get(key)?.destroy();
     this.terrain.delete(key);
+    for (const art of this.joinArt.get(key) ?? []) art.destroy();
+    this.joinArt.delete(key);
   }
 
   /** Drops a lit bomb at the player's feet, if they have one. */
@@ -1290,6 +1309,10 @@ export class GameScene extends Phaser.Scene {
       const c = tileCenter(room, w.x, w.y);
       const lock = this.add.rectangle(c.x, c.y, t, t, COLORS.lockedDoor);
       this.walls.add(lock);
+      const gate = themeForFloor(room.floorIndex).paper
+        ? this.paper.piece(doorKey(door.side, true), c.x, c.y, TILE_CANVAS, door.side === 'down' ? c.y + t : c.y + t / 2)
+        : undefined;
+      if (gate) this.paper.standIn(lock, gate);
       this.doorLocks.push(lock);
     }
   }
@@ -1354,17 +1377,74 @@ export class GameScene extends Phaser.Scene {
     const b = roomBlock(room);
     const { width, height } = room.layout;
     const corridors = new Set(room.layout.doors.flatMap((d) => doorCorridor(room, d)).map((c) => `${c.x},${c.y}`));
-    const { palette } = themeForFloor(room.floorIndex);
+    const theme = themeForFloor(room.floorIndex);
+    const { palette } = theme;
     const looks = roomLooks(room.floorIndex, room.layout.theme ?? '');
+    const variants = room.layout.variants;
+    const variantAt = (tx: number, ty: number) => variants?.[ty]?.[tx] ?? Math.abs(tx * 7 + ty * 13) % TILE_VARIANTS;
 
     this.add.rectangle(b.x, b.y, b.w, b.h, palette.wall).setOrigin(0);
     const floor = tileCenter(room, 0, 0);
     this.add
       .rectangle(floor.x - t / 2, floor.y - t / 2, width * t, height * t, FLOOR_COLOR[room.floorRoom.kind](palette))
       .setOrigin(0);
+    if (theme.paper) this.drawPaperFloor(room);
+    else this.drawPlainFloor(room);
+
+    for (let ty = -b.pad.y; ty < b.tilesH - b.pad.y; ty++) {
+      for (let tx = -b.pad.x; tx < b.tilesW - b.pad.x; tx++) {
+        if (tx >= 0 && ty >= 0 && tx < width && ty < height) continue;
+        const c = tileCenter(room, tx, ty);
+        if (corridors.has(`${tx},${ty}`)) {
+          const door = room.layout.doors.find((d) => doorCorridor(room, d)[0].x === tx && doorCorridor(room, d)[0].y === ty);
+          const art = theme.paper
+            ? door
+              ? this.paper.piece(doorKey(door.side, false), c.x, c.y, TILE_CANVAS, door.side === 'down' ? c.y + t : c.y + t / 2)
+              : this.paper.piece(floorKey('normal', variantAt(tx, ty)), c.x, c.y, TILE_CANVAS)
+            : undefined;
+          if (!art) this.add.rectangle(c.x, c.y, t, t, palette.door);
+          continue;
+        }
+        const wall = this.add.rectangle(c.x, c.y, t, t, palette.wall);
+        this.walls.add(wall);
+        if (theme.paper) this.paperWall(room, wall, tx, ty, variantAt(tx, ty));
+      }
+    }
+
+    room.layout.tiles.forEach((row, ty) =>
+      row.forEach((tile: Tile, tx) => {
+        if (isWalkable(tile)) return;
+        const c = tileCenter(room, tx, ty);
+        // An L room's missing cell: plain room wall, not terrain that can crack.
+        if (tile === 'wall') {
+          const wall = this.add.rectangle(c.x, c.y, t, t, palette.wall);
+          this.walls.add(wall);
+          if (theme.paper) this.paperWall(room, wall, tx, ty, variantAt(tx, ty));
+          return;
+        }
+        const shape = this.terrainPiece(room, tx, ty, tile, looks[tile as Exclude<Tile, 'floor' | 'wall'>], variants?.[ty]?.[tx]);
+        // Shot-blocking tiles are walls to physics; the rest (holes) only stop walking.
+        if (!blocksShots(tile)) {
+          (hurtsOnTouch(tile) ? this.thorns : this.holes).add(shape);
+          // Thorn can be a Treant sprout it may crush later (crushSprout).
+          if (hurtsOnTouch(tile)) this.terrain.set(`${room.floorRoom.id}|${tx},${ty}`, shape);
+          return;
+        }
+        shape.setData({ roomId: room.floorRoom.id, tile: { x: tx, y: ty } });
+        this.walls.add(shape);
+        this.terrain.set(`${room.floorRoom.id}|${tx},${ty}`, shape);
+      }),
+    );
+    this.drawJoins(room);
+    // Over the tiles, so each pit or pond reads as one shape (paper ponds have banks of their own).
+    if (!looks.hole.art || !theme.paper) drawRegionRims(this.add.graphics(), room, looks.hole.stroke ?? palette.accent);
+  }
+
+  /** The floor as flat colour: each tile tinted by its variant, decor as faint placeholder marks. */
+  private drawPlainFloor(room: WorldRoom) {
+    const t = TUNING.tile;
     const dressing = this.add.graphics();
     const variants = room.layout.variants;
-    // Each floor tile tinted a touch lighter or darker by its variant.
     room.layout.tiles.forEach((row, ty) =>
       row.forEach((tile, tx) => {
         const v = variants?.[ty]?.[tx];
@@ -1379,42 +1459,73 @@ export class GameScene extends Phaser.Scene {
       const kind = theme?.decor.find((k) => k.id === d.kind);
       if (kind) drawDecorMark(dressing, tileCenter(room, d.cell.x, d.cell.y), d.cell, kind);
     }
+  }
 
-    for (let ty = -b.pad.y; ty < b.tilesH - b.pad.y; ty++) {
-      for (let tx = -b.pad.x; tx < b.tilesW - b.pad.x; tx++) {
-        if (tx >= 0 && ty >= 0 && tx < width && ty < height) continue;
-        const c = tileCenter(room, tx, ty);
-        if (corridors.has(`${tx},${ty}`)) this.add.rectangle(c.x, c.y, t, t, palette.door);
-        else this.walls.add(this.add.rectangle(c.x, c.y, t, t, palette.wall));
-      }
-    }
-
+  /** The floor in paper: a moss sheet per tile (the item and boss rooms' own), decor as paper cutouts. */
+  private drawPaperFloor(room: WorldRoom) {
+    const kind = FLOOR_KIND[room.floorRoom.kind];
+    const variants = room.layout.variants;
     room.layout.tiles.forEach((row, ty) =>
-      row.forEach((tile: Tile, tx) => {
-        if (isWalkable(tile)) return;
+      row.forEach((tile, tx) => {
+        if (tile === 'wall') return;
         const c = tileCenter(room, tx, ty);
-        // An L room's missing cell: plain room wall, not terrain that can crack.
-        if (tile === 'wall') {
-          this.walls.add(this.add.rectangle(c.x, c.y, t, t, palette.wall));
-          return;
-        }
-        const look = looks[tile as Exclude<Tile, 'floor' | 'wall'>];
-        const variant = variants?.[ty]?.[tx];
-        const shape = drawTile(this, c.x, c.y, variant === undefined ? look : { ...look, color: shade(look.color, variant) });
-        // Shot-blocking tiles are walls to physics; the rest (holes) only stop walking.
-        if (!blocksShots(tile)) {
-          (hurtsOnTouch(tile) ? this.thorns : this.holes).add(shape);
-          // Thorn can be a Treant sprout it may crush later (crushSprout).
-          if (hurtsOnTouch(tile)) this.terrain.set(`${room.floorRoom.id}|${tx},${ty}`, shape);
-          return;
-        }
-        shape.setData({ roomId: room.floorRoom.id, tile: { x: tx, y: ty } });
-        this.walls.add(shape);
-        this.terrain.set(`${room.floorRoom.id}|${tx},${ty}`, shape);
+        this.paper.piece(floorKey(kind, variants?.[ty]?.[tx] ?? 0), c.x, c.y, TILE_CANVAS);
       }),
     );
-    // Over the tiles, so each pit or pond reads as one shape.
-    drawRegionRims(this.add.graphics(), room, looks.hole.stroke ?? palette.accent);
+    for (const d of room.layout.decor ?? []) {
+      const c = tileCenter(room, d.cell.x, d.cell.y);
+      // Nudged off the tile's centre by its cell, so a scatter of them doesn't sit on the grid.
+      const x = c.x + (((d.cell.x * 7 + d.cell.y * 3) % 5) - 2) * 5;
+      const y = c.y + (((d.cell.x * 3 + d.cell.y * 5) % 5) - 2) * 5;
+      this.paper.piece(decorKey(d.kind, d.cell.x + d.cell.y), x, y, DECOR_CANVAS);
+    }
+  }
+
+  /** A hedge in paper standing in for a wall block: the top wall shows its front face to the room. */
+  private paperWall(room: WorldRoom, wall: Phaser.GameObjects.Rectangle, tx: number, ty: number, variant: number) {
+    const { width, height } = room.layout;
+    const inside = (x: number, y: number) => room.layout.tiles[y]?.[x] !== undefined && room.layout.tiles[y][x] !== 'wall';
+    // The side it faces the room from; a wall block with no room below it gets plain foliage.
+    const side: WallSide =
+      inside(tx, ty + 1) ? 'top'
+      : ty >= height && inside(tx, ty - 1) ? 'bottom'
+      : tx < 0 || (inside(tx + 1, ty) && tx < width) ? 'left'
+      : tx >= width || inside(tx - 1, ty) ? 'right'
+      : 'corner';
+    const footY = side === 'bottom' ? wall.y + TUNING.tile : side === 'top' ? wall.y + TUNING.tile / 2 : wall.y + 14;
+    const art = this.paper.piece(wallKey(side, variant), wall.x, wall.y, TILE_CANVAS, footY);
+    if (art) this.paper.standIn(wall, art);
+  }
+
+  /** A terrain tile's physics shape, standing in paper where its look has art. */
+  private terrainPiece(room: WorldRoom, tx: number, ty: number, tile: Tile, look: TileLook, variant: number | undefined): Shape {
+    const c = tileCenter(room, tx, ty);
+    const shape = drawTile(this, c.x, c.y, variant === undefined ? look : { ...look, color: shade(look.color, variant) });
+    if (!look.art) return shape;
+    const flat = tile === 'hole';
+    const key = tileKey(look.art, variant ?? 0, flat ? neighbourMask(room.layout.tiles, tx, ty) : 0);
+    const art = this.paper.piece(key, c.x, c.y, TILE_CANVAS, flat ? undefined : c.y + TERRAIN_FOOT);
+    if (art) this.paper.standIn(shape, art);
+    return shape;
+  }
+
+  /** Neighbouring trees' canopies and thorns' vines grow into each other across the seam between them. */
+  private drawJoins(room: WorldRoom) {
+    if (!themeForFloor(room.floorIndex).paper) return;
+    const looks = roomLooks(room.floorIndex, room.layout.theme ?? '');
+    const joinable = (['obstacle', 'thorn'] as const).filter((tile) => looks[tile].art && JOIN_LOOKS.includes(looks[tile].art!));
+    for (const j of joinsBetween(room.layout.tiles, joinable)) {
+      const a = tileCenter(room, j.x, j.y);
+      const [dx, dy] = j.dir === 'across' ? [TUNING.tile / 2, 0] : [0, TUNING.tile / 2];
+      const art = this.paper.piece(joinKey(looks[j.tile as 'obstacle' | 'thorn'].art!, j.dir), a.x + dx, a.y + dy, TILE_CANVAS, a.y + dy + TERRAIN_FOOT);
+      if (!art) continue;
+      // Gone as soon as either tile it joins is.
+      const b = j.dir === 'across' ? { x: j.x + 1, y: j.y } : { x: j.x, y: j.y + 1 };
+      for (const cell of [{ x: j.x, y: j.y }, b]) {
+        const key = `${room.floorRoom.id}|${cell.x},${cell.y}`;
+        this.joinArt.set(key, [...(this.joinArt.get(key) ?? []), art]);
+      }
+    }
   }
 
   /** Takes a room's drawn crusher blocks out of the breakable terrain and tracks them for sliding. */
@@ -1428,6 +1539,8 @@ export class GameScene extends Phaser.Scene {
       // Shots still stop on it, but it has no tile of its own to crack.
       shape.setData('roomId', undefined);
       this.crushers.push({ roomId, crusher, shape, readyAt: 0 });
+      const art = PaperLayer.artOf(shape);
+      if (art) this.paper.follow(shape, art, TERRAIN_FOOT);
     }
   }
 
@@ -1499,7 +1612,12 @@ export class GameScene extends Phaser.Scene {
       return false;
     }
     if (!sproutTile(this.world, roomId, cell, tile)) return false;
-    const shape = drawTile(this, c.x, c.y, roomLooks(room.floorIndex, room.layout.theme ?? '')[tile]);
+    const shape = this.terrainPiece(room, cell.x, cell.y, tile, roomLooks(room.floorIndex, room.layout.theme ?? '')[tile], undefined);
+    const art = PaperLayer.artOf(shape);
+    if (art) {
+      this.paper.follow(shape, art, TERRAIN_FOOT);
+      this.roomObjects.get(roomId)?.push(art);
+    }
     if (!blocksShots(tile)) {
       this.thorns.add(shape);
     } else {

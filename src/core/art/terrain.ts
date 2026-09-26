@@ -1,5 +1,6 @@
 import { PAPER as P } from './palette';
-import { blob, cutPoly, fill, n, pieceRng, ragged, sheet, svgDoc, type Pt } from './svg';
+import { DOWN, LEFT, RIGHT, UP, type Mask } from './autotile';
+import { blob, cutPoly, fill, n, pieceRng, ragged, sheet, svgDoc } from './svg';
 
 /**
  * Terrain in paper. A tile piece's canvas is larger than its tile so tall things (trees) can rise
@@ -8,12 +9,6 @@ import { blob, cutPoly, fill, n, pieceRng, ragged, sheet, svgDoc, type Pt } from
 export const TILE = 48;
 export const TILE_CANVAS = { w: 72, h: 92, anchor: { x: 36, y: 58 } };
 
-/** Which of a tile's four neighbours are the same kind: bit 1 up, 2 right, 4 down, 8 left. */
-export type Mask = number;
-export const UP = 1;
-export const RIGHT = 2;
-export const DOWN = 4;
-export const LEFT = 8;
 
 const { x: AX, y: AY } = TILE_CANVAS.anchor;
 const H = TILE / 2;
@@ -23,31 +18,22 @@ const ellipse = (x: number, y: number, rx: number, ry: number, color: string, ex
 const contact = (rx: number, ry: number, dy = 14) => ellipse(AX + 3, AY + dy, rx, ry, P.shadow, 'opacity="0.42"');
 const tileDoc = (body: string, seed: number) => svgDoc(TILE_CANVAS.w, TILE_CANVAS.h, body, seed);
 
-/** Toward each open neighbour, a point `reach` px from the tile's centre (for joining pieces up). */
-const toward = (mask: Mask, reach: number): Pt[] =>
-  [
-    [UP, 0, -1],
-    [RIGHT, 1, 0],
-    [DOWN, 0, 1],
-    [LEFT, -1, 0],
-  ].flatMap(([bit, dx, dy]) => (mask & bit ? [{ x: AX + dx * reach, y: AY + dy * reach }] : []));
 
 // ---------------------------------------------------------------------------------------------
 // Terrain tiles
 // ---------------------------------------------------------------------------------------------
 
-/** A forest tree: a trunk on its tile and a round layered canopy rising above it. Neighbouring trees' canopies reach into each other. */
-function tree(variant: number, mask: Mask, look: { main: string; light: string; dark: string } = { main: P.tree, light: P.treeLight, dark: P.treeDark }) {
+type Foliage = { main: string; light: string; dark: string };
+const TREE: Foliage = { main: P.tree, light: P.treeLight, dark: P.treeDark };
+
+/** A forest tree: a trunk on its tile and a ragged layered canopy rising above it. */
+function tree(variant: number, look: Foliage = TREE) {
   const r = (part: string) => pieceRng('tree', variant, part);
   const lean = (variant % 3) - 1;
   const top = AY - 26;
-  const joins = toward(mask, 24)
-    .map((p, i) => sheet(fill(ragged(r(`join${i}`), (p.x + AX) / 2, (p.y + top) / 2 + (p.y > AY ? -10 : 0), 16, 13, 9, 0.2), look.dark)))
-    .join('');
   return (
     contact(22, 8, 12) +
     sheet(fill(cutPoly(r('trunk'), [{ x: AX - 6, y: AY + 16 }, { x: AX - 4, y: AY - 4 }, { x: AX + 4, y: AY - 4 }, { x: AX + 6, y: AY + 16 }, { x: AX + 1, y: AY + 13 }], 0.5), P.trunk)) +
-    joins +
     sheet(fill(ragged(r('back'), AX + lean * 2, top + 4, 25, 21, 14, 0.24), look.dark), 2) +
     sheet(fill(ragged(r('mid'), AX + lean * 3, top - 3, 20, 17, 12, 0.22), look.main), 2) +
     sheet(fill(ragged(r('top'), AX - 5 + lean * 4, top - 10, 10, 7, 8, 0.25), look.light))
@@ -105,10 +91,9 @@ function pond(variant: number, mask: Mask, look: { water: string; light: string;
 }
 
 /** A thorn bush: low twisted brambles with pink spikes; it reaches its vines into neighbouring thorns. */
-function thorn(variant: number, mask: Mask) {
+function thorn(variant: number) {
   const r = (part: string) => pieceRng('thorn', variant, part);
   const vines = [
-    ...toward(mask, 26),
     ...[0, 1, 2].map((i) => {
       const a = (i / 3) * Math.PI * 2 + variant;
       return { x: AX + Math.cos(a) * 16, y: AY + Math.sin(a) * 12 };
@@ -131,6 +116,31 @@ function thorn(variant: number, mask: Mask) {
       return fill(`M${n(s.x - 2.2)} ${n(s.y + 1)}L${n(s.x + Math.cos(a) * 6)} ${n(s.y + Math.sin(a) * 6 - 3)}L${n(s.x + 2.2)} ${n(s.y + 1)}Z`, P.thornSpike);
     }).join('');
   return contact(18, 6, 10) + sheet(stems) + sheet(heart, 2);
+}
+
+/**
+ * Where two neighbouring trees' canopies grow into each other, or two thorn bushes' vines: drawn
+ * on the seam between them, whose centre is the canvas anchor. `down` joins a tile to the one below.
+ */
+function canopyJoin(look: Foliage, dir: 'across' | 'down') {
+  const r = (part: string) => pieceRng('canopyJoin', dir, part);
+  // A canopy stands 26 px above its tile's centre: the seam's clump sits between the two.
+  const y = AY - 26 + (dir === 'down' ? 0 : -2);
+  const [rx, ry] = dir === 'across' ? [18, 15] : [17, 19];
+  return sheet(fill(ragged(r('dark'), AX, y, rx, ry, 12, 0.24), look.dark), 2) + sheet(fill(ragged(r('main'), AX, y - 3, rx * 0.7, ry * 0.6, 9, 0.22), look.main));
+}
+
+function vineJoin(dir: 'across' | 'down') {
+  const r = pieceRng('vineJoin', dir);
+  const [dx, dy] = dir === 'across' ? [26, 0] : [0, 26];
+  const bend = (r.next() - 0.5) * 10;
+  const spikes = [-0.4, 0.3].map((k) => {
+    const s = { x: AX + dx * k + (dir === 'down' ? bend / 2 : 0), y: AY + dy * k + (dir === 'across' ? bend / 2 : 0) };
+    return fill(`M${n(s.x - 2)} ${n(s.y)}L${n(s.x)} ${n(s.y - 6)}L${n(s.x + 2)} ${n(s.y)}Z`, P.thornSpike);
+  });
+  return sheet(
+    `<path d="M${AX - dx} ${AY - dy}Q${n(AX + (dir === 'down' ? bend : 0))} ${n(AY + (dir === 'across' ? bend : 0))} ${AX + dx} ${AY + dy}" stroke="${P.thorn}" stroke-width="4.5" fill="none" stroke-linecap="round"/>` + spikes.join(''),
+  );
 }
 
 /** A rolling log: a fallen trunk lying across its tile, its cut end facing the camera. */
@@ -228,8 +238,8 @@ function floorTile(variant: number, kind: 'normal' | 'item' | 'boss') {
   // The item room's floor carries a worn gold rune ring, the boss room's a scatter of scorched roots.
   const mark = kind === 'item' && variant === 0
     ? `<circle cx="${AX}" cy="${AY}" r="15" fill="none" stroke="#c8b060" stroke-width="1.6" stroke-dasharray="5 4" opacity="0.5"/>`
-    : kind === 'boss' && variant % 2 === 0
-      ? `<path d="M${x0 + 6} ${y0 + 30}q10 -8 18 -2t18 -8" stroke="#2a1e14" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.7"/>`
+    : kind === 'boss' && variant === 0
+      ? `<path d="M${x0 + 6} ${y0 + 30}q10 -8 18 -2t18 -8" stroke="#2a1e14" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.45"/>`
       : '';
   // Bleeds a pixel past the tile so scaled neighbours never show a seam.
   return `<rect x="${x0 - 1}" y="${y0 - 1}" width="${TILE + 2}" height="${TILE + 2}" fill="${base}"/>` + patches.join('') + mark;
@@ -282,18 +292,32 @@ export const DECOR_KINDS = Object.keys(DECOR_ART);
 
 // ---------------------------------------------------------------------------------------------
 
+const OAK: Foliage = { main: '#23421f', light: '#2f5628', dark: '#152a12' };
+const WILLOW: Foliage = { main: '#3a5a32', light: '#4a6c3e', dark: '#283f22' };
+
+/** Looks whose neighbours grow into each other across the seam, and how. */
+const JOIN_ART: Readonly<Record<string, (dir: 'across' | 'down') => string>> = {
+  tree: (d) => canopyJoin(TREE, d),
+  oak: (d) => canopyJoin(OAK, d),
+  willow: (d) => canopyJoin(WILLOW, d),
+  'thorn bush': (d) => vineJoin(d),
+};
+export const JOIN_LOOKS = Object.keys(JOIN_ART);
+/** Looks drawn as pieces that fit their neighbours (a pond's banks): each has a piece per neighbour mask. */
+export const MASKED_LOOKS = ['pond', 'bog'];
+
 /** How each forest tile look is drawn, by its look name. Looks sub-themes override get their own. */
 type TileDraw = (variant: number, mask: Mask) => string;
 const TILE_ART: Readonly<Record<string, TileDraw>> = {
-  tree: (v, m) => tree(v, m),
-  oak: (v, m) => tree(v, m, { main: '#2a5a24', light: '#3c7a30', dark: '#1c4418' }),
-  willow: (v, m) => tree(v, m, { main: '#4a7a3a', light: '#6a9a4a', dark: '#365a2a' }),
+  tree: (v) => tree(v),
+  oak: (v) => tree(v, OAK),
+  willow: (v) => tree(v, WILLOW),
   bush: (v) => bush(v),
   'reed clump': (v) => bush(v, { main: '#8a9a4a', light: '#a8b85a', dark: '#6a7a38' }),
   'bramble bush': (v) => bush(v, { main: '#4a6a2a', light: '#6a8a3a', dark: '#3a5020' }) + sheet([0, 1, 2].map((i) => `<circle cx="${AX - 8 + i * 8}" cy="${AY - 2 + (i % 2) * 5}" r="2.2" fill="${P.thornSpike}"/>`).join('')),
   pond: (v, m) => pond(v, m),
   bog: (v, m) => pond(v, m, { water: '#3a4a2a', light: '#5a6a3a', deep: '#2a361e' }),
-  'thorn bush': (v, m) => thorn(v, m),
+  'thorn bush': (v) => thorn(v),
   'rolling log': (v) => log(v),
   'mirror stone': (v) => mirrorStone(v),
   puffball: (v) => puffball(v),
@@ -306,6 +330,7 @@ export const TILE_LOOKS = Object.keys(TILE_ART);
 /** Every paper terrain SVG. */
 export const terrainSvg = {
   tile: (look: string, variant: number, mask: Mask) => tileDoc(TILE_ART[look](variant, mask), 19 + variant),
+  join: (look: string, dir: 'across' | 'down') => tileDoc(JOIN_ART[look](dir), 61),
   wall: (side: WallSide, variant: number) => tileDoc(hedge(side, variant), 23),
   door: (side: 'top' | 'bottom' | 'left' | 'right', locked: boolean) => tileDoc(doorway(side, locked), 29),
   floor: (kind: 'normal' | 'item' | 'boss', variant: number) => tileDoc(floorTile(variant, kind), 31 + variant),

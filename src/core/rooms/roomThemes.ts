@@ -31,7 +31,7 @@ export interface RoomTheme {
 type TerrainTile = Exclude<Tile, 'floor' | 'wall'>;
 
 /** What a sub-theme may change about a tile's look: its name, colour, outline and shape. */
-export type LookOverride = Partial<Pick<TileLook, 'name' | 'color' | 'stroke' | 'shape'>>;
+export type LookOverride = Partial<Pick<TileLook, 'name' | 'color' | 'stroke' | 'shape' | 'art'>>;
 
 /** A kind of decor and its placeholder: a faint mark in a colour of the theme's. */
 export interface DecorKind {
@@ -46,7 +46,7 @@ const ROOM_THEMES: readonly RoomTheme[] = [
     roles: { cover: 'obstacle', breakable: 'rock', pit: 'hole', hazard: 'obstacle', feature: 'obstacle' },
     filler: ['obstacle', 'rock'],
     decor: [{ id: 'flowers', mark: 'dot', color: 0xe8d86a }, { id: 'grass', mark: 'dash', color: 0x7ab04a }, { id: 'leaves', mark: 'cross', color: 0xa0703a }],
-    looks: { obstacle: { name: 'oak', color: 0x2a5a24 } },
+    looks: { obstacle: { name: 'oak', color: 0x2a5a24, art: 'oak' } },
     encounterWeights: { boarCharge: 4, prowlers: 2 },
   },
   {
@@ -54,7 +54,11 @@ const ROOM_THEMES: readonly RoomTheme[] = [
     roles: { cover: 'rock', breakable: 'rock', pit: 'hole', hazard: 'hole', feature: 'hole' },
     filler: ['rock', 'obstacle'],
     decor: [{ id: 'puddle', mark: 'ring', color: 0x4f86b8 }, { id: 'reeds', mark: 'dash', color: 0x6a8a3a }, { id: 'lilypad', mark: 'dot', color: 0x5aa05a }],
-    looks: { obstacle: { name: 'willow', color: 0x4a7a3a }, rock: { name: 'reed clump', color: 0x8a9a4a }, hole: { name: 'bog', color: 0x3a4a2a, stroke: 0x5a6a3a } },
+    looks: {
+      obstacle: { name: 'willow', color: 0x4a7a3a, art: 'willow' },
+      rock: { name: 'reed clump', color: 0x8a9a4a, art: 'reed clump' },
+      hole: { name: 'bog', color: 0x3a4a2a, stroke: 0x5a6a3a, art: 'bog' },
+    },
     encounterWeights: { waspSwarm: 4, ledgeSentries: 2 },
   },
   {
@@ -62,7 +66,7 @@ const ROOM_THEMES: readonly RoomTheme[] = [
     roles: { cover: 'rock', breakable: 'rock', pit: 'hole', hazard: 'thorn', feature: 'obstacle' },
     filler: ['rock'],
     decor: [{ id: 'thornLitter', mark: 'cross', color: 0x8a4a3a }, { id: 'leaves', mark: 'dot', color: 0x7a5a2a }, { id: 'berries', mark: 'dot', color: 0xc0506a }],
-    looks: { rock: { name: 'bramble bush', color: 0x4a6a2a, stroke: 0x8a4a3a } },
+    looks: { rock: { name: 'bramble bush', color: 0x4a6a2a, stroke: 0x8a4a3a, art: 'bramble bush' } },
     encounterWeights: { ambush: 4, prowlers: 2 },
   },
   {

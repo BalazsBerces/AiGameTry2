@@ -93,12 +93,52 @@ export class PaperActor {
   }
 }
 
+/** Where a piece's canvas is pinned: its anchor point goes on the spot it is placed at. */
+export interface PieceFrame {
+  w: number;
+  h: number;
+  anchor: { x: number; y: number };
+}
+
+type Art = Phaser.GameObjects.Image;
+
 /** Every paper sprite the scene keeps in step with its shape. */
 export class PaperLayer {
   private actors: PaperActor[] = [];
+  /** Pieces that move with a shape (sliding logs, sprouting bushes): kept on it every frame. */
+  private followers: { shape: Shape; art: Art; footOffset: number }[] = [];
   private serial = 0;
 
   constructor(private scene: Phaser.Scene) {}
+
+  /**
+   * A still piece of paper art with its anchor at x,y: standing (sorted with everything else by its
+   * foot line `footY`) or, with no foot line, lying flat under it all. Undefined if the art isn't baked.
+   */
+  piece(key: string, x: number, y: number, frame: PieceFrame, footY?: number): Art | undefined {
+    const art = bakedArt(key);
+    if (!art) return undefined;
+    const image = this.scene.add.image(x, y, art.texture, key).setOrigin(frame.anchor.x / frame.w, frame.anchor.y / frame.h).setScale(1 / ART_SCALE);
+    if (footY !== undefined) image.setDepth(footDepth(footY, this.serial++));
+    return image;
+  }
+
+  /** `art` stands in for `shape` from now on: the camera stops drawing the shape, and the art goes when it goes. */
+  standIn(shape: Shape, art: Art) {
+    this.scene.cameras.main.ignore(shape);
+    shape.setData('art', art);
+    shape.once('destroy', () => art.destroy());
+  }
+
+  /** `shape`'s stand-in art, if it has one. */
+  static artOf(shape: Phaser.GameObjects.GameObject): Art | undefined {
+    return shape.getData('art') as Art | undefined;
+  }
+
+  /** Keeps a stand-in on its moving shape: position, scale, alpha and depth follow it every frame. */
+  follow(shape: Shape, art: Art, footOffset: number) {
+    this.followers.push({ shape, art, footOffset });
+  }
 
   /** A paper character for `shape`, or undefined if `kind` has no baked art (the shape keeps drawing itself). */
   actor(shape: Shape, kind: string, opts: ActorOptions): PaperActor | undefined {
@@ -115,5 +155,15 @@ export class PaperLayer {
 
   update(time: number) {
     this.actors = this.actors.filter((a) => a.sync(time));
+    this.followers = this.followers.filter(({ shape, art, footOffset }) => {
+      if (!shape.active) return false;
+      art
+        .setPosition(shape.x, shape.y)
+        .setScale(shape.scaleX / ART_SCALE, shape.scaleY / ART_SCALE)
+        .setAlpha(shape.alpha)
+        .setVisible(shape.visible);
+      if (art.depth >= 1) art.setDepth(footDepth(shape.y + footOffset, 0));
+      return true;
+    });
   }
 }

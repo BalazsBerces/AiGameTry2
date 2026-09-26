@@ -21,12 +21,16 @@ export interface TileLook {
   color: number;
   stroke?: number;
   inset: number;
+  /** Its papercut art (core/art), drawn instead of the shape where there is some. */
+  art?: string;
 }
 
 /** Everything floor-specific in one place: adding or tweaking a floor is a data change. */
 export interface FloorTheme {
   name: string;
   palette: Palette;
+  /** Walls, doors and floors are drawn in paper (core/art) rather than flat colour. */
+  paper?: boolean;
   /** Room tiles only: `wall` (an L room's missing cell) is drawn in the palette's wall colour. */
   looks: Record<Exclude<Tile, 'floor' | 'wall'>, TileLook>;
   /** The floor's boss is picked from these, once per run (see `bossForFloor`). */
@@ -43,6 +47,7 @@ export interface FloorTheme {
 const THEMES: readonly FloorTheme[] = [
   {
     name: 'Forest',
+    paper: true,
     palette: {
       background: 0x0b120b,
       floor: 0x34482c,
@@ -53,13 +58,13 @@ const THEMES: readonly FloorTheme[] = [
       accent: 0x9cc46a,
     },
     looks: {
-      obstacle: { name: 'tree', shape: 'round', color: 0x2f6b2f, stroke: 0x5a3b22, inset: 2 },
-      rock: { name: 'bush', shape: 'round', color: 0x5f9c3f, stroke: 0x2e5020, inset: 8 },
-      hole: { name: 'pond', shape: 'block', color: 0x2a5a8a, stroke: 0x4f86b8, inset: 0 },
-      thorn: { name: 'thorn bush', shape: 'round', color: 0x4a3a1e, stroke: 0xc0506a, inset: 4 },
-      crusher: { name: 'rolling log', shape: 'block', color: 0x6a4a2c, stroke: 0x3a2616, inset: 2 },
-      crystal: { name: 'mirror stone', shape: 'block', color: 0xa8d8c0, stroke: 0xe8fff0, inset: 6 },
-      glowshroom: { name: 'puffball', shape: 'round', color: 0xd8c86a, stroke: 0xfff4b0, inset: 10 },
+      obstacle: { name: 'tree', shape: 'round', color: 0x2f6b2f, stroke: 0x5a3b22, inset: 2, art: 'tree' },
+      rock: { name: 'bush', shape: 'round', color: 0x5f9c3f, stroke: 0x2e5020, inset: 8, art: 'bush' },
+      hole: { name: 'pond', shape: 'block', color: 0x2a5a8a, stroke: 0x4f86b8, inset: 0, art: 'pond' },
+      thorn: { name: 'thorn bush', shape: 'round', color: 0x4a3a1e, stroke: 0xc0506a, inset: 4, art: 'thorn bush' },
+      crusher: { name: 'rolling log', shape: 'block', color: 0x6a4a2c, stroke: 0x3a2616, inset: 2, art: 'rolling log' },
+      crystal: { name: 'mirror stone', shape: 'block', color: 0xa8d8c0, stroke: 0xe8fff0, inset: 6, art: 'mirror stone' },
+      glowshroom: { name: 'puffball', shape: 'round', color: 0xd8c86a, stroke: 0xfff4b0, inset: 10, art: 'puffball' },
     },
     bosses: ['treantBoss'],
     walker: 'goblin',

@@ -50,7 +50,7 @@ export const PAPER = {
   floor: '#2a372a',
   floorPatch: '#313f2f',
   floorDark: '#212c21',
-  moss: '#3a5230',
+  moss: '#6a7a5c',
   hedge: '#15241a',
   hedgeLight: '#1f3424',
   hedgeDark: '#0b150e',

@@ -351,6 +351,25 @@ function drawWasp(action: Action, frame: number, champion: boolean): string {
 
 const TREANT = { w: 168, h: 176, foot: { x: 84, y: 150 } };
 
+/** A branch cut to taper along `pts`, `from` px wide at its base down to `to` at its tip. */
+function taper(pts: readonly { x: number; y: number }[], from: number, to: number): string {
+  const side = (sign: number) =>
+    pts.map((q, i) => {
+      const a = pts[Math.max(0, i - 1)];
+      const b = pts[Math.min(pts.length - 1, i + 1)];
+      const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+      const w = (from + ((to - from) * i) / (pts.length - 1)) / 2;
+      return { x: q.x - ((b.y - a.y) / len) * w * sign, y: q.y + ((b.x - a.x) / len) * w * sign };
+    });
+  const tip = pts[pts.length - 1];
+  const out = [...side(1), tip, ...side(-1).reverse()];
+  return `M${out.map((q) => `${n(q.x)} ${n(q.y)}`).join('L')}Z`;
+}
+
+/** A strand of grey moss hanging `length` px from a branch, swaying by `kink` (0..1). */
+const hangingMoss = (x: number, y: number, length: number, kink: number) =>
+  `<path d="M${n(x)} ${n(y)}q${n(kink * 6 - 3)} ${n(length / 2)} ${n(kink * 2 - 1)} ${n(length)}" stroke="${P.moss}" stroke-width="2.2" fill="none" stroke-linecap="round" opacity="0.85"/>`;
+
 function drawTreant(action: Action, frame: number): string {
   const p = pose(action, frame);
   const r = (part: string) => pieceRng('treant', part);
@@ -366,10 +385,25 @@ function drawTreant(action: Action, frame: number): string {
     ])
     .join('');
   const tx = fx + sway;
+  // A hunched dead-wood giant: broad split shoulders over a narrow waist, flaring into its roots.
   const trunkD = cutPoly(r('trunk'), [
-    { x: tx - 20, y: fy - 6 }, { x: tx - 24, y: fy - 40 }, { x: tx - 28, y: fy - 72 }, { x: tx - 20, y: fy - 92 },
-    { x: tx + 20, y: fy - 92 }, { x: tx + 28, y: fy - 72 }, { x: tx + 24, y: fy - 40 }, { x: tx + 20, y: fy - 6 },
+    { x: tx - 24, y: fy - 6 }, { x: tx - 20, y: fy - 36 }, { x: tx - 26, y: fy - 62 }, { x: tx - 34, y: fy - 82 }, { x: tx - 26, y: fy - 94 },
+    { x: tx - 10, y: fy - 90 }, { x: tx, y: fy - 97 }, { x: tx + 11, y: fy - 91 }, { x: tx + 27, y: fy - 95 }, { x: tx + 35, y: fy - 81 },
+    { x: tx + 26, y: fy - 60 }, { x: tx + 21, y: fy - 36 }, { x: tx + 24, y: fy - 6 },
   ], 1.6);
+  // Cracks in the bark with the same ember glowing through them as in its eyes; they flare as it strikes.
+  const heat = p.strike === 2 ? 1 : p.strike === 1 ? 0.8 : 0.55;
+  const cracks = [
+    [{ x: -14, y: -22 }, { x: -9, y: -34 }, { x: -13, y: -44 }, { x: -7, y: -52 }],
+    [{ x: 12, y: -18 }, { x: 8, y: -30 }, { x: 13, y: -40 }],
+    [{ x: 18, y: -74 }, { x: 24, y: -84 }],
+  ]
+    .map((line) => {
+      const d = `M${line.map((q) => `${n(tx + q.x)} ${n(fy + q.y)}`).join('L')}`;
+      return `<path d="${d}" stroke="${P.eyeGlow}" stroke-width="4" fill="none" opacity="${n(heat * 0.3)}" stroke-linejoin="round"/>` +
+        `<path d="${d}" stroke="${P.eyeGlow}" stroke-width="1.4" fill="none" opacity="${n(heat)}" stroke-linejoin="round"/>`;
+    })
+    .join('');
   const grooves = [-10, 1, 11]
     .map((dx, i) => fill(`M${tx + dx} ${fy - 10}Q${tx + dx + (i - 1) * 4} ${fy - 40} ${tx + dx - 2} ${fy - 60}`, 'none', `stroke="${P.barkShade}" stroke-width="2.4" stroke-linecap="round"`))
     .join('');
@@ -390,26 +424,40 @@ function drawTreant(action: Action, frame: number): string {
     fill(cutPoly(r('mouth'), [{ x: tx - 13, y: faceY + 12 }, { x: tx - 4, y: faceY + 15 }, { x: tx + 5, y: faceY + 12 }, { x: tx + 13, y: faceY + 14 }, { x: tx + 9, y: faceY + 16 + mouthOpen }, { x: tx - 9, y: faceY + 15 + mouthOpen }], 0.5), P.ink) +
     // Splintered teeth along the top of its maw.
     [-9, -4, 1, 6].map((dx) => fill(`M${tx + dx} ${faceY + 13.5}L${tx + dx + 3.5} ${faceY + 13.5}L${tx + dx + 1.5} ${faceY + 17 + mouthOpen * 0.3}Z`, P.barkLight)).join('');
-  const armAt = (s: number) => ({ x: tx + s * 24, y: fy - 78 });
+  // Long gnarled arms that end in three twig claws, moss hanging off them.
   const arms = [-1, 1]
     .map((s) => {
-      const o = armAt(s);
-      const limb = cutPoly(r(`arm${s}`), [{ x: 0, y: -5 }, { x: 40, y: -3 }, { x: 52, y: -9 }, { x: 50, y: -2 }, { x: 58, y: 1 }, { x: 44, y: 4 }, { x: 0, y: 5 }], 0.7);
-      const leaves = fill(ragged(r(`armLeaf${s}`), 48, 0, 9, 7, 8, 0.3), P.canopy);
-      return group(fill(limb, P.bark) + sheet(leaves), `translate(${n(o.x)} ${n(o.y)}) scale(${s} 1) rotate(${n(arm)})`);
+      const limb = taper([{ x: 0, y: 0 }, { x: 24, y: 3 }, { x: 46, y: -2 }, { x: 58, y: 2 }], 9, 4);
+      const claws = [-26, 4, 30]
+        .map((a) => group(fill(taper([{ x: 0, y: 0 }, { x: 8, y: 0 }, { x: 15, y: 3 }], 3.2, 0.4), P.barkShade), `translate(56 2) rotate(${a})`))
+        .join('');
+      const moss = [14, 34].map((x, i) => hangingMoss(x, 4, 10 + i * 6, r(`armMoss${s}${i}`).next())).join('');
+      return group(claws + fill(limb, P.bark) + moss, `translate(${n(tx + s * 28)} ${n(fy - 82)}) scale(${s} 1) rotate(${n(arm)})`);
     })
     .join('');
-  const canopy = [
-    { x: -30, y: -112, rx: 30, ry: 24, c: P.canopyShade },
-    { x: 30, y: -112, rx: 30, ry: 24, c: P.canopyShade },
-    { x: 0, y: -126, rx: 38, ry: 28, c: P.canopy },
-    { x: -18, y: -104, rx: 26, ry: 18, c: P.canopy },
-    { x: 20, y: -104, rx: 26, ry: 18, c: P.canopy },
-    { x: -6, y: -134, rx: 20, ry: 13, c: P.canopyLight },
+  // No leafy dome: a crown of bare, forking branches like antlers, a few dark tufts clinging to them.
+  const crown = [
+    [{ x: -8, y: -90 }, { x: -26, y: -112 }, { x: -34, y: -136 }, { x: -30, y: -148 }],
+    [{ x: -26, y: -112 }, { x: -50, y: -122 }, { x: -66, y: -118 }],
+    [{ x: 9, y: -90 }, { x: 26, y: -116 }, { x: 30, y: -142 }],
+    [{ x: 26, y: -116 }, { x: 48, y: -128 }, { x: 64, y: -138 }],
+    [{ x: 0, y: -94 }, { x: -3, y: -118 }, { x: 5, y: -134 }],
+    [{ x: -34, y: -136 }, { x: -44, y: -144 }],
+    [{ x: 30, y: -142 }, { x: 40, y: -150 }],
   ]
-    .map((c, i) => sheet(fill(ragged(r(`canopy${i}`), tx + c.x, fy + c.y, c.rx, c.ry, 15, 0.24), c.c), 2))
+    .map((line, i) => fill(taper(line.map((q) => ({ x: tx + q.x, y: fy + q.y })), i < 5 ? 10 : 4, 1.5), i % 2 ? P.barkShade : P.bark))
     .join('');
-  const body = sheet(roots) + sheet(arms, 2) + sheet(fill(trunkD, P.bark) + grooves + sheet(face), 2) + canopy;
+  const tufts = [
+    { x: -38, y: -120, rx: 14, ry: 8 },
+    { x: 34, y: -128, rx: 13, ry: 8 },
+    { x: 2, y: -126, rx: 9, ry: 6 },
+  ]
+    .map((t, i) => fill(ragged(r(`tuft${i}`), tx + t.x, fy + t.y, t.rx, t.ry, 10, 0.35), i === 2 ? P.canopy : P.canopyShade))
+    .join('');
+  const drapes = [{ x: -44, y: -118 }, { x: -20, y: -106 }, { x: 22, y: -110 }, { x: 44, y: -126 }]
+    .map((m, i) => hangingMoss(tx + m.x, fy + m.y, 14 + (i % 2) * 9, r(`moss${i}`).next()))
+    .join('');
+  const body = sheet(roots) + sheet(crown + tufts + drapes, 2) + sheet(arms, 2) + sheet(fill(trunkD, P.bark) + grooves + cracks + sheet(face), 2);
   return contact(fx, fy, 42, 9) + posed({ ...p, lean: p.lean * 0.3, bob: p.bob }, fx, fy, body);
 }
 

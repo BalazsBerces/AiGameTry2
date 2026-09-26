@@ -6,7 +6,7 @@ import type { Rng } from '../rng';
  * to a fresh random angle (on average every `dartMs`). The wobble never passes `maxWobble`,
  * under a right angle, so the wasp always closes in, however wildly it zigzags.
  */
-export const WASP_FLIGHT = { maxWobble: 1.2, jitter: 4, dartMs: 260 };
+export const WASP_FLIGHT = { maxWobble: 0.7, jitter: 4, dartMs: 450 };
 
 export interface WaspFlight {
   /** Current angle, in radians, between the wasp's heading and the straight line to its target. */

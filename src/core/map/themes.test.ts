@@ -64,6 +64,7 @@ describe('floor themes', () => {
 
   it('debuts the bat in the caves and nowhere else', () => {
     expect(themeForFloor(1).newEnemies).toContain('bat');
+    expect(themeForFloor(1).newEnemies).toContain('slime');
     for (const f of [0, 2]) expect(themeForFloor(f).newEnemies ?? []).not.toContain('bat');
   });
 

@@ -4,6 +4,7 @@ import { floodFill, lineOfSight } from '../map/grid';
 import { ROOM_HEIGHT, ROOM_WIDTH, type Door, type RoomLayout, type Tile } from './roomGenerator';
 import { blocksSight, isWalkable } from '../map/tiles';
 import { AXIS_DIRECTIONS, settleCrusher, slideCrusher, type Crusher } from '../obstacles/crusher';
+import { escapeRoutes, KITING, trapPockets } from './kiting';
 
 export type MirrorAxis = 'vertical' | 'horizontal';
 
@@ -24,7 +25,9 @@ export type ViolationRule =
   | 'asymmetric'
   | 'crusher-lane'
   | 'thorn-cap'
-  | 'cramped';
+  | 'cramped'
+  | 'trap-pocket'
+  | 'no-escape';
 
 /** Most thorn tiles a room may hold per 1x1 map cell it covers, so damaging terrain stays rare. */
 export const THORNS_PER_CELL = 4;
@@ -41,7 +44,11 @@ export interface Violation {
   cell?: Cell;
 }
 
-export type RoomToValidate = Pick<RoomLayout, 'tiles' | 'doors' | 'enemies' | 'pickups'> & { crushers?: readonly Crusher[] };
+export type RoomToValidate = Pick<RoomLayout, 'tiles' | 'doors' | 'enemies' | 'pickups'> & {
+  crushers?: readonly Crusher[];
+  /** Floor inside enemy pens meant to have one opening. */
+  dens?: readonly Cell[];
+};
 
 const key = (c: Cell) => `${c.x},${c.y}`;
 const isWalkableAt = (tiles: Tile[][], c: Cell) => {
@@ -108,6 +115,11 @@ export function validateRoom(room: RoomToValidate, symmetry: Symmetry): Violatio
     const area = tiles.flat().length - countTiles(tiles, 'wall');
     if (reachable.size < needed * area) violations.push({ rule: 'cramped' });
   }
+  // Room to kite (core/kiting): no dead end to be cornered in, and two ways out of every door.
+  for (const pocket of trapPockets(tiles, doors, room.dens)) violations.push({ rule: 'trap-pocket', cell: pocket[0] });
+  escapeRoutes(tiles, doors, room.enemies).forEach((routes, i) => {
+    if (routes < KITING.routesPerDoor) violations.push({ rule: 'no-escape', cell: doors[i].cell });
+  });
   return violations;
 }
 

@@ -99,7 +99,7 @@ export const TUNING = {
   /** Slow and sturdy; its shield's arc and turn rate live in core/shield. `clinkMs`: the blocked-hit spark. */
   knight: { hp: 6, speed: 70, size: 28, clinkMs: 160 },
   /** Small and quicker than a goblin; its zigzag lives in core/wasp. */
-  wasp: { hp: 2, speed: 175, size: 14 },
+  wasp: { hp: 1, speed: 175, size: 14 },
   /** Trots between charges at `speed`, dashes at `dashSpeed`; charge timing and stun live in core/boar. */
   boar: { hp: 4, speed: 60, dashSpeed: 420, width: 34, height: 24 },
   /** The mark over a stunned enemy's head, spinning `spinDegPerSec`. */
@@ -109,7 +109,9 @@ export const TUNING = {
   /** How long a burst glowshroom's cloud lingers on screen; its reach and stun live in core/glowshroom. */
   glowCloud: { showMs: 450 },
   /** Small and frail; its flutter, telegraph and swoop (in tiles) live in core/bat. */
-  bat: { hp: 2, width: 26, height: 12 },
+  bat: { hp: 1, width: 26, height: 12 },
+  /** Body size per tier; hit points, hop rhythm and splitting live in core/slime. The squash is its tell. */
+  slime: { size: { big: 32, medium: 23, small: 15 }, squash: { x: 1.3, y: 0.6 }, stretch: { x: 0.85, y: 1.2 } },
   /** How hard overlapping walkers are nudged apart: px/s per px of overlap, and the most any one gets (placeholder). */
   softPush: { stiffness: 8, cap: 120 },
 };
@@ -225,6 +227,9 @@ export const COLORS = {
   bat: 0x4a3a5c,
   batWing: 0x1c1424,
   batTelegraph: 0xe05a7a,
+  /** Magenta: no other cave colour comes near it (stone is tan, crystals cyan, glowshrooms green, bats dark purple). */
+  slime: 0xd8488a,
+  slimeEdge: 0x6a1840,
   fallingRock: 0x8a7458,
   wormHole: 0x14100c,
   wormEgg: 0xe8dcc0,

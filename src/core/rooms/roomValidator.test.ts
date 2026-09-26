@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Direction } from '../map/floorGenerator';
 import type { Door, EnemySpawn, PickupSpawn, Tile } from './roomGenerator';
-import { validateRoom, type Symmetry } from './roomValidator';
+import { validateRoom, type RoomToValidate, type Symmetry } from './roomValidator';
 import type { Crusher } from '../obstacles/crusher';
 
 const DOOR_CELLS: Record<Direction, { x: number; y: number }> = {
@@ -15,7 +15,7 @@ const DOOR_CELLS: Record<Direction, { x: number; y: number }> = {
  * Builds a 13x7 room from a picture: `.` floor, `#` stone, `o` hole, `x` thorn, `Z` zombie,
  * `T` turret and `$` a heart, the last three standing on floor.
  */
-function room(picture: string, doors: Direction[] = ['up', 'down', 'left', 'right']) {
+function room(picture: string, doors: Direction[] = ['up', 'down', 'left', 'right']): RoomToValidate & { tiles: Tile[][]; enemies: EnemySpawn[] } {
   const rows = picture.trim().split('\n').map((r) => r.trim());
   const enemies: EnemySpawn[] = [];
   const pickups: PickupSpawn[] = [];
@@ -142,6 +142,8 @@ describe('validateRoom', () => {
       ....#####....
       .............
     `, ['left', 'right']);
+    // The jar is a den: its single opening is the idea.
+    r.dens = [{ x: 5, y: 2 }, { x: 6, y: 2 }, { x: 7, y: 2 }, { x: 5, y: 3 }, { x: 6, y: 3 }, { x: 5, y: 4 }, { x: 6, y: 4 }, { x: 7, y: 4 }];
     expect(rules(r, { axes: ['horizontal', 'vertical'] })).toEqual(['asymmetric']);
     expect(rules(r, { axes: ['horizontal', 'vertical'], feature: [{ x: 8, y: 3 }] })).toEqual([]);
   });
@@ -370,16 +372,17 @@ describe('validateRoom flyers', () => {
     .............
   `;
 
+  // These pond rooms leave dead ends on purpose, to squeeze the floor: only the space rule is asked about.
   it('accepts flyers alone with a bit under two thirds of the room to fight in', () => {
-    expect(rules(room(MARSH('...W.........')))).toEqual([]);
+    expect(rules(room(MARSH('...W.........')))).not.toContain('cramped');
   });
 
   it('rejects flyers and walkers together in that room: the player needs more space to dodge both', () => {
-    expect(rules(room(MARSH('...W.....Z...')))).toEqual(['cramped']);
+    expect(rules(room(MARSH('...W.....Z...')))).toContain('cramped');
   });
 
   it('leaves rooms without flyers to the other rules, however little floor they have', () => {
-    expect(rules(room(MARSH('.........Z...')))).toEqual([]);
+    expect(rules(room(MARSH('.........Z...')))).not.toContain('cramped');
   });
 
   it('rejects flyers with barely more than half the room to fight in', () => {
@@ -392,7 +395,7 @@ describe('validateRoom flyers', () => {
       oooooo.oooooo
       .............
     `);
-    expect(rules(r)).toEqual(['cramped']);
+    expect(rules(r)).toContain('cramped');
   });
 
   it('accepts a bat roosting beyond a chasm, since it flies over it', () => {

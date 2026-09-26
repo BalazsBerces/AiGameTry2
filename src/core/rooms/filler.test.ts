@@ -139,8 +139,10 @@ describe('addFiller', () => {
         if (around.some(([dx, dy]) => wallAt(p.x + dx, p.y + dy))) nearGap++;
       }
     }
-    // Two inner walls and the elbow: a fair share of an L's dressing sits along them.
-    expect(nearGap / L.length).toBeGreaterThanOrEqual(4);
+    // Two inner walls and the elbow: a fair share of an L's dressing sits along them (less than
+    // along outer walls, as some layouts already line them: the pond corner's pool fills the elbow,
+    // and a piece there that would close a dead end against the layout's own cover is refused).
+    expect(nearGap / L.length).toBeGreaterThanOrEqual(2);
     // As densely dressed, for its floor, as a full 2x2 room.
     const perFloor = (cases: Case[]) =>
       cases.reduce((n, c) => n + added(c.room.tiles, fill(c).tiles).length, 0) /
@@ -155,7 +157,7 @@ describe('addFiller', () => {
     const big = amounts(bigCases);
     const small = amounts(smallRooms());
     const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
-    expect(Math.min(...big)).toBeGreaterThanOrEqual(6);
+    bigCases.forEach((c, i) => expect(big[i], c.where).toBeGreaterThanOrEqual(6));
     expect(mean(big)).toBeGreaterThanOrEqual(12);
     // Never more than a quarter of a big room's floor, however big the room.
     bigCases.forEach((c, i) => expect(big[i], c.where).toBeLessThanOrEqual(0.25 * c.room.tiles.flat().filter((t) => t !== 'wall').length));

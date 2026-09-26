@@ -1472,5 +1472,74 @@ if (scenario === 'bar-restart') {
   await shot('restart-01-new-run');
 }
 
+/** Starts a run at the door of the first room built from `id` (an archetype, layout or encounter), player unhurtable. */
+const goToRoom = async (id) => {
+  await page.goto(`${process.env.SMOKE_URL ?? 'http://localhost:5173'}/?room=${id}`);
+  await page.waitForFunction(`!!window.game && !!${scene()}?.player`);
+  await page.evaluate(`${scene()}.invincibleUntil = Infinity`);
+};
+const cast = () =>
+  page.evaluate(`${scene()}.enemies.map((e) => { const p = e.parts[0]; return {
+    at: [Math.round(p.x), Math.round(p.y)], scale: [Math.round(p.scaleX * 100) / 100, Math.round(p.scaleY * 100) / 100],
+    speed: Math.round(Math.hypot(p.body.velocity.x, p.body.velocity.y)), inPhysics: ${scene()}.enemyParts.contains(p) }; })`);
+
+if (scenario === 'slime') {
+  // A slime pit: watch them squash and hop, then kill one and watch it split twice.
+  await goToRoom('slimePit');
+  console.log('room', await page.evaluate(`${scene()}.world.currentRoomId`), 'enemies', (await cast()).length);
+  for (let i = 0; i < 6; i++) {
+    await page.waitForTimeout(400);
+    const now = await cast();
+    console.log(`t=${(i + 1) * 0.4}s squashed ${now.filter((e) => e.scale[1] < 0.9).length}, hopping ${now.filter((e) => e.speed > 0).length}`);
+    if (i === 3) await shot('slime-01-pit');
+  }
+  const size = () => page.evaluate(`${scene()}.enemies.filter((e) => e.parts[0].width !== undefined).map((e) => Math.round(e.parts[0].width))`);
+  const slimeSizes = await size();
+  console.log('widths', JSON.stringify(slimeSizes));
+  const kill = (width) => page.evaluate(`(() => { const s = ${scene()}; const e = s.enemies.find((e) => Math.round(e.parts[0].width) === ${width});
+    if (e) for (let i = 0; i < 3 && s.enemies.includes(e); i++) s.damagePart(e.parts[0], 1); return s.enemies.length; })()`);
+  console.log('after killing a big slime, enemies', await kill(32), 'widths', JSON.stringify(await size()));
+  await page.waitForTimeout(100);
+  await shot('slime-02-split');
+  console.log('after killing a medium, enemies', await kill(23), 'widths', JSON.stringify(await size()));
+  await page.waitForTimeout(1500);
+  const after = await cast();
+  console.log('children in physics', after.every((e) => e.inPhysics), 'moving at some point', after.some((e) => e.speed > 0));
+  await shot('slime-03-brood');
+}
+
+if (scenario === 'swarms') {
+  for (const id of ['waspNest', 'batRoost', 'waspSwarm', 'batColony']) {
+    await goToRoom(id);
+    await page.waitForTimeout(900);
+    await shot(`swarm-${id}-01`);
+    const diving = () => page.evaluate(`${scene()}.enemies.filter((e) => e.parts[0].fillColor === 0xe05a7a || Math.hypot(e.parts[0].body.velocity.x, e.parts[0].body.velocity.y) > 300).length`);
+    let most = 0;
+    for (let i = 0; i < 30; i++) {
+      most = Math.max(most, await diving());
+      await page.waitForTimeout(100);
+    }
+    await shot(`swarm-${id}-02`);
+    console.log(id, 'enemies', (await cast()).length, 'most winding up or swooping at once', most);
+  }
+}
+
+if (scenario === 'rooms') {
+  // Screenshots each room in SMOKE_ROOMS (comma-separated archetype, layout or encounter ids) just after entering.
+  for (const id of (process.env.SMOKE_ROOMS ?? 'track,serpentGarden,twinJars').split(',')) {
+    await goToRoom(id);
+    await page.waitForTimeout(700);
+    if (process.env.SMOKE_FIT) {
+      // The whole room on screen, enemies held where they spawned.
+      await page.evaluate(`(() => { const s = ${scene()}; const cam = s.cameras.main; const b = cam.getBounds();
+        s.enemiesWakeAt = Infinity; cam.stopFollow(); cam.removeBounds();
+        cam.setZoom(Math.min(cam.width / b.width, cam.height / b.height)); cam.centerOn(b.centerX, b.centerY); })()`);
+      await page.waitForTimeout(100);
+    }
+    await shot(`room-${id}`);
+    console.log(id, 'enemies', (await cast()).length);
+  }
+}
+
 console.log(errors.length ? `ERRORS:\n${errors.join('\n')}` : 'no console errors');
 await browser.close();

@@ -58,6 +58,7 @@ import { createGoblin } from '../entities/goblin';
 import { createSeedSpitter } from '../entities/seedSpitter';
 import { createKnight } from '../entities/knight';
 import { createWasp } from '../entities/wasp';
+import { createSlime } from '../entities/slime';
 import { createBoar } from '../entities/boar';
 import { isStunned, stun } from '../../core/enemies/stun';
 import { applyPoison, chainTargets, poisonTick, rollsFreeze, type Poison } from '../../core/player/onHit';
@@ -113,6 +114,7 @@ const ENEMY_FACTORIES: Record<EnemyType, (scene: Phaser.Scene, spawn: EnemySpawn
   boar: (scene, s, at) => createBoar(scene, at(s.cell).x, at(s.cell).y, !!s.champion),
   ghost: (scene, s, at) => createGhost(scene, at(s.cell).x, at(s.cell).y, s.cell, !!s.champion),
   bat: (scene, s, at) => createBat(scene, at(s.cell).x, at(s.cell).y, !!s.champion),
+  slime: (scene, s, at) => createSlime(scene, at(s.cell).x, at(s.cell).y, { tier: 'big', champion: !!s.champion }),
 };
 
 type Shape = Phaser.GameObjects.Shape;
@@ -282,8 +284,15 @@ export class GameScene extends Phaser.Scene {
     const urlSeed = Number(params.get('seed') ?? NaN);
     // Playtesting: `?boss` (or `?boss=2`, `?boss=3`) starts at that floor's boss room door.
     const urlBoss = params.has('boss') ? Number(params.get('boss') || 1) : undefined;
+    // Playtesting: `?room=slimePit` (an archetype, layout or encounter id) starts at the door of
+    // the first such room, on the given seed or the first seed that has one.
+    const urlRoom = params.get('room') ?? undefined;
     firstBoot = false;
-    const seed = data.seed ?? (Number.isFinite(urlSeed) ? urlSeed : Math.floor(Math.random() * 2 ** 31));
+    const isUrlRoom = (r: WorldRoom) => [r.layout.archetype, r.layout.layout, r.layout.encounter].includes(urlRoom);
+    const roomSeed = urlRoom && !Number.isFinite(urlSeed)
+      ? Array.from({ length: 300 }, (_, s) => s).find((s) => [...createWorld(s).rooms.values()].some(isUrlRoom))
+      : undefined;
+    const seed = data.seed ?? roomSeed ?? (Number.isFinite(urlSeed) ? urlSeed : Math.floor(Math.random() * 2 ** 31));
     this.world = createWorld(seed);
     this.enemies = [];
     this.lootCarriers = new Map();
@@ -401,11 +410,12 @@ export class GameScene extends Phaser.Scene {
     this.scene.launch('hud');
 
     const boss = [...this.world.rooms.values()].find((r) => r.floorRoom.kind === 'boss' && r.floorIndex === (urlBoss ?? 0) - 1);
-    if (boss) {
-      const door = boss.layout.doors[0];
-      const at = tileCenter(boss, door.cell.x, door.cell.y);
+    const jumpTo = boss ?? (urlRoom ? [...this.world.rooms.values()].find(isUrlRoom) : undefined);
+    if (jumpTo) {
+      const door = jumpTo.layout.doors[0];
+      const at = tileCenter(jumpTo, door.cell.x, door.cell.y);
       this.player.body.reset(at.x, at.y);
-      this.enterRoom(boss, this.time.now);
+      this.enterRoom(jumpTo, this.time.now);
     }
   }
 
@@ -1126,6 +1136,8 @@ export class GameScene extends Phaser.Scene {
     const where = { x: part.x, y: part.y };
     const replacements = enemy.hit(part, damage);
     this.enemies = this.enemies.flatMap((e) => (e === enemy ? replacements : [e]));
+    // Newborn enemies (a slime's children) join physics; split pieces keep the parts they had.
+    for (const r of replacements) if (r.parts.some((p) => !this.enemyParts.contains(p))) this.addPhysics(r);
     const drop = this.lootCarriers.get(enemy);
     if (drop) {
       this.lootCarriers.delete(enemy);
@@ -1139,6 +1151,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private addEnemy(enemy: Enemy) {
+    this.addPhysics(enemy);
+    this.enemies.push(enemy);
+  }
+
+  private addPhysics(enemy: Enemy) {
     for (const part of enemy.parts) {
       // Joining a physics group re-applies its body defaults, resetting immovable to false.
       const immovable = part.body.immovable;
@@ -1147,7 +1164,6 @@ export class GameScene extends Phaser.Scene {
       else if (enemy.flies) this.flyers.add(part);
       part.body.setImmovable(immovable);
     }
-    this.enemies.push(enemy);
   }
 
   /** Whether something that hurts (an enemy part, an enemy shot) reaches the player's hurtbox, smaller than their ball. */

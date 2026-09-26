@@ -5,6 +5,7 @@ import { outsideRoom, roomSize, WORM_LENGTH, type Door, type EnemySpawn, type En
 import { roomThemeById, type Role } from './roomThemes';
 import { nearDoor, validateRoom, type MirrorAxis, type Symmetry } from './roomValidator';
 import { themeForFloor } from '../map/themes';
+import { openTraps } from './kiting';
 
 /**
  * Where an encounter may put someone: `perch` a post out of reach (for turrets), `open` the
@@ -48,6 +49,13 @@ export interface Ask {
   cast: Cast;
   /** How many, inclusive; fewer spots than `min` of the tag and the pairing can't host it. */
   count: [min: number, max: number];
+  /**
+   * A swarm: `count` flyers (never scaled by area) packed round one or two nests on spots of the
+   * tag, filling the free floor outward from each nest, rather than one to a spot.
+   */
+  swarm?: boolean;
+  /** Exactly `count` whatever the room's size (a big room grows its worm longer instead). */
+  unscaled?: boolean;
 }
 
 /** A big room's fight: who stands where, asked for by spot tag so any layout can host it. */
@@ -62,9 +70,34 @@ export interface Encounter {
 const mirrored = (canvas: Canvas<Role>, cells: Cell[], tag: SpotTag): Spot[] =>
   cells.flatMap((c) => canvas.images(c)).map((cell) => ({ cell, tag }));
 
+/** A sketch's terrain letters: `#` stone, `%` breakable, `o` pit, `^` the theme's hazard, `*` its feature. */
+const SKETCH_ROLES: Record<string, Role> = { '#': 'cover', '%': 'breakable', o: 'pit', '^': 'hazard', '*': 'feature' };
+/** A sketch's spawn spots, on floor: `P` perch, `C` centre, `O` open, `L` lurk. */
+const SKETCH_TAGS: Record<string, SpotTag> = { P: 'perch', C: 'centre', O: 'open', L: 'lurk' };
+
+/**
+ * Paints a top-left quarter, drawn as rows of sketch letters (`.` floor), mirrored into the whole
+ * room, and returns its spots. `swap` turns a letter into another role (or floor) for a variant.
+ */
+function sketch(canvas: Canvas<Role>, quarter: readonly string[], swap: Partial<Record<string, Role | 'floor'>> = {}): Spot[] {
+  const spots: Spot[] = [];
+  quarter.forEach((row, y) =>
+    [...row].forEach((letter, x) => {
+      const role = letter in swap ? swap[letter] : SKETCH_ROLES[letter];
+      if (role) canvas.paint([{ x, y }], role);
+      if (SKETCH_TAGS[letter]) spots.push(...mirrored(canvas, [{ x, y }], SKETCH_TAGS[letter]));
+    }),
+  );
+  return spots;
+}
+
+/** Stone or breakable, a coin flip: cover that may or may not be shot away. */
+const coverOf = (rng: Rng, stone = 0.5): Role => (rng.next() < stone ? 'cover' : 'breakable');
+
 /**
  * The gauntlet, a long hall: ledges along the top and bottom walls behind a moat of pits, with
- * scattered cover breaking up the lane. Door columns (5, 20) and the side doors' row stay clear.
+ * cover and bushes breaking up the lane, and a walled pocket in the middle for the pack to hold.
+ * Door columns (5, 20) and the side doors' row stay clear.
  */
 const gauntlet: Layout = {
   id: 'gauntlet',
@@ -72,26 +105,21 @@ const gauntlet: Layout = {
   draw({ width, height, rng }) {
     const axes: MirrorAxis[] = ['vertical', 'horizontal'];
     const canvas = new Canvas<Role>(width, height, axes);
-    // The ledge spans the middle of each long wall, sealed at its ends.
-    const ledgeEnd = rng.int(8, 9);
-    canvas.paint([{ x: ledgeEnd, y: 0 }, ...Array.from({ length: 13 - ledgeEnd }, (_, i) => ({ x: ledgeEnd + i, y: 1 }))], 'pit');
-    const cover = rng.pick([[{ x: 3, y: 2 }], [{ x: 2, y: 2 }, { x: 8, y: 3 }], [{ x: 7, y: 2 }], [{ x: 3, y: 2 }, { x: 10, y: 3 }]]);
-    canvas.paint(cover, rng.next() < 0.5 ? 'breakable' : 'cover');
-    const posts = Array.from({ length: 11 - ledgeEnd }, (_, i) => ({ x: ledgeEnd + 2 + i, y: 0 }));
-    const spots = [
-      ...mirrored(canvas, posts, 'perch'),
-      ...mirrored(canvas, [{ x: 12, y: 3 }, { x: 12, y: 2 }, { x: 11, y: 3 }], 'centre'),
-      ...mirrored(canvas, [{ x: 5, y: 3 }, { x: 8, y: 2 }], 'open'),
-      ...mirrored(canvas, [{ x: 0, y: 0 }, { x: 1, y: 0 }], 'lurk'),
-    ];
+    // prettier-ignore
+    const spots = sketch(canvas, [
+      'LL.......oPPP',
+      '..#.....ooooo',
+      '.O.#.%..O..#C',
+      '....O..#O...C',
+    ], { '%': coverOf(rng, 0.3) });
     return { roles: canvas.tiles, spots, symmetry: { axes } };
   },
 };
 
 /**
- * The island hall: a ring of pits in the middle of the hall around an island nobody can walk
- * to, with lanes along both long walls; cover (and sometimes the theme's hazard) breaks up the
- * ends. Nothing touches a door approach, so it fits every door set.
+ * The island hall: a ring of pits in the middle of the hall around a long island of turret posts
+ * nobody can walk to, with lanes along both long walls broken up by cover (and sometimes the
+ * theme's hazard). Nothing touches a door approach, so it fits every door set.
  */
 const islandHall: Layout = {
   id: 'islandHall',
@@ -99,25 +127,20 @@ const islandHall: Layout = {
   draw({ width, height, rng }) {
     const axes: MirrorAxis[] = ['vertical', 'horizontal'];
     const canvas = new Canvas<Role>(width, height, axes);
-    // A quarter of the ring: along row 2 to the middle, then down its end; the island is row 3 inside it.
-    const from = rng.int(9, 10);
-    canvas.paint([...Array.from({ length: 13 - from }, (_, i) => ({ x: from + i, y: 2 })), { x: from, y: 3 }], 'pit');
-    canvas.paint(rng.pick([[{ x: 6, y: 1 }], [{ x: 6, y: 2 }], [{ x: 4, y: 2 }, { x: 7, y: 1 }]]), rng.next() < 0.5 ? 'breakable' : 'cover');
-    if (rng.next() < 0.6) canvas.paint(rng.pick([[{ x: 3, y: 1 }], [{ x: 7, y: 3 }], [{ x: 3, y: 1 }, { x: 7, y: 3 }]]), 'hazard');
-    const island = Array.from({ length: 12 - from }, (_, i) => ({ x: from + 1 + i, y: 3 }));
-    const spots = [
-      ...mirrored(canvas, island, 'perch'),
-      ...mirrored(canvas, [{ x: 11, y: 1 }, { x: 12, y: 1 }], 'centre'),
-      ...mirrored(canvas, [{ x: 4, y: 3 }, { x: 7, y: 0 }], 'open'),
-      ...mirrored(canvas, [{ x: 0, y: 0 }, { x: 0, y: 1 }], 'lurk'),
-    ];
+    // prettier-ignore
+    const spots = sketch(canvas, [
+      'LL.....#O....',
+      '..#.^....#.CC',
+      '...O...oooooo',
+      '..%#...oPPPPP',
+    ], { '%': coverOf(rng), '^': rng.next() < 0.6 ? 'hazard' : 'floor' });
     return { roles: canvas.tiles, spots, symmetry: { axes } };
   },
 };
 
 /**
- * The descent, a tall room down three terraces: two drops of pits cross the room, crossed only at
- * stairs (the gaps), with a landing between them and posts in the corners covering the stairs.
+ * The descent, a tall room down three terraces: two drops of pits cross the room, each crossed only
+ * at two narrow stairs, with a landing between them and posts in the corners covering the stairs.
  * Doors sit on the terraces, clear of the drops.
  */
 const descent: Layout = {
@@ -126,17 +149,16 @@ const descent: Layout = {
   draw({ width, height, rng }) {
     const axes: MirrorAxis[] = ['vertical', 'horizontal'];
     const canvas = new Canvas<Role>(width, height, axes);
-    // Drops on rows 4 and 9 (mirror images); stairs in the middle or down both sides.
-    const centreStairs = rng.next() < 0.5;
-    canvas.paint((centreStairs ? [0, 1, 2, 3, 4] : [2, 3, 4, 5, 6]).map((x) => ({ x, y: 4 })), 'pit');
-    if (rng.next() < 0.5) canvas.paint([{ x: rng.int(3, 4), y: 2 }], rng.next() < 0.5 ? 'breakable' : 'cover');
-    const landing = centreStairs ? [{ x: 2, y: 6 }, { x: 3, y: 6 }] : [{ x: 5, y: 6 }, { x: 4, y: 6 }];
-    const spots = [
-      ...mirrored(canvas, [{ x: 0, y: 0 }, { x: 1, y: 0 }], 'perch'),
-      ...mirrored(canvas, landing, 'centre'),
-      ...mirrored(canvas, [{ x: 2, y: 2 }, { x: 5, y: 2 }], 'open'),
-      ...mirrored(canvas, [{ x: 0, y: 6 }, { x: 0, y: 5 }], 'lurk'),
-    ];
+    // prettier-ignore
+    const spots = sketch(canvas, [
+      'PP.....',
+      '..#..#.',
+      '....O..',
+      '.%.#...',
+      'oooo.oo',
+      'L....C.',
+      'L.O.#.C',
+    ], { '%': coverOf(rng, 0.3) });
     return { roles: canvas.tiles, spots, symmetry: { axes } };
   },
 };
@@ -152,21 +174,16 @@ const arena: Layout = {
   draw({ width, height, rng }) {
     const axes: MirrorAxis[] = ['vertical', 'horizontal'];
     const canvas = new Canvas<Role>(width, height, axes);
-    // The centre piece, as its top-left quarter around the middle (12..13, 6..7).
-    const centre = rng.pick([
-      [{ x: 11, y: 6 }, { x: 12, y: 6 }, { x: 12, y: 5 }],
-      [{ x: 10, y: 6 }, { x: 11, y: 6 }, { x: 12, y: 6 }, { x: 11, y: 5 }, { x: 12, y: 5 }],
-      [{ x: 12, y: 6 }],
-    ]);
-    canvas.paint(centre, rng.next() < 0.7 ? 'pit' : 'cover');
-    const pillars = rng.pick([[{ x: 7, y: 3 }], [{ x: 6, y: 2 }, { x: 6, y: 4 }], [{ x: 8, y: 2 }], [{ x: 7, y: 3 }, { x: 10, y: 2 }]]);
-    canvas.paint(pillars, rng.next() < 0.5 ? 'breakable' : 'cover');
-    const spots = [
-      ...mirrored(canvas, [{ x: 9, y: 4 }, { x: 4, y: 5 }, { x: 8, y: 5 }, { x: 9, y: 1 }], 'open'),
-      ...mirrored(canvas, [{ x: 1, y: 0 }, { x: 2, y: 1 }, { x: 0, y: 5 }], 'perch'),
-      ...mirrored(canvas, [{ x: 10, y: 4 }, { x: 12, y: 3 }], 'centre'),
-      ...mirrored(canvas, [{ x: 0, y: 0 }, { x: 3, y: 3 }], 'lurk'),
-    ];
+    // prettier-ignore
+    const spots = sketch(canvas, [
+      'LP..%....O...',
+      '..P.....#....',
+      '....L.#...#..',
+      '.#..O...#..#.',
+      '..#...#..O.C.',
+      'P.O..%..O.ooo',
+      '....L..#.Cooo',
+    ], { o: rng.next() < 0.7 ? 'pit' : 'cover', '#': coverOf(rng, 0.6), '%': coverOf(rng, 0.3) });
     return { roles: canvas.tiles, spots, symmetry: { axes } };
   },
 };
@@ -184,31 +201,30 @@ const ambush: Layout = {
   draw({ width, height, rng, shape }) {
     const axes: MirrorAxis[] = ['vertical', 'horizontal'];
     const canvas = new Canvas<Role>(width, height, axes);
-    const blind = rng.pick([
-      [{ x: 10, y: 4 }, { x: 11, y: 4 }, { x: 10, y: 5 }, { x: 11, y: 5 }],
-      [{ x: 10, y: 3 }, { x: 10, y: 4 }, { x: 10, y: 5 }],
-      [{ x: 9, y: 5 }, { x: 10, y: 5 }, { x: 10, y: 4 }],
-    ]);
-    canvas.paint(blind, rng.next() < 0.5 ? 'breakable' : 'cover');
+    // prettier-ignore
+    const drawn = sketch(canvas, [
+      'P.P......P.O.',
+      '..#.....#....',
+      '...%...#....%',
+      '..O......#..C',
+      '.#..#...L##..',
+      '.P..#..L.##CO',
+      '..O...L.L....',
+    ], { '#': coverOf(rng, 0.6), '%': coverOf(rng, 0.3) });
     // Which quarter each image lands in: the elbow faces the missing cell across the room.
     const gap = missingCell(shape) ?? { x: 1, y: 1 };
     const quarter = (c: Cell) => ({ x: c.x < width / 2 ? 0 : 1, y: c.y < height / 2 ? 0 : 1 });
     const isElbow = (s: Spot) => quarter(s.cell).x !== gap.x && quarter(s.cell).y !== gap.y;
     const inArmEnd = (s: Spot) => !isElbow(s) && (quarter(s.cell).x !== gap.x || quarter(s.cell).y !== gap.y);
-    const spots = [
-      ...mirrored(canvas, [{ x: 8, y: 5 }, { x: 9, y: 6 }, { x: 7, y: 6 }], 'lurk').filter(inArmEnd),
-      ...mirrored(canvas, [{ x: 2, y: 0 }, { x: 1, y: 5 }], 'perch').filter(isElbow),
-      ...mirrored(canvas, [{ x: 4, y: 4 }, { x: 6, y: 2 }], 'open'),
-      ...mirrored(canvas, [{ x: 12, y: 6 }, { x: 8, y: 3 }], 'centre'),
-    ];
+    const spots = drawn.filter((s) => (s.tag === 'lurk' ? inArmEnd(s) : s.tag === 'perch' ? isElbow(s) : true));
     return { roles: canvas.tiles, spots, symmetry: { axes } };
   },
 };
 
 /**
- * The colonnade, a wide hall: two rows of pillars run its length, leaving a lane down the middle
- * and aisles along the walls, with posts between the pillars and the theme's hazard now and then
- * in the aisles. Door columns (5, 20) and the side doors' row stay clear.
+ * The colonnade, a wide hall: two ranks of pillars run its length, meeting in a block at the
+ * centre, leaving a lane down the middle and aisles along the walls, with posts in the aisles and
+ * the theme's hazard now and then. Door columns (5, 20) and the side doors' row stay clear.
  */
 const colonnade: Layout = {
   id: 'colonnade',
@@ -216,22 +232,20 @@ const colonnade: Layout = {
   draw({ width, height, rng }) {
     const axes: MirrorAxis[] = ['vertical', 'horizontal'];
     const canvas = new Canvas<Role>(width, height, axes);
-    const pillars = rng.pick([[3, 7, 11], [2, 8, 11], [3, 9]]);
-    canvas.paint(pillars.map((x) => ({ x, y: 2 })), rng.next() < 0.6 ? 'cover' : 'breakable');
-    if (rng.next() < 0.5) canvas.paint([{ x: rng.pick([9, 10]), y: 0 }], 'hazard');
-    const spots = [
-      ...mirrored(canvas, [{ x: 7, y: 1 }, { x: 11, y: 1 }], 'perch'),
-      ...mirrored(canvas, [{ x: 12, y: 3 }, { x: 10, y: 3 }], 'centre'),
-      ...mirrored(canvas, [{ x: 5, y: 3 }, { x: 8, y: 3 }, { x: 9, y: 1 }], 'open'),
-      ...mirrored(canvas, [{ x: 0, y: 0 }, { x: 1, y: 0 }], 'lurk'),
-    ];
+    // prettier-ignore
+    const spots = sketch(canvas, [
+      'LLO......^...',
+      '...P...P...P.',
+      '..#..#..#..##',
+      '...O..OC..C.C',
+    ], { '#': coverOf(rng, 0.6) });
     return { roles: canvas.tiles, spots, symmetry: { axes } };
   },
 };
 
 /**
- * The cloister, a tall room round a solid centre block: a ring of corridor runs all the way round
- * it, with a pillar or two in the side walks. Doors sit mid-wall, clear of the block.
+ * The cloister, a tall room round a big centre block (or sunken pit): a ring of corridor runs all
+ * the way round it, with pillars in the walks. Doors sit mid-wall, clear of the block.
  */
 const cloister: Layout = {
   id: 'cloister',
@@ -239,27 +253,25 @@ const cloister: Layout = {
   draw({ width, height, rng }) {
     const axes: MirrorAxis[] = ['vertical', 'horizontal'];
     const canvas = new Canvas<Role>(width, height, axes);
-    // The block's top-left quarter: 3 or 5 wide, 4 or 6 tall in all.
-    const block = rng.pick([
-      [{ x: 5, y: 5 }, { x: 6, y: 5 }, { x: 5, y: 6 }, { x: 6, y: 6 }],
-      [{ x: 4, y: 5 }, { x: 5, y: 5 }, { x: 6, y: 5 }, { x: 4, y: 6 }, { x: 5, y: 6 }, { x: 6, y: 6 }],
-      [{ x: 5, y: 4 }, { x: 6, y: 4 }, { x: 5, y: 5 }, { x: 6, y: 5 }, { x: 5, y: 6 }, { x: 6, y: 6 }],
-    ]);
-    canvas.paint(block, rng.next() < 0.7 ? 'cover' : 'pit');
-    if (rng.next() < 0.6) canvas.paint([{ x: 2, y: 4 }], rng.next() < 0.5 ? 'breakable' : 'hazard');
-    const spots = [
-      ...mirrored(canvas, [{ x: 1, y: 0 }, { x: 0, y: 5 }], 'perch'),
-      ...mirrored(canvas, [{ x: 3, y: 6 }, { x: 6, y: 3 }], 'centre'),
-      ...mirrored(canvas, [{ x: 3, y: 2 }, { x: 2, y: 6 }], 'open'),
-      ...mirrored(canvas, [{ x: 0, y: 0 }, { x: 0, y: 6 }], 'lurk'),
-    ];
+    // `B` is the centre block: mostly solid stone, sometimes a sunken pit.
+    // prettier-ignore
+    const spots = sketch(canvas, [
+      'LP.....',
+      '...O...',
+      '..#....',
+      '...C..C',
+      'P.#.BBB',
+      'L...BBB',
+      'L.%OBBB',
+    ], { B: rng.next() < 0.7 ? 'cover' : 'pit', '%': rng.next() < 0.5 ? 'breakable' : 'hazard' });
     return { roles: canvas.tiles, spots, symmetry: { axes } };
   },
 };
 
 /**
- * The crossing, a tall room split across the middle by a chasm with a bridge (or two) over it:
- * whoever holds the far side holds the bridge. Doors sit well clear of the drop.
+ * The crossing, a tall room split across the middle by a chasm with one wide bridge over it,
+ * posts on both banks covering it: whoever holds the far side holds the bridge. Doors sit well
+ * clear of the drop.
  */
 const crossing: Layout = {
   id: 'crossing',
@@ -267,16 +279,16 @@ const crossing: Layout = {
   draw({ width, height, rng }) {
     const axes: MirrorAxis[] = ['vertical', 'horizontal'];
     const canvas = new Canvas<Role>(width, height, axes);
-    // The drop fills rows 6 and 7; one wide bridge in the middle, or two narrow ones at the sides.
-    const drop = rng.next() < 0.5 ? [0, 1, 2, 3, 4] : [2, 3, 4, 5, 6];
-    canvas.paint(drop.map((x) => ({ x, y: 6 })), 'pit');
-    if (rng.next() < 0.5) canvas.paint([{ x: 3, y: 3 }], rng.next() < 0.5 ? 'cover' : 'breakable');
-    const spots = [
-      ...mirrored(canvas, [{ x: 0, y: 5 }, { x: 1, y: 5 }, { x: 6, y: 4 }], 'perch'),
-      ...mirrored(canvas, [{ x: 6, y: 5 }, { x: 5, y: 5 }, { x: 1, y: 5 }], 'centre'),
-      ...mirrored(canvas, [{ x: 4, y: 3 }, { x: 2, y: 4 }, { x: 5, y: 2 }], 'open'),
-      ...mirrored(canvas, [{ x: 0, y: 0 }, { x: 1, y: 0 }], 'lurk'),
-    ];
+    // prettier-ignore
+    const spots = sketch(canvas, [
+      'LL.....',
+      '..#....',
+      '....O..',
+      '.#..%..',
+      '.O..#..',
+      'PP..^CC',
+      'ooooo..',
+    ], { '%': coverOf(rng, 0.3), '^': rng.next() < 0.6 ? 'hazard' : 'floor' });
     return { roles: canvas.tiles, spots, symmetry: { axes } };
   },
 };
@@ -291,20 +303,16 @@ const pondGarden: Layout = {
   draw({ width, height, rng }) {
     const axes: MirrorAxis[] = ['vertical', 'horizontal'];
     const canvas = new Canvas<Role>(width, height, axes);
-    const pool = rng.pick([
-      [{ x: 7, y: 3 }, { x: 8, y: 3 }, { x: 7, y: 4 }],
-      [{ x: 7, y: 3 }, { x: 8, y: 3 }, { x: 7, y: 4 }, { x: 8, y: 4 }],
-      [{ x: 8, y: 3 }, { x: 9, y: 3 }, { x: 9, y: 4 }],
-    ]);
-    canvas.paint(pool, 'pit');
-    canvas.paint([{ x: 12, y: 6 }], rng.next() < 0.5 ? 'cover' : 'feature');
-    if (rng.next() < 0.5) canvas.paint([{ x: 3, y: 5 }], 'hazard');
-    const spots = [
-      ...mirrored(canvas, [{ x: 10, y: 1 }, { x: 2, y: 4 }], 'perch'),
-      ...mirrored(canvas, [{ x: 11, y: 6 }, { x: 12, y: 5 }], 'centre'),
-      ...mirrored(canvas, [{ x: 5, y: 5 }, { x: 10, y: 5 }, { x: 4, y: 3 }], 'open'),
-      ...mirrored(canvas, [{ x: 0, y: 0 }, { x: 1, y: 1 }], 'lurk'),
-    ];
+    // prettier-ignore
+    const spots = sketch(canvas, [
+      'L........OP..',
+      '.L..#...#...P',
+      '......ooo.^..',
+      '.#.O.#ooo.#..',
+      '..P....oo.O..',
+      '.^..O.#...#C.',
+      'L.........C**',
+    ], { '*': rng.next() < 0.5 ? 'cover' : 'feature', '^': rng.next() < 0.7 ? 'hazard' : 'floor' });
     return { roles: canvas.tiles, spots, symmetry: { axes } };
   },
 };
@@ -320,17 +328,16 @@ const crossHall: Layout = {
   draw({ width, height, rng }) {
     const axes: MirrorAxis[] = ['vertical', 'horizontal'];
     const canvas = new Canvas<Role>(width, height, axes);
-    const reach = rng.int(2, 3);
-    // Down from the top wall in the middle columns, and in from the side walls in the middle rows.
-    canvas.paint(Array.from({ length: reach }, (_, i) => ({ x: 12, y: i + 1 })), 'cover');
-    canvas.paint(Array.from({ length: reach + 1 }, (_, i) => ({ x: i + 2, y: 6 })), rng.next() < 0.6 ? 'cover' : 'breakable');
-    if (rng.next() < 0.5) canvas.paint([{ x: 8, y: 3 }], 'breakable');
-    const spots = [
-      ...mirrored(canvas, [{ x: 12, y: 0 }, { x: 0, y: 6 }], 'perch'),
-      ...mirrored(canvas, [{ x: 10, y: 6 }, { x: 12, y: 5 }], 'centre'),
-      ...mirrored(canvas, [{ x: 8, y: 5 }, { x: 3, y: 3 }, { x: 9, y: 2 }], 'open'),
-      ...mirrored(canvas, [{ x: 0, y: 0 }, { x: 10, y: 0 }], 'lurk'),
-    ];
+    // prettier-ignore
+    const spots = sketch(canvas, [
+      'L........L.P#',
+      '..#........P#',
+      '..%..O...%..#',
+      '..O.....#...%',
+      '......#..O...',
+      'P..%.......#C',
+      '####...O...C.',
+    ], { '%': coverOf(rng, 0.3) });
     return { roles: canvas.tiles, spots, symmetry: { axes } };
   },
 };
@@ -346,15 +353,16 @@ const bastion: Layout = {
   draw({ width, height, rng }) {
     const axes: MirrorAxis[] = ['vertical', 'horizontal'];
     const canvas = new Canvas<Role>(width, height, axes);
-    canvas.paint(rng.pick([[{ x: 11, y: 5 }, { x: 12, y: 5 }, { x: 12, y: 4 }], [{ x: 12, y: 5 }, { x: 12, y: 6 }]]), 'cover');
-    canvas.paint(rng.pick([[{ x: 4, y: 4 }, { x: 5, y: 4 }], [{ x: 8, y: 2 }], [{ x: 4, y: 4 }, { x: 8, y: 2 }]]), 'pit');
-    if (rng.next() < 0.5) canvas.paint([{ x: 9, y: 5 }], 'breakable');
-    const spots = [
-      ...mirrored(canvas, [{ x: 1, y: 0 }, { x: 0, y: 4 }], 'perch'),
-      ...mirrored(canvas, [{ x: 10, y: 6 }, { x: 12, y: 3 }], 'centre'),
-      ...mirrored(canvas, [{ x: 6, y: 5 }, { x: 8, y: 4 }, { x: 3, y: 2 }], 'open'),
-      ...mirrored(canvas, [{ x: 0, y: 0 }, { x: 1, y: 6 }], 'lurk'),
-    ];
+    // prettier-ignore
+    const spots = sketch(canvas, [
+      'LP.......O...',
+      '....#........',
+      '...oo...#..%.',
+      '..O.o......C.',
+      'P..#...%..#..',
+      '...O....C.###',
+      'L....#....###',
+    ], { '%': coverOf(rng, 0.3) });
     return { roles: canvas.tiles, spots, symmetry: { axes } };
   },
 };
@@ -371,17 +379,16 @@ const pondCorner: Layout = {
   draw({ width, height, rng }) {
     const axes: MirrorAxis[] = ['vertical', 'horizontal'];
     const canvas = new Canvas<Role>(width, height, axes);
-    canvas.paint(rng.pick([
-      [{ x: 11, y: 5 }, { x: 12, y: 5 }, { x: 11, y: 6 }, { x: 12, y: 6 }],
-      [{ x: 10, y: 6 }, { x: 11, y: 6 }, { x: 12, y: 6 }, { x: 11, y: 5 }, { x: 12, y: 5 }, { x: 12, y: 4 }],
-    ]), 'pit');
-    canvas.paint(rng.pick([[{ x: 6, y: 3 }], [{ x: 4, y: 4 }, { x: 8, y: 2 }]]), rng.next() < 0.5 ? 'cover' : 'breakable');
-    const spots = [
-      ...mirrored(canvas, [{ x: 9, y: 4 }, { x: 3, y: 1 }], 'perch'),
-      ...mirrored(canvas, [{ x: 9, y: 6 }, { x: 10, y: 4 }], 'centre'),
-      ...mirrored(canvas, [{ x: 6, y: 5 }, { x: 8, y: 1 }, { x: 3, y: 4 }], 'open'),
-      ...mirrored(canvas, [{ x: 0, y: 0 }, { x: 1, y: 6 }], 'lurk'),
-    ];
+    // prettier-ignore
+    const spots = sketch(canvas, [
+      'L..P.....O...',
+      '..#.....#....',
+      '....#....%...',
+      '...O....#..C.',
+      '.P.....O..ooo',
+      '..#....C.oooo',
+      'L...#....oooo',
+    ], { '#': coverOf(rng, 0.6), '%': coverOf(rng, 0.3) });
     return { roles: canvas.tiles, spots, symmetry: { axes } };
   },
 };
@@ -439,13 +446,12 @@ export const LAYOUTS: readonly Layout[] = [
 
 /** True if normal rooms of this shape are composed (rather than built from an archetype). */
 export const composes = (shape: RoomShape) => LAYOUTS.some((l) => l.shapes.includes(shape));
-/** Floor 1: a wasp swarm hangs off the posts and nooks, with a goblin or two on the ground. */
+/** Floor 1: a wasp swarm (or two) hangs off the posts, with goblins on the ground. */
 const waspSwarm: Encounter = {
   id: 'waspSwarm',
   floor: 0,
   asks: [
-    { tag: 'perch', cast: 'wasp', count: [2, 3] },
-    { tag: 'lurk', cast: 'wasp', count: [1, 2] },
+    { tag: 'perch', cast: 'wasp', count: [8, 12], swarm: true },
     { tag: 'open', cast: 'walker', count: [0, 2] },
   ],
 };
@@ -460,24 +466,33 @@ const boarCharge: Encounter = {
   ],
 };
 
-/** Floor 2: a bat colony roosting in the nooks and on the posts, ghouls down below. */
+/** Floor 2: a bat colony (or two) roosting in the nooks, ghouls down below. */
 const batColony: Encounter = {
   id: 'batColony',
   floor: 1,
   asks: [
-    { tag: 'lurk', cast: 'bat', count: [2, 3] },
-    { tag: 'perch', cast: 'bat', count: [1, 2] },
+    { tag: 'lurk', cast: 'bat', count: [8, 12], swarm: true },
     { tag: 'centre', cast: 'walker', count: [0, 2] },
   ],
 };
 
-/** Floor 2: worms coiled in the open, a crystal turret keeping watch. */
+/** Floor 2: one long worm stretched across the open floor, ghouls prowling round it. */
 const wormNest: Encounter = {
   id: 'wormNest',
   floor: 1,
   asks: [
-    { tag: 'open', cast: 'worm', count: [1, 2] },
-    { tag: 'perch', cast: 'turret', count: [0, 2] },
+    { tag: 'open', cast: 'worm', count: [1, 1], unscaled: true },
+    { tag: 'centre', cast: 'walker', count: [1, 2] },
+  ],
+};
+
+/** Floor 2: big slimes wobble across the open floor, each one a crowd once split; a crystal turret may watch. */
+const slimePit: Encounter = {
+  id: 'slimePit',
+  floor: 1,
+  asks: [
+    { tag: 'open', cast: 'slime', count: [3, 4] },
+    { tag: 'perch', cast: 'turret', count: [0, 1] },
   ],
 };
 
@@ -510,6 +525,7 @@ export const ENCOUNTERS: readonly Encounter[] = [
   boarCharge,
   batColony,
   wormNest,
+  slimePit,
   knightPatrol,
   haunting,
 ];
@@ -561,39 +577,123 @@ function weightedPick<T>(items: readonly T[], weight: (item: T) => number, rng: 
 
 const key = (c: Cell) => `${c.x},${c.y}`;
 
+/** How long a worm grows in a big room of each shape: the more room, the longer. */
+export const wormLength = (shape: RoomShape) => (shape === '2x2' ? 8 : shape.startsWith('L') ? 7 : shape === '1x1' ? WORM_LENGTH : 6);
+
 /**
  * A worm's body behind a head on `head`: a straight run of free floor off in some direction,
  * clear of every cell already taken; undefined if there's no room for one.
  */
-function wormTail(head: Cell, tiles: Tile[][], taken: Set<string>, rng: Rng): Cell[] | undefined {
+function wormTail(head: Cell, length: number, tiles: Tile[][], taken: Set<string>, doors: Door[], rng: Rng): Cell[] | undefined {
   for (const [dx, dy] of shuffled([[1, 0], [-1, 0], [0, 1], [0, -1]], rng)) {
-    const tail = Array.from({ length: WORM_LENGTH - 1 }, (_, i) => ({ x: head.x + dx * (i + 1), y: head.y + dy * (i + 1) }));
+    const tail = Array.from({ length: length - 1 }, (_, i) => ({ x: head.x + dx * (i + 1), y: head.y + dy * (i + 1) }));
+    if (tail.some((c) => nearDoor(doors, c))) continue;
     if (tail.every((c) => tiles[c.y]?.[c.x] === 'floor' && !taken.has(key(c)))) return tail;
   }
   return undefined;
 }
 
+/** How many times over an encounter's asks a big room of each shape holds: more room, more enemies. */
+export const AREA_SCALE: Partial<Record<RoomShape, number>> = { '2x1': 1.5, '1x2': 1.5, '2x2': 2.5 };
+const L_SCALE = 2;
+
+/** An ask's count range scaled to the room's shape. */
+export function scaleCount([min, max]: readonly [number, number], shape: RoomShape): [number, number] {
+  const scale = AREA_SCALE[shape] ?? (shape.startsWith('L') ? L_SCALE : 1);
+  return [Math.round(min * scale), Math.round(max * scale)];
+}
+
+const EIGHT_WAY = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+
+/** How far from its nest a swarm may pack, in tiles (8-way). */
+export const SWARM_RADIUS = 3;
+/** How close to a door any of a swarm may start, in tiles (8-way): whoever walks in gets a moment first. */
+export const SWARM_DOOR_CLEARANCE = 4;
+
+/**
+ * Up to `count` free floor cells packed round `nest`: breadth-first outward, 8-way, within
+ * `SWARM_RADIUS`. Flyers cross pits, so the clump spreads over anything but wall to reach floor.
+ */
+function clump(nest: Cell, count: number, free: (c: Cell) => boolean, tiles: Tile[][]): Cell[] {
+  const out: Cell[] = [];
+  const seen = new Set([key(nest)]);
+  const queue = [nest];
+  while (queue.length && out.length < count) {
+    const c = queue.shift()!;
+    if (free(c)) out.push(c);
+    for (const [dx, dy] of EIGHT_WAY) {
+      const n = { x: c.x + dx, y: c.y + dy };
+      const within = Math.max(Math.abs(n.x - nest.x), Math.abs(n.y - nest.y)) <= SWARM_RADIUS;
+      const tile = tiles[n.y]?.[n.x];
+      if (within && tile !== undefined && tile !== 'wall' && !seen.has(key(n))) {
+        seen.add(key(n));
+        queue.push(n);
+      }
+    }
+  }
+  return out;
+}
+
 /** The encounter's cast on free spots of the tags it asks for; undefined if a tag runs short. */
-function cast(encounter: Encounter, spots: Spot[], tiles: Tile[][], floorIndex: number, rng: Rng): EnemySpawn[] | undefined {
+function cast(
+  encounter: Encounter,
+  spots: Spot[],
+  tiles: Tile[][],
+  doors: Door[],
+  floorIndex: number,
+  shape: RoomShape,
+  rng: Rng,
+): EnemySpawn[] | undefined {
   const floor = themeForFloor(floorIndex);
   const typeOf = (c: Cast): EnemyType => (c === 'walker' ? floor.walker : c === 'turret' ? floor.turret : c);
   const taken = new Set<string>();
   const take = (c: Cell) => taken.add(key(c));
   const enemies: EnemySpawn[] = [];
   for (const ask of encounter.asks) {
+    if (ask.swarm) {
+      const clear = (c: Cell) => doors.every((d) => Math.max(Math.abs(d.cell.x - c.x), Math.abs(d.cell.y - c.y)) >= SWARM_DOOR_CLEARANCE);
+      const wanted = rng.int(...ask.count);
+      const shares = rng.next() < 0.5 ? [wanted] : [Math.ceil(wanted / 2), Math.floor(wanted / 2)];
+      // Off the room's edge (bar the nest itself), which is left for the theme's dressing.
+      const edge = (c: Cell) =>
+        EIGHT_WAY.slice(0, 4).some(([dx, dy]) => (tiles[c.y + dy]?.[c.x + dx] ?? 'wall') === 'wall');
+      const open = (c: Cell) => tiles[c.y]?.[c.x] === 'floor' && !taken.has(key(c)) && clear(c);
+      // Nests on its own tag's spots clear of the doors, else any clear spot (every door open), and
+      // only where its share fits: a nook too cramped for the swarm is passed over.
+      const clearSpots = shuffled(spots.filter((s) => clear(s.cell)), rng);
+      const candidates = [...clearSpots.filter((s) => s.tag === ask.tag), ...clearSpots.filter((s) => s.tag !== ask.tag)];
+      let placed = 0;
+      for (const share of shares) {
+        for (const { cell } of candidates) {
+          if (taken.has(key(cell))) continue;
+          const packable = (c: Cell) => open(c) && (!edge(c) || key(c) === key(cell));
+          const pack = clump(cell, share, packable, tiles);
+          if (pack.length < share) continue;
+          for (const c of pack) {
+            take(c);
+            enemies.push({ type: typeOf(ask.cast), cell: c });
+          }
+          placed += pack.length;
+          break;
+        }
+      }
+      if (placed < ask.count[0]) return undefined;
+      continue;
+    }
     const free = shuffled(spots.filter((s) => s.tag === ask.tag && !taken.has(key(s.cell))), rng);
-    const wanted = rng.int(...ask.count);
+    const count = ask.unscaled ? ask.count : scaleCount(ask.count, shape);
+    const wanted = rng.int(...count);
     let placed = 0;
     for (const { cell } of free) {
       if (placed >= wanted || taken.has(key(cell))) continue;
       const type = typeOf(ask.cast);
-      const tail = type === 'worm' ? wormTail(cell, tiles, taken, rng) : undefined;
+      const tail = type === 'worm' ? wormTail(cell, wormLength(shape), tiles, taken, doors, rng) : undefined;
       if (type === 'worm' && !tail) continue;
       [cell, ...(tail ?? [])].forEach(take);
       enemies.push(tail ? { type, cell, tail } : { type, cell });
       placed++;
     }
-    if (placed < ask.count[0]) return undefined;
+    if (placed < count[0]) return undefined;
   }
   return enemies;
 }
@@ -615,12 +715,15 @@ export function composeRoom(req: ComposeRequest): Composition | undefined {
     const encounter = weightedPick(encounters, (e) => theme.encounterWeights[e.id] ?? 1, rng);
     const drawn = layout.draw({ width, height, doors: req.doors, rng, shape: req.shape });
     const outside = outsideRoom(req.shape, width, height);
-    const tiles = drawn.roles.map((row, y) =>
+    const themed = drawn.roles.map((row, y) =>
       row.map((r, x): Tile => (outside({ x, y }) ? 'wall' : r === 'floor' ? 'floor' : theme.roles[r])),
     );
+    // Dead ends in the layout are opened up so they loop round (core/kiting).
+    const tiles = openTraps(themed, req.doors, drawn.symmetry.axes);
+    if (!tiles) continue;
     // Spots on terrain, or crowding a door, could never pass validation: drop them before casting.
     const spots = drawn.spots.filter((s) => tiles[s.cell.y][s.cell.x] === 'floor' && !nearDoor(req.doors, s.cell));
-    const enemies = cast(encounter, spots, tiles, req.floorIndex, rng);
+    const enemies = cast(encounter, spots, tiles, req.doors, req.floorIndex, req.shape, rng);
     if (!enemies) continue;
     const room = { tiles, enemies, pickups: [] as PickupSpawn[], symmetry: drawn.symmetry };
     if (validateRoom({ ...room, doors: req.doors }, room.symmetry).length === 0) {

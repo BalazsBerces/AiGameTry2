@@ -89,7 +89,7 @@ const THEMES: readonly FloorTheme[] = [
     bosses: ['wormBoss'],
     walker: 'ghoul',
     turret: 'crystalTurret',
-    newEnemies: ['bat'],
+    newEnemies: ['bat', 'slime'],
   },
   {
     name: 'Dungeon',

@@ -97,12 +97,16 @@ describe('composeRoom for wide rooms', () => {
       composeRoom({ shape: '2x1', doors: wideDoors(WIDE_DOOR_SETS[seed % WIDE_DOOR_SETS.length]), theme, floorIndex, rng: createRng(seed) })!,
     );
 
-  it('stands every enemy on a spawn spot of a tag its encounter asked for', () => {
+  it('stands every enemy on a spawn spot of a tag its encounter asked for (a swarm within 3 tiles of a spot it nests on)', () => {
     for (const room of sample('rift', 1, 100)) {
-      const asked = new Set(ENCOUNTERS.find((e) => e.id === room.encounter)!.asks.map((a) => a.tag));
+      const asks = ENCOUNTERS.find((e) => e.id === room.encounter)!.asks;
+      const asked = new Set(asks.filter((a) => !a.swarm).map((a) => a.tag));
+      const swarms = new Set(asks.filter((a) => a.swarm).map((a) => a.cast));
       for (const e of room.enemies) {
-        const spot = room.spots.find((s) => s.cell.x === e.cell.x && s.cell.y === e.cell.y);
-        expect(spot && asked.has(spot.tag), `${room.layout} + ${room.encounter} ${e.type} at ${e.cell.x},${e.cell.y}`).toBe(true);
+        const onSpot = room.spots.some((s) => s.cell.x === e.cell.x && s.cell.y === e.cell.y && asked.has(s.tag));
+        // A swarm nests on its own tag's spots, or any spot when those crowd a door.
+        const byNest = swarms.has(e.type) && room.spots.some((s) => Math.max(Math.abs(s.cell.x - e.cell.x), Math.abs(s.cell.y - e.cell.y)) <= 3);
+        expect(onSpot || byNest, `${room.layout} + ${room.encounter} ${e.type} at ${e.cell.x},${e.cell.y}`).toBe(true);
       }
     }
   });
@@ -144,8 +148,120 @@ describe('composeRoom for every big shape', () => {
   }, 60_000);
 });
 
+describe('enemy counts by room area', () => {
+  // Prowlers ask for 2-4 lurkers and 1-2 on the open floor: 3-6 before scaling.
+  it.each([
+    ['2x1', 5, 9],
+    ['1x2', 5, 9],
+    ['L-tl', 6, 12],
+    ['L-br', 6, 12],
+    ['2x2', 8, 15],
+  ] as const)('fills a %s room with %i-%i prowlers', (shape, min, max) => {
+    const counts = new Set<number>();
+    for (const [i, specs] of doorSets(shape, 30).entries()) {
+      const doors = doorsFor(shape, specs);
+      const room = composeRoom({ shape, doors, theme: 'hollow', floorIndex: 1, rng: createRng(i), encounter: 'prowlers' })!;
+      const where = `${shape} ${room.layout} doors ${JSON.stringify(specs)}`;
+      expect(room.enemies.length, where).toBeGreaterThanOrEqual(min);
+      expect(room.enemies.length, where).toBeLessThanOrEqual(max);
+      counts.add(room.enemies.length);
+    }
+    // Well past the old most of six.
+    expect(Math.max(...counts)).toBeGreaterThan(6);
+  });
+});
+
+describe('dense big layouts', () => {
+  // The most any encounter asks of a tag at its least, scaled by area: ledge sentries, siege and
+  // knights want 2 perches / centres, prowlers, ambushes and hauntings 2 lurkers, slime pits 3 on the open.
+  const NEED: Record<string, Record<string, number>> = {
+    '2x1': { perch: 3, centre: 3, open: 5, lurk: 3 },
+    '1x2': { perch: 3, centre: 3, open: 5, lurk: 3 },
+    '2x2': { perch: 5, centre: 5, open: 8, lurk: 5 },
+    ...Object.fromEntries(L_SHAPES.map((s) => [s, { perch: 4, centre: 4, open: 6, lurk: 4 }])),
+  };
+  const cases = LAYOUTS.flatMap((l) => l.shapes.filter((s) => s in NEED).map((shape) => [l.id, shape] as const));
+
+  it.each(cases)('%s (%s) is dense, with room for every scaled cast even with every door open', (id, shape) => {
+    const layout = LAYOUTS.find((l) => l.id === id)!;
+    const { width, height } = roomSize('normal', shape);
+    const doors = doorsFor(shape, slots(shape));
+    const outside = outsideRoom(shape, width, height);
+    for (let seed = 0; seed < 20; seed++) {
+      const drawn = layout.draw({ width, height, doors, rng: createRng(seed), shape });
+      const inside = drawn.roles.flatMap((row, y) => row.filter((_, x) => !outside({ x, y })));
+      const terrain = inside.filter((r) => r !== 'floor').length;
+      expect(terrain / inside.length, `${id} seed ${seed}`).toBeGreaterThanOrEqual(0.12);
+      const usable = drawn.spots.filter(
+        (s) => !outside(s.cell) && drawn.roles[s.cell.y][s.cell.x] === 'floor' && !doors.some((d) => Math.abs(d.cell.x - s.cell.x) <= 1 && Math.abs(d.cell.y - s.cell.y) <= 1),
+      );
+      for (const [tag, least] of Object.entries(NEED[shape])) {
+        expect(usable.filter((s) => s.tag === tag).length, `${id} seed ${seed} ${tag}`).toBeGreaterThanOrEqual(least);
+      }
+    }
+  });
+});
+
+describe('worms in big rooms', () => {
+  it.each([
+    ['2x1', 6],
+    ['1x2', 6],
+    ['L-tr', 7],
+    ['L-bl', 7],
+    ['2x2', 8],
+  ] as const)('lays a single %s-room worm %i segments long, in a straight contiguous chain, with ghouls about', (shape, length) => {
+    for (const [i, specs] of doorSets(shape, 25).entries()) {
+      const doors = doorsFor(shape, specs);
+      const room = composeRoom({ shape, doors, theme: 'rift', floorIndex: 1, rng: createRng(i), encounter: 'wormNest' })!;
+      const where = `${shape} ${room?.layout} doors ${JSON.stringify(specs)}`;
+      expect(room, where).toBeDefined();
+      const worms = room.enemies.filter((e) => e.type === 'worm');
+      expect(worms.length, where).toBe(1);
+      const chain = [worms[0].cell, ...(worms[0].tail ?? [])];
+      expect(chain.length, where).toBe(length);
+      for (let j = 1; j < chain.length; j++) {
+        expect(Math.abs(chain[j].x - chain[j - 1].x) + Math.abs(chain[j].y - chain[j - 1].y), where).toBe(1);
+      }
+      expect(room.enemies.some((e) => e.type === 'ghoul'), where).toBe(true);
+      expect(validateRoom({ ...room, doors }, room.symmetry), where).toEqual([]);
+    }
+  });
+});
+
+describe('swarms in big rooms', () => {
+  type Cell = { x: number; y: number };
+  const near = (a: Cell, b: Cell) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)) <= 3;
+  /** Whether one or two of the cells can stand as nests with every cell within 3 tiles of one. */
+  const packsRoundTwoNests = (cells: Cell[]) =>
+    cells.some((a) => cells.some((b) => cells.every((c) => near(c, a) || near(c, b))));
+
+  it.each([
+    ['waspSwarm', 0, 'wasp', 'marsh'],
+    ['batColony', 1, 'bat', 'hollow'],
+  ] as const)('%s sends 8-12 in one or two tight clusters, in every big shape', (encounter, floorIndex, type, theme) => {
+    for (const shape of BIG_SHAPES) {
+      for (const [i, specs] of doorSets(shape, 12).entries()) {
+        const doors = doorsFor(shape, specs);
+        const room = composeRoom({ shape, doors, theme, floorIndex, rng: createRng(i), encounter })!;
+        const where = `${shape} ${room?.layout} doors ${JSON.stringify(specs)}`;
+        expect(room, where).toBeDefined();
+        const swarm = room.enemies.filter((e) => e.type === type).map((e) => e.cell);
+        expect(swarm.length, where).toBeGreaterThanOrEqual(8);
+        expect(swarm.length, where).toBeLessThanOrEqual(12);
+        expect(packsRoundTwoNests(swarm), where).toBe(true);
+        // Never on top of a door: whoever walks in has a moment before the swarm arrives.
+        for (const c of swarm) {
+          const nearest = Math.min(...doors.map((d) => Math.max(Math.abs(d.cell.x - c.x), Math.abs(d.cell.y - c.y))));
+          expect(nearest, `${where} ${type} at ${c.x},${c.y}`).toBeGreaterThanOrEqual(4);
+        }
+        expect(validateRoom({ ...room, doors }, room.symmetry), where).toEqual([]);
+      }
+    }
+  });
+});
+
 describe('big-room content per floor', () => {
-  const SPECIALS = [['wasp', 'boar'], ['bat', 'worm'], ['knight', 'ghost']];
+  const SPECIALS = [['wasp', 'boar'], ['bat', 'worm', 'slime'], ['knight', 'ghost']];
 
   it('gives every floor about three layouts per big shape and four or more encounters', () => {
     for (const floorIndex of [0, 1, 2]) {

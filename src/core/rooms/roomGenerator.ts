@@ -10,6 +10,7 @@ import type { Crusher } from '../obstacles/crusher';
 import { candleCells } from '../bosses/candleWitch';
 import { composeRoom, composes, type Spot } from './composer';
 import { addFiller } from './filler';
+import { openTraps } from './kiting';
 import { dressRoom, type Decor, type Region } from './dressing';
 import { roomThemesFor } from './roomThemes';
 
@@ -110,6 +111,8 @@ export interface RoomLayout {
   encounter?: string;
   /** Crusher blocks and their axes; each stands on a `crusher` tile, which moves with it. */
   crushers?: Crusher[];
+  /** Floor inside enemy pens meant to have a single opening (core/kiting lets them be). */
+  dens?: Cell[];
   /** Non-blocking set dressing on the floor, laid when the room was built (core/dressing). */
   decor?: Decor[];
   /** variants[y][x]: which look of its kind each tile takes in the art pass; stable for the seed. */
@@ -404,7 +407,10 @@ function buildFromArchetype(spec: RoomSpec, doors: Door[], floorIndex: number, r
   for (const archetype of [chosen, fallback]) {
     for (let attempt = 0; attempt < MAX_ARCHETYPE_ATTEMPTS; attempt++) {
       const drawn = archetype.build({ width, height, doors, rng, shape });
-      const built = { ...drawn, tiles: wallOff(drawn.tiles, shape) };
+      // Dead ends in the idea's terrain are opened up so they loop round (core/kiting).
+      const tiles = openTraps(wallOff(drawn.tiles, shape), doors, drawn.symmetry.axes, drawn.dens);
+      if (!tiles) continue;
+      const built = { ...drawn, tiles };
       if (validateRoom({ ...built, doors }, built.symmetry).length === 0) return { ...built, archetype: archetype.id };
     }
   }
@@ -434,15 +440,15 @@ export const placeDoors = (specs: readonly (Direction | DoorSpec)[], width: numb
  */
 function dress(
   spec: RoomSpec,
-  built: { tiles: Tile[][]; enemies: EnemySpawn[]; pickups: PickupSpawn[]; symmetry?: Symmetry; spots?: Spot[]; crushers?: Crusher[] },
+  built: { tiles: Tile[][]; enemies: EnemySpawn[]; pickups: PickupSpawn[]; symmetry?: Symmetry; spots?: Spot[]; crushers?: Crusher[]; dens?: Cell[] },
   doors: Door[],
   rng: Rng,
 ): Tile[][] {
   const theme = themed(spec, built).theme;
   if (spec.kind !== 'normal' || !spec.theme || !theme || !built.symmetry) return built.tiles;
-  const { tiles, enemies, pickups, crushers } = built;
+  const { tiles, enemies, pickups, crushers, dens } = built;
   return addFiller({
-    room: { tiles, doors, enemies, pickups, ...(crushers ? { crushers } : {}) },
+    room: { tiles, doors, enemies, pickups, ...(crushers ? { crushers } : {}), ...(dens ? { dens } : {}) },
     symmetry: built.symmetry,
     protect: (built.spots ?? []).map((s) => s.cell),
     theme,
@@ -479,9 +485,12 @@ function buildRoom(spec: RoomSpec, floorIndex: number, rng: Rng): RoomLayout {
     const floorEnemies = built.enemies.map((e) => (walkerHp && e.type === walker ? { ...e, hp: walkerHp } : e));
     // Its own stream, so champion rolls never shift the room's layout.
     const enemies = spec.kind === 'normal' ? crownChampion(floorEnemies, rng.fork('champion')) : floorEnemies;
-    const { crushers } = built as { crushers?: Crusher[] };
+    const { crushers, dens } = built as { crushers?: Crusher[]; dens?: Cell[] };
     const origin = 'parts' in built ? built.parts : { archetype: built.archetype };
-    return { id: spec.id, width, height, tiles: built.tiles, doors, enemies, pickups, ...origin, ...themed(spec, built), ...(crushers ? { crushers } : {}) };
+    return {
+      id: spec.id, width, height, tiles: built.tiles, doors, enemies, pickups, ...origin, ...themed(spec, built),
+      ...(crushers ? { crushers } : {}), ...(dens ? { dens } : {}),
+    };
   }
   // Normal and item rooms come from archetypes above; boss arenas are built here, start rooms stay empty.
   const isDoor = (c: Cell) => doors.some((d) => d.cell.x === c.x && d.cell.y === c.y);

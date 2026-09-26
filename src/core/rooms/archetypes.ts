@@ -23,6 +23,8 @@ export interface ArchetypeBuild {
   symmetry: Symmetry;
   /** Crushers the idea sets, each on a `crusher` tile. */
   crushers?: Crusher[];
+  /** Floor inside an enemy pen the idea means to have one opening (core/kiting lets it be). */
+  dens?: Cell[];
 }
 
 /** One room idea: a terrain shape plus the enemies and loot that make it read. */
@@ -228,7 +230,13 @@ const jar: Archetype = {
     canvas.paint(jarWall(shape), 'obstacle');
     canvas.paint([opening], 'floor');
     const horde = shuffled(jarInside(shape), rng).slice(0, rng.int(4, 5));
-    return { tiles: canvas.tiles, enemies: walkersOf(0, horde), pickups: [], symmetry: { axes: shape.axes, feature: [opening] } };
+    return {
+      tiles: canvas.tiles,
+      enemies: walkersOf(0, horde),
+      pickups: [],
+      symmetry: { axes: shape.axes, feature: [opening] },
+      dens: jarInside(shape),
+    };
   },
 };
 
@@ -250,12 +258,13 @@ const sentryIsland: Archetype = {
       // One island in the middle, a ring of holes around it (painted as a quarter, mirrored).
       { moat: [{ x: 4, y: 2 }, { x: 5, y: 2 }, { x: 6, y: 2 }, { x: 4, y: 3 }], turret: { x: 5, y: 3 } },
       { moat: [{ x: 3, y: 2 }, { x: 4, y: 2 }, { x: 5, y: 2 }, { x: 6, y: 2 }, { x: 3, y: 3 }], turret: rng.pick([{ x: 4, y: 3 }, { x: 5, y: 3 }]) },
-      // Twin islands, one turret on each.
-      { moat: [{ x: 2, y: 2 }, { x: 3, y: 2 }, { x: 4, y: 2 }, { x: 2, y: 3 }, { x: 4, y: 3 }], turret: { x: 3, y: 3 } },
+      // Twin islands, one turret on each, clear of the side doors.
+      { moat: [{ x: 3, y: 2 }, { x: 4, y: 2 }, { x: 5, y: 2 }, { x: 3, y: 3 }, { x: 5, y: 3 }], turret: { x: 4, y: 3 } },
     ]);
     canvas.paint(layout.moat, 'hole');
     if (rng.next() < 0.5) canvas.paint([{ x: 1, y: 1 }], 'obstacle');
-    const banks = shuffled(canvas.images({ x: 3, y: 0 }), rng).slice(0, rng.int(3, 4));
+    // In the corners: off every door's row and column, so whoever walks in can always head away from them.
+    const banks = shuffled(canvas.images({ x: 0, y: 0 }), rng).slice(0, rng.int(3, 4));
     return {
       tiles: canvas.tiles,
       enemies: [...turretsOf(0, canvas.images(layout.turret)), ...walkersOf(0, banks)],
@@ -323,6 +332,7 @@ const twinJars: Archetype = {
       enemies: [...slimesOf(canvas.images({ x: 4, y: 3 })), ...caveWalkers(ghouls)],
       pickups: [],
       symmetry: { axes },
+      dens: [{ x: 3, y: 2 }, { x: 4, y: 2 }, { x: 3, y: 3 }, { x: 4, y: 3 }].flatMap((c) => canvas.images(c)),
     };
   },
 };
@@ -465,7 +475,7 @@ const fortress: Archetype = {
 };
 
 /**
- * Floor 3: the floor has fallen away except for a cross of narrow walkways joining the doors.
+ * Floor 3: the floor has fallen away except for a cross of walkways, three tiles wide, joining the doors.
  * Gargoyles on the far corners rake whoever is out on the cross, while 2-3 ghosts drift at the
  * player over the drop, where nobody on foot can follow.
  */
@@ -478,9 +488,9 @@ const killbox: Archetype = {
   build({ width, height, rng }) {
     const axes: MirrorAxis[] = ['vertical', 'horizontal'];
     const canvas = new Canvas(width, height, axes);
-    const walkway = rng.pick([1, 3]);
+    // Walkways three tiles wide, so whoever comes in off one has somewhere to sidestep to.
     const quadrant: Cell[] = [];
-    for (let x = 0; x < 6; x++) for (let y = 0; y < (walkway === 1 ? 3 : 2); y++) quadrant.push({ x, y });
+    for (let x = 0; x < 5; x++) for (let y = 0; y < 2; y++) quadrant.push({ x, y });
     canvas.paint(quadrant, 'hole');
     const perches = canvas.images(rng.pick([{ x: 0, y: 0 }, { x: 2, y: 0 }]));
     // All four corners, or just a diagonal pair; unused perches stay fallen away.
@@ -528,6 +538,7 @@ const nest: Archetype = {
       enemies: [...dungeonTurrets(roosts), ...dungeonWalkers(zombieCells)],
       pickups: [],
       symmetry: { axes: shape.axes, feature: [opening] },
+      dens: jarInside(shape),
     };
   },
 };
@@ -700,8 +711,8 @@ const thornMaze: Archetype = {
       { hedge: [{ x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 2 }, { x: 4, y: 2 }, { x: 5, y: 1 }], ends: [{ x: 2, y: 1 }, { x: 3, y: 2 }, { x: 5, y: 1 }], lane: { x: 2, y: 2 } },
     ]);
     canvas.paint(layout.hedge, 'rock');
-    // Sometimes a bush in each corner nook as well.
-    if (rng.next() < 0.5) canvas.paint([{ x: 0, y: 1 }], 'rock');
+    // Sometimes a bush in each corner as well (never beside a side door, where it would box the doorway in).
+    if (rng.next() < 0.5) canvas.paint([{ x: 0, y: 0 }], 'rock');
     // One thorny end per quarter: four thorns in all, within the thorn cap.
     canvas.paint([rng.pick(layout.ends)], 'thorn');
     const lanes = canvas.images(layout.lane);
@@ -752,8 +763,8 @@ const ghosts = (cells: Cell[]): EnemySpawn[] => cells.map((cell) => ({ type: 'gh
 /**
  * Floor 3, the haunted hall: tombs mirrored into every quarter of a crypt, each sealing a ghost
  * in stone that nobody could walk to, though the ghosts drift straight out through the walls.
- * Sometimes a ring of pits in the middle holds one more, and zombies shamble down the open
- * middle row. Tombs stay clear of the door approaches, so it fits every door set.
+ * Sometimes a ring of pits in the middle holds one more, and zombies shamble out of two opposite
+ * corners. Tombs stand off the walls and clear of the door approaches, so it fits every door set.
  */
 const hauntedHall: Archetype = {
   id: 'hauntedHall',
@@ -765,12 +776,13 @@ const hauntedHall: Archetype = {
     const axes: MirrorAxis[] = ['vertical', 'horizontal'];
     const canvas = new Canvas(width, height, axes);
     const crosses = rng.next() < 0.5;
-    // A cross of stone round one cell, or a sarcophagus: a sealed row of three cells.
+    // A cross of stone round one cell, or a sarcophagus: a sealed row of three cells. Both stand
+    // off the top and bottom walls, so an open ring runs round the room and every wing loops.
     const tomb = crosses
-      ? { stone: [{ x: 3, y: 0 }, { x: 2, y: 1 }, { x: 4, y: 1 }, { x: 3, y: 2 }], inside: [{ x: 3, y: 1 }] }
+      ? { stone: [{ x: 3, y: 1 }, { x: 2, y: 2 }, { x: 4, y: 2 }, { x: 3, y: 3 }], inside: [{ x: 3, y: 2 }] }
       : {
-          stone: [{ x: 2, y: 0 }, { x: 3, y: 0 }, { x: 4, y: 0 }, { x: 1, y: 1 }, { x: 5, y: 1 }, { x: 2, y: 2 }, { x: 3, y: 2 }, { x: 4, y: 2 }],
-          inside: [{ x: 2, y: 1 }, { x: 3, y: 1 }, { x: 4, y: 1 }],
+          stone: [{ x: 2, y: 1 }, { x: 3, y: 1 }, { x: 4, y: 1 }, { x: 1, y: 2 }, { x: 5, y: 2 }, { x: 2, y: 3 }, { x: 3, y: 3 }, { x: 4, y: 3 }],
+          inside: [{ x: 2, y: 2 }, { x: 3, y: 2 }, { x: 4, y: 2 }],
         };
     canvas.paint(tomb.stone, 'obstacle');
     const tombs = canvas.images(rng.pick(tomb.inside));
@@ -782,7 +794,9 @@ const hauntedHall: Archetype = {
       canvas.paint([{ x: 6, y: 2 }, { x: 5, y: 3 }], 'hole');
       enemies.push(...ghosts([{ x: (width - 1) / 2, y: (height - 1) / 2 }]));
     }
-    if (rng.next() < 0.4) enemies.push(...walkersOf(2, canvas.images({ x: 3, y: 3 })));
+    // Zombies in a diagonal pair of corners: whichever door the player comes in by, one way is clear of them.
+    const corners = canvas.images({ x: 0, y: 0 });
+    if (rng.next() < 0.4) enemies.push(...walkersOf(2, [corners[0], corners[corners.length - 1]]));
     return { tiles: canvas.tiles, enemies, pickups: [], symmetry: { axes } };
   },
 };
@@ -806,8 +820,8 @@ const crystalGallery: Archetype = {
     const layout = rng.pick([
       // Prism: a turret caged in crystal in the middle, open only to the sides; mirror posts in the corners.
       { crystals: [{ x: 5, y: 2 }, { x: 6, y: 2 }, { x: 2, y: 1 }], post: { x: 6, y: 3 }, ghoul: { x: 3, y: 3 } },
-      // Corner mirrors: turrets in the corners, crystals down their wall and along their row.
-      { crystals: [{ x: 3, y: 0 }, { x: 0, y: 2 }], post: { x: 0, y: 0 }, ghoul: { x: 6, y: 2 } },
+      // Corner mirrors: turrets in the corners, crystals down their wall and along their row (clear of the side doors).
+      { crystals: [{ x: 3, y: 0 }, { x: 0, y: 1 }], post: { x: 0, y: 0 }, ghoul: { x: 6, y: 2 } },
       // Mirror screens: crystal bars across the room, a turret atop each.
       { crystals: [{ x: 3, y: 1 }, { x: 3, y: 2 }], post: { x: 3, y: 0 }, ghoul: { x: 6, y: 2 } },
     ]);
@@ -975,7 +989,7 @@ const batRoost: Archetype = {
   theme: 'rift',
   kind: 'normal',
   fits: fitsAll,
-  build({ width, height, rng }) {
+  build({ width, height, doors, rng }) {
     const axes: MirrorAxis[] = ['vertical', 'horizontal'];
     const canvas = new Canvas(width, height, axes);
     // A top-left quarter of chasm, the bats' roosts on its brink, and a ghoul's spot on open floor.
@@ -994,10 +1008,10 @@ const batRoost: Archetype = {
         ghoul: { x: 1, y: 0 },
         sinkhole: false,
       },
-      // Pockets: the corners cut off by the drop.
+      // Pockets: the corners cut off by a diagonal drop.
       {
-        chasm: [{ x: 2, y: 0 }, { x: 2, y: 1 }, { x: 0, y: 2 }, { x: 1, y: 2 }, { x: 2, y: 2 }],
-        roosts: [{ x: 1, y: 1 }, { x: 1, y: 0 }],
+        chasm: [{ x: 2, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 2 }],
+        roosts: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }],
         ghoul: { x: 4, y: 3 },
         sinkhole: true,
       },
@@ -1005,8 +1019,10 @@ const batRoost: Archetype = {
     canvas.paint(layout.chasm, 'hole');
     // Some layouts sometimes open a sinkhole in the middle too.
     if (layout.sinkhole && rng.next() < 0.5) canvas.paint([{ x: 5, y: 3 }, { x: 6, y: 3 }], 'hole');
-    // A colony of 5-7 spread over the brinks.
-    const bats = shuffled(layout.roosts.flatMap((c) => canvas.images(c)), rng).slice(0, rng.int(5, 7));
+    // A colony of 5-7 spread over the brinks, those well clear of the doors first.
+    const brinks = shuffled(layout.roosts.flatMap((c) => canvas.images(c)), rng);
+    const clear = (c: Cell) => doors.every((d) => Math.max(Math.abs(d.cell.x - c.x), Math.abs(d.cell.y - c.y)) >= 3);
+    const bats = [...brinks.filter(clear), ...brinks.filter((c) => !clear(c))].slice(0, rng.int(5, 7));
     const spots = canvas.images(layout.ghoul);
     const ghouls = rng.next() < 0.4 ? [spots[0], spots[spots.length - 1]] : [];
     return {

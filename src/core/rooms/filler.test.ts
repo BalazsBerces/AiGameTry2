@@ -140,8 +140,9 @@ describe('addFiller', () => {
       }
     }
     // Two inner walls and the elbow: a fair share of an L's dressing sits along them (less than
-    // along outer walls, as some layouts already line them: the pond corner's pool fills the elbow).
-    expect(nearGap / L.length).toBeGreaterThanOrEqual(3);
+    // along outer walls, as some layouts already line them: the pond corner's pool fills the elbow,
+    // and a piece there that would close a dead end against the layout's own cover is refused).
+    expect(nearGap / L.length).toBeGreaterThanOrEqual(2);
     // As densely dressed, for its floor, as a full 2x2 room.
     const perFloor = (cases: Case[]) =>
       cases.reduce((n, c) => n + added(c.room.tiles, fill(c).tiles).length, 0) /

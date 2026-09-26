@@ -9,6 +9,7 @@ import { validateRoom } from './roomValidator';
 import { GLOWSHROOM_RADIUS } from '../obstacles/glowshroom';
 import { themeForFloor } from '../map/themes';
 import { candleCells } from '../bosses/candleWitch';
+import { escapeRoutes, trapPockets } from './kiting';
 
 const ALL_DOORS = ['up', 'down', 'left', 'right'] as const;
 const room = (seed: number, doors: readonly (typeof ALL_DOORS)[number][] = ALL_DOORS) =>
@@ -613,6 +614,29 @@ describe('Sentry Island (floor 1)', () => {
         for (const e of spitters) expect(seen.has(`${e.cell.x},${e.cell.y}`), where).toBe(false);
         expect(count(r, 'hole'), where).toBeGreaterThan(0);
       }
+    }
+  });
+});
+
+describe('room to kite in', () => {
+  const rooms = () =>
+    Array.from({ length: 12 }, (_, seed) => [...createWorld(seed).rooms.values()])
+      .flat()
+      .filter((r) => r.floorRoom.kind === 'normal');
+
+  it('leaves no trap pocket in any room but an enemy den', () => {
+    for (const room of rooms()) {
+      const L = room.layout;
+      const where = `${room.floorRoom.id} f${room.floorIndex} ${L.archetype ?? `${L.layout} + ${L.encounter}`}`;
+      expect(trapPockets(L.tiles, L.doors, L.dens ?? []).map((p) => p.length), where).toEqual([]);
+    }
+  });
+
+  it('gives every door at least two ways out that the player reaches before any enemy', () => {
+    for (const room of rooms()) {
+      const L = room.layout;
+      const where = `${room.floorRoom.id} f${room.floorIndex} ${L.archetype ?? `${L.layout} + ${L.encounter}`}`;
+      for (const routes of escapeRoutes(L.tiles, L.doors, L.enemies)) expect(routes, where).toBeGreaterThanOrEqual(2);
     }
   });
 });

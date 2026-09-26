@@ -5,6 +5,7 @@ import { outsideRoom, roomSize, WORM_LENGTH, type Door, type EnemySpawn, type En
 import { roomThemeById, type Role } from './roomThemes';
 import { nearDoor, validateRoom, type MirrorAxis, type Symmetry } from './roomValidator';
 import { themeForFloor } from '../map/themes';
+import { openTraps } from './kiting';
 
 /**
  * Where an encounter may put someone: `perch` a post out of reach (for turrets), `open` the
@@ -714,9 +715,12 @@ export function composeRoom(req: ComposeRequest): Composition | undefined {
     const encounter = weightedPick(encounters, (e) => theme.encounterWeights[e.id] ?? 1, rng);
     const drawn = layout.draw({ width, height, doors: req.doors, rng, shape: req.shape });
     const outside = outsideRoom(req.shape, width, height);
-    const tiles = drawn.roles.map((row, y) =>
+    const themed = drawn.roles.map((row, y) =>
       row.map((r, x): Tile => (outside({ x, y }) ? 'wall' : r === 'floor' ? 'floor' : theme.roles[r])),
     );
+    // Dead ends in the layout are opened up so they loop round (core/kiting).
+    const tiles = openTraps(themed, req.doors, drawn.symmetry.axes);
+    if (!tiles) continue;
     // Spots on terrain, or crowding a door, could never pass validation: drop them before casting.
     const spots = drawn.spots.filter((s) => tiles[s.cell.y][s.cell.x] === 'floor' && !nearDoor(req.doors, s.cell));
     const enemies = cast(encounter, spots, tiles, req.doors, req.floorIndex, req.shape, rng);

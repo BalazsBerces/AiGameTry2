@@ -13,10 +13,17 @@ export interface HitStop {
   step(time: number): { frozen: boolean; gameTime: number };
 }
 
-/** How long each kind of hit freezes the game, in ms. */
-export const HIT_STOP = { hit: 35, kill: 60, bomb: 80 };
+/**
+ * How long each kind of hit freezes the game, in ms. Hits and kills don't freeze: at the rate
+ * they come in, freezing on each read as the game stuttering, and a kill's freeze held its
+ * paper scraps still just as they burst.
+ */
+export const HIT_STOP = { bomb: 80 };
 
-export function createHitStop(): HitStop {
+/** After a freeze, how long (ms of real time) before another may start, so kills in a swarm don't chain into a stutter. */
+export const HIT_STOP_REST = 250;
+
+export function createHitStop(rest = HIT_STOP_REST): HitStop {
   /** Real time the game clock has lost to finished freezes. */
   let lost = 0;
   let start = 0;
@@ -31,6 +38,7 @@ export function createHitStop(): HitStop {
         end = start + longest;
         return;
       }
+      if (time < end + rest) return;
       [start, longest, end, open] = [time, ms, time + ms, true];
     },
     step(time) {

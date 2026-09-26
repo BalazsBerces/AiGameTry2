@@ -27,7 +27,7 @@ describe('hit-stop', () => {
   });
 
   it('never freezes longer than the longest single request, however late in the freeze more come', () => {
-    const stop = createHitStop();
+    const stop = createHitStop(0);
     stop.step(0);
     stop.request(0, 60);
     stop.request(30, 60);
@@ -35,5 +35,16 @@ describe('hit-stop', () => {
     expect(stop.step(60).frozen).toBe(false);
     stop.request(61, 30);
     expect(stop.step(91)).toEqual({ frozen: false, gameTime: 1 });
+  });
+
+  it('rests after a freeze before another may start, so a string of hits does not stutter', () => {
+    const stop = createHitStop(200);
+    stop.step(0);
+    stop.request(0, 50);
+    expect(stop.step(60).frozen).toBe(false);
+    stop.request(100, 50);
+    expect(stop.step(110).frozen).toBe(false);
+    stop.request(250, 50);
+    expect(stop.step(260).frozen).toBe(true);
   });
 });

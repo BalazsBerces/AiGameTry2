@@ -74,7 +74,7 @@ import { softPush } from '../../core/enemies/softPush';
 import { updateGoblinPack } from '../../core/enemies/forestCast';
 import { createFalloff, createHitGate, type Falloff } from '../../core/player/multiHit';
 import { PaperLayer, type PaperActor } from '../art/paperLayer';
-import { LightLayer } from '../art/lightLayer';
+import { AmbientLayer } from '../art/ambientLayer';
 import { HIT_STOP, createHitStop, type HitStop } from '../../core/juice/hitStop';
 import { createShake, type Shake } from '../../core/juice/shake';
 import { shakeScreen } from '../effects/shellBurst';
@@ -173,16 +173,6 @@ const ENEMY_ART: Partial<Record<EnemyType, { footOffset: number; fps?: number }>
   // Beating wings: twice the usual frame rate.
   wasp: { footOffset: 12, fps: 18 },
 };
-
-/** How far a shot in flight lights the ground round it, and how far its glow reaches, in px. */
-const SHOT_LIGHT = { player: { light: 56, halo: 20 }, enemy: { light: 46, halo: 17 } };
-/**
- * The faint light every living enemy carries, so nothing that can hurt the player is ever lost in
- * the dark: enough to make out its shape, never enough to light the room.
- */
-const ENEMY_LIGHT = { radius: 52, intensity: 0.4 };
-/** A glowshroom's light. */
-const GLOWSHROOM_LIGHT = { radius: 100, intensity: 0.85, warm: true };
 
 const hex = (color: string) => parseInt(color.slice(1), 16);
 /** The paper an enemy tears into when it dies; enemies left out tear into their shape's colour. */
@@ -345,8 +335,8 @@ export class GameScene extends Phaser.Scene {
   /** Paper sprites standing in for shapes that have art; the rest draw themselves. */
   private paper!: PaperLayer;
   private playerArt?: PaperActor;
-  /** Every room is dark but for its lights. */
-  private light!: LightLayer;
+  /** Faint dust drifting through the rooms. */
+  private ambient!: AmbientLayer;
   /** The game's clock: real time less every hit-stop so far. Gameplay timers all run on it. */
   now = 0;
   private hitStop: HitStop = createHitStop();
@@ -354,8 +344,6 @@ export class GameScene extends Phaser.Scene {
   /** Every screen shake goes through this, so together they never pass its cap. */
   private shake: Shake = createShake();
   private scraps!: ScrapLayer;
-  /** The enemy parts carrying a light this frame. */
-  private enemyLights: EnemySprite[] = [];
   /** What kind each spawned enemy is, for the colour of the scraps it tears into. */
   private enemyTypes = new Map<Enemy, EnemyType>();
   /** The canopy and vine joins touching each terrain cell (`roomId|x,y`), gone once the cell's tile is. */
@@ -405,7 +393,6 @@ export class GameScene extends Phaser.Scene {
     this.roomObjects = new Map();
     this.paper = new PaperLayer(this);
     this.scraps = new ScrapLayer(this, DEPTH.player + 0.95);
-    this.enemyLights = [];
     this.enemyTypes = new Map();
     this.joinArt = new Map();
     for (const room of this.world.rooms.values()) {
@@ -502,8 +489,7 @@ export class GameScene extends Phaser.Scene {
 
     // The playfield is one map cell; the label strip under it belongs to the HUD.
     this.cameras.main.setViewport(0, 0, CELL_PX_W, CELL_PX_H);
-    this.light = new LightLayer(this);
-    this.lightGlowshrooms(start);
+    this.ambient = new AmbientLayer(this);
     this.cameras.main.setBackgroundColor(themeForFloor(start.floorIndex).palette.background);
     this.showRoomsAround(start);
     this.followInside(start);
@@ -554,24 +540,15 @@ export class GameScene extends Phaser.Scene {
     this.paper.update(time);
     this.scraps.update(delta);
     this.applyShake(time);
-    this.lightShots();
-    this.light.update(this.player, time, !!themeForFloor(this.currentRoom.floorIndex).paper);
+    this.ambient.update(!!themeForFloor(this.currentRoom.floorIndex).paper);
   }
 
   /**
-   * A shot glows: it lights the ground round it while it flies, with a soft glow in its colour
-   * over the dark, and is drawn as a glowing paper shape (enemy shots in the usual red, and every
-   * player shot tinted as before); anything else keeps its plain shape.
+   * A shot is drawn as a paper shape (enemy shots in the usual red, and every player shot tinted
+   * as before); anything else keeps its plain shape.
    */
   private dressShot(shot: Phaser.GameObjects.Arc, kind: 'player' | 'enemy', color: number, radius: number) {
     const size = radius / SHOT_ART[kind];
-    this.light.lights.set(shot, { x: shot.x, y: shot.y, radius: SHOT_LIGHT[kind].light * size, intensity: 0.9 });
-    const halo = this.light.halo(shot.x, shot.y, color, SHOT_LIGHT[kind].halo * size);
-    this.paper.follow(shot, halo, undefined, (halo.scaleX * ART_SCALE));
-    shot.once('destroy', () => {
-      this.light.lights.remove(shot);
-      halo.destroy();
-    });
     if (kind === 'enemy' && color !== COLORS.enemyShot) return;
     const art = this.paper.piece(shotKey(kind), shot.x, shot.y, { w: SHOT_CANVAS, h: SHOT_CANVAS, anchor: { x: SHOT_CANVAS / 2, y: SHOT_CANVAS / 2 } });
     if (!art) return;
@@ -579,29 +556,6 @@ export class GameScene extends Phaser.Scene {
     if (kind === 'player') art.setTint(color);
     this.paper.standIn(shot, art);
     this.paper.follow(shot, art, undefined, size);
-  }
-
-  /** Moves each flying shot's light along with it, and each living enemy's faint light. */
-  private lightShots() {
-    for (const key of this.enemyLights) this.light.lights.remove(key);
-    this.enemyLights = this.enemies.flatMap((e) => e.parts.slice(0, 1)).filter((p) => p.active && p.visible && p.alpha > 0.2);
-    for (const part of this.enemyLights) this.light.lights.set(part, { x: part.x, y: part.y, ...ENEMY_LIGHT });
-    for (const obj of [...this.shots.getChildren(), ...this.enemyShots.getChildren()]) {
-      const shot = obj as Phaser.GameObjects.Arc;
-      const kind = this.shots.contains(shot) ? 'player' : 'enemy';
-      const size = shot.radius / SHOT_ART[kind];
-      this.light.lights.set(shot, { x: shot.x, y: shot.y, radius: SHOT_LIGHT[kind].light * size, intensity: 0.9 });
-    }
-  }
-
-  /** The room's glowshrooms (puffballs, grave mould) each light the dark round them, until they burst. */
-  private lightGlowshrooms(room: WorldRoom) {
-    room.layout.tiles.forEach((row, y) =>
-      row.forEach((tile, x) => {
-        if (tile !== 'glowshroom') return;
-        this.light.lights.set(`${room.floorRoom.id}|${x},${y}`, { ...tileCenter(room, x, y), ...GLOWSHROOM_LIGHT, flicker: x * 31 + y * 17 + 5 });
-      }),
-    );
   }
 
   /** Stops or restarts everything that moves on its own: physics, tweens and timers (the game clock stops with them). */
@@ -845,7 +799,6 @@ export class GameScene extends Phaser.Scene {
     const at = { x: part.x, y: part.y };
     this.damagePart(part, damage);
     if (!enemy) return;
-    this.hitStopFor(this.enemies.includes(enemy) ? HIT_STOP.hit : HIT_STOP.kill);
     shakeScreen(this, 'hit');
     const weapon = resolveWeapon(this.world.player.passives, this.world.player.statUps);
     const time = this.now;
@@ -1316,7 +1269,6 @@ export class GameScene extends Phaser.Scene {
     const key = `${roomId}|${cell.x},${cell.y}`;
     this.terrain.get(key)?.destroy();
     this.terrain.delete(key);
-    this.light.lights.remove(key);
     for (const art of this.joinArt.get(key) ?? []) art.destroy();
     this.joinArt.delete(key);
   }
@@ -1465,8 +1417,6 @@ export class GameScene extends Phaser.Scene {
 
     this.showRoomsAround(room);
     this.slideCameraTo(room);
-    this.light.lights.clear();
-    this.lightGlowshrooms(room);
     this.cameras.main.setBackgroundColor(themeForFloor(room.floorIndex).palette.background);
 
     if (!this.world.cleared.has(room.floorRoom.id)) {

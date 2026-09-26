@@ -73,11 +73,14 @@ import { createBat } from '../entities/bat';
 import { softPush } from '../../core/enemies/softPush';
 import { updateGoblinPack } from '../../core/enemies/forestCast';
 import { createFalloff, createHitGate, type Falloff } from '../../core/player/multiHit';
+import { PaperLayer, type PaperActor } from '../art/paperLayer';
 
 type Keys = Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
 type PhysicsArc = Phaser.GameObjects.Arc & { body: Phaser.Physics.Arcade.Body };
 
 const DEPTH = { player: 10 };
+/** The player's feet are this far below the centre of its round body. */
+const PLAYER_FOOT = 9;
 
 /** How a player projectile flies, stored on it: its passives (core/shotFlight), whom it hit, its age. */
 interface Flight {
@@ -274,6 +277,9 @@ export class GameScene extends Phaser.Scene {
   /** The player's share of the stun (a glowshroom cloud): no moving or shooting until it wears off. */
   private playerStun: Stunnable = {};
   private playerStunMark?: Shape;
+  /** Paper sprites standing in for shapes that have art; the rest draw themselves. */
+  private paper!: PaperLayer;
+  private playerArt?: PaperActor;
 
   constructor() {
     super('game');
@@ -325,6 +331,8 @@ export class GameScene extends Phaser.Scene {
     this.player = this.add.circle(spawn.x, spawn.y, TUNING.playerSize / 2, COLORS.player) as PhysicsArc;
     this.player.setDepth(DEPTH.player);
     this.physics.add.existing(this.player);
+    this.paper = new PaperLayer(this);
+    this.playerArt = this.paper.actor(this.player, 'player', { footOffset: PLAYER_FOOT });
     // A round body too, so the ball slides round corners instead of snagging on them.
     this.player.body.setCircle(TUNING.playerSize / 2);
     this.physics.add.collider(this.player, this.walls);
@@ -446,6 +454,7 @@ export class GameScene extends Phaser.Scene {
     this.updateEnemies(time);
     this.updateCrushers(time);
     this.followPlayerAcrossRooms(time);
+    this.paper.update(time);
   }
 
   /** Keeps one orb per Orbital level circling the player, evenly spaced. */
@@ -521,6 +530,8 @@ export class GameScene extends Phaser.Scene {
     if (!aim || time < this.nextShotAt) return;
     const weapon = resolveWeapon(this.world.player.passives, this.world.player.statUps);
     this.nextShotAt = time + weapon.fireDelayMs;
+    this.playerArt?.attack(time);
+    this.playerArt?.faceFor(STEP[aim], time + Math.max(weapon.fireDelayMs, 300));
     if (weapon.mode === 'sword') {
       this.swingSword(aim, weapon.damage, weapon.swordArcDeg);
       // With any shot passive, the swing also throws a short-lived blade wave that carries them.
@@ -1178,6 +1189,7 @@ export class GameScene extends Phaser.Scene {
   private hurtPlayer(halves = 1) {
     if (this.time.now < this.invincibleUntil) return;
     this.invincibleUntil = this.time.now + TUNING.invincibleMs;
+    this.playerArt?.hurt(this.time.now);
     for (let i = 0; i < halves; i++) {
       if (damagePlayer(this.world)) {
         this.endRun(false);

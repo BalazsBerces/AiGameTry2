@@ -21,12 +21,26 @@ export function createSeedSpitter(scene: Phaser.Scene, x: number, y: number, cha
   scene.physics.add.existing(sprite);
   sprite.body.setImmovable(true);
   let nextShotAt = 0;
-  return singlePartEnemy(scene, sprite, hp, (ctx: EnemyContext) => {
+  let firedAt = -Infinity;
+  let sees = false;
+  const enemy = singlePartEnemy(scene, sprite, hp, (ctx: EnemyContext) => {
     sprite.body.setVelocity(0, 0);
     if (nextShotAt === 0) nextShotAt = ctx.time + fireDelayMs * (0.5 + Math.random() * 0.5);
-    if (ctx.time < nextShotAt || !ctx.canSeePlayer(sprite)) return;
+    sees = ctx.canSeePlayer(sprite);
+    if (ctx.time < nextShotAt || !sees) return;
     nextShotAt = ctx.time + fireDelayMs;
+    firedAt = ctx.time;
     const aim = { x: ctx.player.x - sprite.x, y: ctx.player.y - sprite.y };
     for (const v of spreadShots(aim, shotSpeed)) ctx.fireEnemyShot(sprite.x, sprite.y, v.x, v.y);
   });
+  // Swells just before it spits (only when it can see the player, as only then does it fire),
+  // gapes as the seeds fly, then settles.
+  enemy.visual = (time) =>
+    time - firedAt < SPIT_FRAME_MS * 2 ? { hold: { action: 'attack', frame: time - firedAt < SPIT_FRAME_MS ? 1 : 2 } }
+    : sees && nextShotAt > 0 && time >= nextShotAt - SPIT_FRAME_MS * 2 ? { hold: { action: 'attack', frame: 0 } }
+    : {};
+  return enemy;
 }
+
+/** How long each frame of the spit shows. */
+const SPIT_FRAME_MS = 110;

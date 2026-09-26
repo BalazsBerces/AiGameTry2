@@ -77,6 +77,17 @@ describe('animator', () => {
     expect(a.update(500, { vx: 0, vy: 0, loop: 'heal' })).toMatchObject({ action: 'heal', frame: 0 });
   });
 
+  it('holds a frame the body asks for (a wind-up held for its whole telegraph), over everything but hurt', () => {
+    const a = createAnimator(PLAYER_LIKE);
+    const windUp = { vx: 100, vy: 0, hold: { action: 'attack' as const, frame: 0 } };
+    expect(a.update(0, windUp)).toMatchObject({ action: 'attack', frame: 0 });
+    expect(a.update(900, windUp)).toMatchObject({ action: 'attack', frame: 0 });
+    expect(a.update(1000, { ...windUp, hold: { action: 'attack', frame: 1 } })).toMatchObject({ action: 'attack', frame: 1 });
+    a.hurt(1100);
+    expect(a.update(1100, windUp)).toMatchObject({ action: 'hurt' });
+    expect(a.update(1500, { vx: 100, vy: 0 })).toMatchObject({ action: 'move', frame: 0 });
+  });
+
   it('ignores a reported state its art has no frames for', () => {
     const a = createAnimator(PLAYER_LIKE);
     expect(a.update(0, { vx: 0, vy: 0, loop: 'healed' })).toMatchObject({ action: 'idle' });

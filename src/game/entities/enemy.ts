@@ -4,6 +4,7 @@ import type { BossBarSnapshot } from '../../core/bosses/bossBar';
 import type { PackDecision, PackMember } from '../../core/enemies/forestCast';
 import type { Door, Tile } from '../../core/rooms/roomGenerator';
 import type { Stunnable } from '../../core/enemies/stun';
+import type { Motion } from '../../core/art/animator';
 import { COLORS, TUNING } from '../config';
 
 export type Body = Phaser.Physics.Arcade.Body;
@@ -96,7 +97,21 @@ export interface Enemy extends Stunnable {
    * every goblin's `member()` and hands each its new state through `follow` before updating it.
    */
   pack?: { member(ctx: EnemyContext): PackMember; follow(decision: PackDecision): void };
+  /**
+   * How it looks right now, for its paper art (core/art/animator): a state to loop (a goblin
+   * healing) or a frame to hold (a wind-up, for exactly as long as its telegraph). Read from its
+   * own state, never changing it; plain shapes ignore it.
+   */
+  visual?(time: number): Visual;
 }
+
+/** What an enemy reports about how it looks: its paper art otherwise animates from its velocity. */
+export type Visual = Pick<Motion, 'loop' | 'hold'>;
+
+/** Emitted on an enemy part when it takes a hit (with the time), so its paper art can flash and flinch. */
+export const HIT_EVENT = 'enemy-hit';
+/** How long a hit part stays white. */
+export const FLASH_MS = 70;
 
 /** Stat multipliers for a champion, or none for a regular enemy. */
 export const championBoost = (champion: boolean) => (champion ? TUNING.champion : { scale: 1, hp: 1, speed: 1 });
@@ -122,10 +137,14 @@ export function roundBody(sprite: EnemySprite) {
   sprite.body.setCircle(r, sprite.width / 2 - r, sprite.height / 2 - r);
 }
 
-/** Flash a part briefly to show it took damage. */
+/** A part that took damage flashes white: its paper art, or its plain shape for a moment. */
 export function flash(scene: Phaser.Scene, part: EnemySprite) {
-  part.setAlpha(0.5);
-  scene.time.delayedCall(60, () => part.active && part.setAlpha(1));
+  part.emit(HIT_EVENT, scene.time.now);
+  if (!part.isFilled) return;
+  const color = part.fillColor;
+  if (color === 0xffffff) return;
+  part.setFillStyle(0xffffff, part.fillAlpha);
+  scene.time.delayedCall(FLASH_MS, () => part.active && part.fillColor === 0xffffff && part.setFillStyle(color, part.fillAlpha));
 }
 
 /** An enemy made of one sprite with a shared hit-point pool. */

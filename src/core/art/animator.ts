@@ -17,6 +17,8 @@ export interface Motion {
   aim?: { x: number; y: number };
   /** A state the body reports that loops in place of idle and move (a goblin healing), if its art has frames for it. */
   loop?: Action;
+  /** A frame the body holds for as long as it asks (a wind-up for the length of its telegraph): over all but hurt. */
+  hold?: { action: Action; frame: number };
 }
 
 /** The frame of art to show. */
@@ -78,7 +80,10 @@ export function createAnimator(spec: AnimatorSpec): Animator {
       else if (moving) face({ x: motion.vx, y: motion.vy });
       const attacking = time - attackAt < framesOf('attack') * msPerFrame;
       if (hurting(time)) play('hurt', time);
-      else if (!attacking) play(motion.loop && spec.actions[motion.loop] ? motion.loop : moving ? 'move' : 'idle', time);
+      else if (motion.hold && spec.actions[motion.hold.action]) {
+        play(motion.hold.action, time);
+        return { action, frame: Math.min(motion.hold.frame, framesOf(action) - 1), view, flip };
+      } else if (!attacking) play(motion.loop && spec.actions[motion.loop] ? motion.loop : moving ? 'move' : 'idle', time);
       const frame = Math.floor((time - since) / msPerFrame) % framesOf(action);
       return { action, frame, view, flip };
     },

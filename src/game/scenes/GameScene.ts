@@ -154,6 +154,15 @@ const FLOOR_COLOR: Record<RoomKind, (p: Palette) => number> = {
   boss: (p) => p.bossFloor,
 };
 
+/** Enemies drawn in paper: how far below the centre of their body their feet are, and their frame rate if not the usual. */
+const ENEMY_ART: Partial<Record<EnemyType, { footOffset: number; fps?: number }>> = {
+  goblin: { footOffset: 7 },
+  seedSpitter: { footOffset: 14 },
+  boar: { footOffset: 8 },
+  // Beating wings: twice the usual frame rate.
+  wasp: { footOffset: 12, fps: 18 },
+};
+
 /** Which paper floor each kind of room gets. */
 const FLOOR_KIND: Record<RoomKind, FloorKind> = { start: 'normal', normal: 'normal', item: 'item', boss: 'boss' };
 /** A standing terrain piece's foot line (a tree's trunk base) lies this far below its tile's centre. */
@@ -1296,10 +1305,19 @@ export class GameScene extends Phaser.Scene {
     const at = (c: Cell) => tileCenter(room, c.x, c.y);
     for (const spawn of room.layout.enemies) {
       const enemy = ENEMY_FACTORIES[spawn.type](this, spawn, at, room.layout);
+      this.dressEnemy(enemy, spawn.type, !!spawn.champion);
       const drop = spawn.champion?.drop ?? BOSS_DROPS[spawn.type];
       if (drop) this.lootCarriers.set(enemy, drop);
       this.addEnemy(enemy);
     }
+  }
+
+  /** Gives an enemy with paper art its paper character, standing on its body and animated from what it does. */
+  private dressEnemy(enemy: Enemy, type: EnemyType, champion: boolean) {
+    const look = ENEMY_ART[type];
+    if (!look) return;
+    const actor = this.paper.actor(enemy.parts[0], type, { ...look, champion, scale: champion ? TUNING.champion.scale : 1 });
+    if (actor && enemy.visual) actor.visual = (time) => enemy.visual!(time);
   }
 
   private lockDoors(room: WorldRoom) {

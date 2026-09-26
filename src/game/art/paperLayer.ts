@@ -4,11 +4,10 @@ import { charKey } from '../../core/art/catalogue';
 import { CHARACTERS, type Action } from '../../core/art/characters';
 import { footDepth } from '../../core/art/depth';
 import { ART_SCALE, bakedArt } from './bake';
+import { FLASH_MS, HIT_EVENT, type Visual } from '../entities/enemy';
 
 /** Stop-motion frame rate, and how long the hurt pose holds. */
 const ANIM = { fps: 9, hurtMs: 220 };
-/** How long a hit enemy stays flashed white. */
-export const FLASH_MS = 70;
 
 type Shape = Phaser.GameObjects.Shape;
 
@@ -18,6 +17,8 @@ export interface ActorOptions {
   champion?: boolean;
   /** Draw size relative to the art (a champion's bigger body). */
   scale?: number;
+  /** Its own stop-motion frame rate (a wasp's wings beat faster). */
+  fps?: number;
 }
 
 /**
@@ -34,6 +35,8 @@ export class PaperActor {
   loop?: Action;
   /** Velocity to animate from when the shape has no moving body (grid movers). */
   motion?: { vx: number; vy: number };
+  /** What its owner reports about how it looks (an enemy's `visual`). */
+  visual?: (time: number) => Visual;
 
   constructor(
     scene: Phaser.Scene,
@@ -43,7 +46,8 @@ export class PaperActor {
     private serial: number,
   ) {
     const art = CHARACTERS[kind];
-    this.animator = createAnimator({ actions: art.actions, views: art.views, ...ANIM });
+    this.animator = createAnimator({ actions: art.actions, views: art.views, ...ANIM, fps: opts.fps ?? ANIM.fps });
+    shape.on(HIT_EVENT, (time: number) => this.hurt(time));
     this.sprite = scene.add.sprite(shape.x, shape.y, '__MISSING').setOrigin(art.anchor.x / art.w, art.anchor.y / art.h);
     scene.cameras.main.ignore(shape);
   }
@@ -72,7 +76,7 @@ export class PaperActor {
     const body = shape.body as Phaser.Physics.Arcade.Body | null;
     const v = this.motion ?? { vx: body?.velocity.x ?? 0, vy: body?.velocity.y ?? 0 };
     const aim = this.aim && time < this.aim.until ? this.aim : undefined;
-    const f = this.animator.update(time, { ...v, aim, loop: this.loop });
+    const f = this.animator.update(time, { ...v, aim, loop: this.loop, ...this.visual?.(time) });
     // A champion's gold-trimmed frame where there is one, else the plain frame.
     const trimmed = charKey(this.kind, f.action, f.frame, f.view, this.opts.champion);
     const key = bakedArt(trimmed) ? trimmed : charKey(this.kind, f.action, f.frame, f.view);

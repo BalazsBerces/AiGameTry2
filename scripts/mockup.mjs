@@ -1,5 +1,5 @@
 // Snapshots the papercut mockup page (mockup.html, run by the dev server) into a static page and a screenshot.
-// Usage: node scripts/mockup.mjs [outDir]   Env: SMOKE_URL (default http://localhost:5199)
+// Usage: node scripts/mockup.mjs [outDir]   Env: SMOKE_URL (default http://localhost:5173)
 import { chromium } from 'playwright-core';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 
@@ -10,7 +10,7 @@ const page = await browser.newPage({ viewport: { width: 1200, height: 900 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(String(e)));
 page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
-await page.goto(`${process.env.SMOKE_URL ?? 'http://localhost:5199'}/mockup.html`);
+await page.goto(`${process.env.SMOKE_URL ?? 'http://localhost:5173'}/mockup.html`);
 await page.waitForSelector('body[data-ready="1"]');
 await page.waitForTimeout(1500);
 await page.screenshot({ path: `${outDir}/mockup-top.png` });

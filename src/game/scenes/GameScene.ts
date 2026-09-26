@@ -176,6 +176,11 @@ const ENEMY_ART: Partial<Record<EnemyType, { footOffset: number; fps?: number }>
 
 /** How far a shot in flight lights the ground round it, and how far its glow reaches, in px. */
 const SHOT_LIGHT = { player: { light: 56, halo: 20 }, enemy: { light: 46, halo: 17 } };
+/**
+ * The faint light every living enemy carries, so nothing that can hurt the player is ever lost in
+ * the dark: enough to make out its shape, never enough to light the room.
+ */
+const ENEMY_LIGHT = { radius: 52, intensity: 0.4 };
 /** A glowshroom's light. */
 const GLOWSHROOM_LIGHT = { radius: 100, intensity: 0.85, warm: true };
 
@@ -349,6 +354,8 @@ export class GameScene extends Phaser.Scene {
   /** Every screen shake goes through this, so together they never pass its cap. */
   private shake: Shake = createShake();
   private scraps!: ScrapLayer;
+  /** The enemy parts carrying a light this frame. */
+  private enemyLights: EnemySprite[] = [];
   /** What kind each spawned enemy is, for the colour of the scraps it tears into. */
   private enemyTypes = new Map<Enemy, EnemyType>();
   /** The canopy and vine joins touching each terrain cell (`roomId|x,y`), gone once the cell's tile is. */
@@ -398,6 +405,7 @@ export class GameScene extends Phaser.Scene {
     this.roomObjects = new Map();
     this.paper = new PaperLayer(this);
     this.scraps = new ScrapLayer(this, DEPTH.player + 0.95);
+    this.enemyLights = [];
     this.enemyTypes = new Map();
     this.joinArt = new Map();
     for (const room of this.world.rooms.values()) {
@@ -573,8 +581,11 @@ export class GameScene extends Phaser.Scene {
     this.paper.follow(shot, art, undefined, size);
   }
 
-  /** Moves each flying shot's light along with it. */
+  /** Moves each flying shot's light along with it, and each living enemy's faint light. */
   private lightShots() {
+    for (const key of this.enemyLights) this.light.lights.remove(key);
+    this.enemyLights = this.enemies.flatMap((e) => e.parts.slice(0, 1)).filter((p) => p.active && p.visible && p.alpha > 0.2);
+    for (const part of this.enemyLights) this.light.lights.set(part, { x: part.x, y: part.y, ...ENEMY_LIGHT });
     for (const obj of [...this.shots.getChildren(), ...this.enemyShots.getChildren()]) {
       const shot = obj as Phaser.GameObjects.Arc;
       const kind = this.shots.contains(shot) ? 'player' : 'enemy';

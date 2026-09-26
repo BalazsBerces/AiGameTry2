@@ -16,6 +16,7 @@ import {
 } from '../../../core/bosses/treantAttack';
 import type { Cell } from '../../../core/map/floorGenerator';
 import { COLORS, TUNING } from '../../config';
+import { shakeScreen } from '../../effects/shellBurst';
 import { singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from '../enemy';
 
 /** How the last stand's roots look; placeholders for playtest tuning. Distances in tiles. */
@@ -250,6 +251,8 @@ export function createTreant(scene: Phaser.Scene, x: number, y: number, _cell: C
     scene.tweens.add({ targets: sprite, scale: { from: 1.25, to: 1 }, duration: 220, ease: 'Back.easeOut' });
   };
 
+  /** Whether its branches or roots were slamming home last frame: the screen shakes as each slam lands. */
+  let slamming = false;
   const enemy = singlePartEnemy(scene, sprite, hp, (ctx: EnemyContext) => {
     brain ??= createTreantBrain(ctx.time);
     const player = toTiles(ctx, ctx.player);
@@ -272,6 +275,9 @@ export function createTreant(scene: Phaser.Scene, x: number, y: number, _cell: C
     }
 
     sprite.body.setVelocity((step.walk?.x ?? 0) * walkSpeed, (step.walk?.y ?? 0) * walkSpeed);
+    const slams = enemy.visual?.(ctx.time).hold?.frame === 1 && !brain.ring;
+    if (slams && !slamming) shakeScreen(scene, 'slam');
+    slamming = slams;
     for (const d of decor) d.shape.setPosition(sprite.x + d.dx, sprite.y + d.dy);
 
     ground.clear();

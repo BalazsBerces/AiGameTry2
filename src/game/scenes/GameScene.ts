@@ -76,6 +76,8 @@ import { createFalloff, createHitGate, type Falloff } from '../../core/player/mu
 import { PaperLayer, type PaperActor } from '../art/paperLayer';
 import { LightLayer } from '../art/lightLayer';
 import { HIT_STOP, createHitStop, type HitStop } from '../../core/juice/hitStop';
+import { createShake, type Shake } from '../../core/juice/shake';
+import { shakeScreen } from '../effects/shellBurst';
 import { DECOR_CANVAS, JOIN_LOOKS, TILE_CANVAS, type WallSide } from '../../core/art/terrain';
 import { SHOT_ART, TILE_VARIANTS, decorKey, doorKey, floorKey, joinKey, shotKey, tileKey, wallKey, type FloorKind } from '../../core/art/catalogue';
 import { SHOT_CANVAS } from '../../core/art/hud';
@@ -313,6 +315,8 @@ export class GameScene extends Phaser.Scene {
   now = 0;
   private hitStop: HitStop = createHitStop();
   private frozen = false;
+  /** Every screen shake goes through this, so together they never pass its cap. */
+  private shake: Shake = createShake();
   /** The canopy and vine joins touching each terrain cell (`roomId|x,y`), gone once the cell's tile is. */
   private joinArt = new Map<string, Phaser.GameObjects.Image[]>();
 
@@ -337,6 +341,7 @@ export class GameScene extends Phaser.Scene {
     this.world = createWorld(seed);
     this.hitStop = createHitStop();
     this.frozen = false;
+    this.shake = createShake();
     this.now = this.time.now;
     this.enemies = [];
     this.lootCarriers = new Map();
@@ -501,6 +506,7 @@ export class GameScene extends Phaser.Scene {
     this.updateCrushers(time);
     this.followPlayerAcrossRooms(time);
     this.paper.update(time);
+    this.applyShake(time);
     this.lightShots();
     this.light.update(this.player, time, !!themeForFloor(this.currentRoom.floorIndex).paper);
   }
@@ -559,6 +565,18 @@ export class GameScene extends Phaser.Scene {
       this.tweens.resumeAll();
     }
     this.time.paused = frozen;
+  }
+
+  /** Adds a shake of `px` easing out over `ms` (shakeScreen calls this). */
+  shakeBy(px: number, ms: number) {
+    this.shake.add(this.now, px, ms);
+  }
+
+  /** Jolts the camera by this frame's capped shake. */
+  private applyShake(time: number) {
+    const cam = this.cameras.main;
+    const px = this.shake.amount(time);
+    if (px > 0.25) cam.shake(50, px / cam.width, true);
   }
 
   /** A hit lands with weight: the game freezes for `ms` (merged with any freeze already running). */
@@ -764,6 +782,7 @@ export class GameScene extends Phaser.Scene {
     this.damagePart(part, damage);
     if (!enemy) return;
     this.hitStopFor(this.enemies.includes(enemy) ? HIT_STOP.hit : HIT_STOP.kill);
+    shakeScreen(this, 'hit');
     const weapon = resolveWeapon(this.world.player.passives, this.world.player.statUps);
     const time = this.now;
     const alive = this.enemies.includes(enemy);
@@ -1242,7 +1261,10 @@ export class GameScene extends Phaser.Scene {
     for (const cell of detonateBomb(this.world, roomId, tileAt(room, at.x, at.y))) this.removeTerrain(roomId, cell);
     const reach = BOMB_RADIUS * TUNING.tile;
     const flash = this.add.circle(at.x, at.y, reach, COLORS.blast, 0.6).setDepth(DEPTH.player + 1);
-    if (roomId === this.world.currentRoomId) this.hitStopFor(HIT_STOP.bomb);
+    if (roomId === this.world.currentRoomId) {
+      this.hitStopFor(HIT_STOP.bomb);
+      shakeScreen(this, 'bomb');
+    }
     this.tweens.add({ targets: flash, alpha: 0, duration: 300, onComplete: () => flash.destroy() });
     if (roomId !== this.world.currentRoomId) return;
     const caught = (o: { x: number; y: number; width: number }) =>
@@ -1312,6 +1334,7 @@ export class GameScene extends Phaser.Scene {
     if (this.now < this.invincibleUntil) return;
     this.invincibleUntil = this.now + TUNING.invincibleMs;
     this.playerArt?.hurt(this.now);
+    shakeScreen(this, 'hurt');
     for (let i = 0; i < halves; i++) {
       if (damagePlayer(this.world)) {
         this.endRun(false);

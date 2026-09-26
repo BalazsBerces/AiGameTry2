@@ -1,7 +1,7 @@
 import { CHARACTERS, type Action, type View } from './characters';
 import { DECOR_CANVAS, DECOR_KINDS, JOIN_LOOKS, MASKED_LOOKS, TILE_CANVAS, TILE_LOOKS, terrainSvg, type WallSide } from './terrain';
 import type { Mask } from './autotile';
-import { SHOT_CANVAS, hudSvg } from './hud';
+import { PICKUP_ART, PICKUP_CANVAS, SHOT_CANVAS, hudSvg, pickupSvg, type PickupArt } from './hud';
 
 /**
  * Every piece of paper art the game bakes at boot, by key: what the texture baker draws and the
@@ -83,7 +83,13 @@ function shotEntries(): ArtEntry[] {
   }));
 }
 
+export const pickupKey = (kind: PickupArt) => `p:${kind}`;
+
+function pickupEntries(): ArtEntry[] {
+  return (Object.keys(PICKUP_ART) as PickupArt[]).map((kind) => ({ key: pickupKey(kind), w: PICKUP_CANVAS, h: PICKUP_CANVAS, svg: () => pickupSvg(kind) }));
+}
+
 /** The whole catalogue, in a fixed order. */
 export function artCatalogue(): ArtEntry[] {
-  return [...characterEntries(), ...terrainEntries(), ...shotEntries()];
+  return [...characterEntries(), ...terrainEntries(), ...shotEntries(), ...pickupEntries()];
 }

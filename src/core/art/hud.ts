@@ -74,6 +74,92 @@ function shot(kind: 'player' | 'enemy', radius: number) {
 
 export const SHOT_CANVAS = 28;
 
+/** Pickups and status marks are drawn on this square canvas, centred on the pickup. */
+export const PICKUP_CANVAS = 48;
+const C = PICKUP_CANVAS / 2;
+
+/** A chest seen at 3/4: its lid's top and the box's front face, bound in iron (gold when locked); open, its lid thrown back. */
+function chest(kind: 'plain' | 'locked' | 'open') {
+  const r = pieceRng('chest', kind);
+  const wood = kind === 'locked' ? '#8a6a2a' : '#6a4a2a';
+  const band = kind === 'locked' ? P.key : '#3a3a42';
+  const box = cutPoly(r, [{ x: C - 16, y: C - 2 }, { x: C + 16, y: C - 2 }, { x: C + 15, y: C + 13 }, { x: C - 15, y: C + 13 }], 0.5);
+  const lid = kind === 'open'
+    ? cutPoly(r, [{ x: C - 16, y: C - 14 }, { x: C + 16, y: C - 14 }, { x: C + 16, y: C - 4 }, { x: C - 16, y: C - 4 }], 0.5)
+    : cutPoly(r, [{ x: C - 17, y: C - 11 }, { x: C + 17, y: C - 11 }, { x: C + 16, y: C - 1 }, { x: C - 16, y: C - 1 }], 0.5);
+  const inside = kind === 'open' ? fill(`M${C - 14} ${C - 4}L${C + 14} ${C - 4}L${C + 13} ${C + 1}L${C - 13} ${C + 1}Z`, P.ink) : '';
+  const bands = [-9, 9].map((dx) => fill(`M${C + dx - 2} ${C - 11}L${C + dx + 2} ${C - 11}L${C + dx + 2} ${C + 13}L${C + dx - 2} ${C + 13}Z`, band)).join('');
+  const lock = kind === 'locked'
+    ? sheet(fill(`M${C - 4} ${C - 4}L${C + 4} ${C - 4}L${C + 4} ${C + 5}L${C - 4} ${C + 5}Z`, P.key) + `<circle cx="${C}" cy="${C}" r="1.4" fill="${P.ink}"/>`)
+    : '';
+  return sheet(fill(box, wood) + inside, 2) + sheet(fill(lid, kind === 'open' ? '#4a3420' : wood) + bands) + lock;
+}
+
+/** The Treant's heart container: a heart with a gold-green rim and two leaves sprouting from it. */
+function heartContainer() {
+  const r = pieceRng('heartContainer');
+  const leaves = [-1, 1].map((s) => fill(blob(r, C + s * 6, C - 13, 6, 3.2, 7, 0.08, s * -0.5), '#4fae34')).join('');
+  return sheet(leaves) + sheet(fill(heartPath(C, C + 2, 30), '#c8d84a') + fill(heartPath(C, C + 2, 24), P.heart) + fill(blob(r, C - 6, C - 3, 3.5, 2.4, 7, 0.1), P.heartLight), 2);
+}
+
+/** A white paper star on a small stand, tinted to its passive's colour. */
+function passive() {
+  const r = pieceRng('passive');
+  const pts = Array.from({ length: 10 }, (_, i) => {
+    const a = (i / 10) * Math.PI * 2 - Math.PI / 2;
+    const k = i % 2 ? 7 : 16;
+    return { x: C + Math.cos(a) * k, y: C - 2 + Math.sin(a) * k };
+  });
+  return sheet(fill(cutPoly(r, pts, 0.5), '#ffffff'), 2) + sheet(`<circle cx="${C}" cy="${C - 2}" r="3.5" fill="#fffbe8"/>`);
+}
+
+/** A cut-out arrow pointing up: a stat going up (white, tinted). */
+function arrowUp() {
+  const r = pieceRng('arrow');
+  return sheet(fill(cutPoly(r, [{ x: C, y: C - 14 }, { x: C + 12, y: C }, { x: C + 5, y: C }, { x: C + 5, y: C + 12 }, { x: C - 5, y: C + 12 }, { x: C - 5, y: C }, { x: C - 12, y: C }], 0.4), '#ffffff'), 2);
+}
+
+/** A torn paper puff (white, tinted): a poison tick. */
+function puff() {
+  const r = pieceRng('puff');
+  return sheet([{ x: -5, y: 2, s: 7 }, { x: 5, y: 1, s: 6 }, { x: 0, y: -4, s: 7 }].map((b) => fill(blob(r, C + b.x, C + b.y, b.s, b.s * 0.85, 8, 0.14), '#ffffff')).join(''));
+}
+
+/** The four-point star spinning over a stunned head. */
+function stunStar() {
+  const r = pieceRng('stun');
+  const pts = Array.from({ length: 8 }, (_, i) => {
+    const a = (i / 8) * Math.PI * 2;
+    const k = i % 2 ? 4 : 12;
+    return { x: C + Math.cos(a) * k, y: C + Math.sin(a) * k };
+  });
+  return sheet(fill(cutPoly(r, pts, 0.3), '#ffe066') + `<circle cx="${C}" cy="${C}" r="2.4" fill="#fff8d0"/>`);
+}
+
+/** An orbital: a pale paper orb (white, tinted). */
+function orb() {
+  const r = pieceRng('orb');
+  return sheet(fill(blob(r, C, C, 10, 10, 10, 0.04), '#ffffff') + fill(blob(r, C - 3, C - 3, 4, 3, 7, 0.1), '#ffffff', 'opacity="0.6"'), 2);
+}
+
+export const PICKUP_ART = {
+  chest: () => chest('plain'),
+  lockedChest: () => chest('locked'),
+  openChest: () => chest('open'),
+  heartContainer,
+  passive,
+  statUp: arrowUp,
+  heart: () => `<g transform="translate(${C - HEART_CANVAS / 2 + 1} ${C - HEART_CANVAS / 2 + 1})">${heart('full')}</g>`,
+  key: () => `<g transform="translate(${C - ICON_CANVAS / 2} ${C - ICON_CANVAS / 2})">${key()}</g>`,
+  bomb: () => `<g transform="translate(${C - ICON_CANVAS / 2} ${C - ICON_CANVAS / 2})">${bomb()}</g>`,
+  puff,
+  stun: stunStar,
+  orb,
+} as const;
+
+export type PickupArt = keyof typeof PICKUP_ART;
+export const pickupSvg = (kind: PickupArt) => svgDoc(PICKUP_CANVAS, PICKUP_CANVAS, PICKUP_ART[kind](), 67);
+
 export const hudSvg = {
   heart: (level: 'full' | 'half' | 'empty') => svgDoc(HEART_CANVAS, HEART_CANVAS, heart(level), 41),
   key: () => svgDoc(ICON_CANVAS, ICON_CANVAS, key(), 43),

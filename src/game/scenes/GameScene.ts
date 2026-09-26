@@ -81,8 +81,8 @@ import { shakeScreen } from '../effects/shellBurst';
 import { ScrapLayer } from '../art/scrapLayer';
 import { PAPER } from '../../core/art/palette';
 import { DECOR_CANVAS, JOIN_LOOKS, TILE_CANVAS, type WallSide } from '../../core/art/terrain';
-import { SHOT_ART, TILE_VARIANTS, decorKey, doorKey, floorKey, joinKey, shotKey, tileKey, wallKey, type FloorKind } from '../../core/art/catalogue';
-import { SHOT_CANVAS } from '../../core/art/hud';
+import { SHOT_ART, TILE_VARIANTS, decorKey, doorKey, floorKey, joinKey, pickupKey, shotKey, tileKey, wallKey, type FloorKind } from '../../core/art/catalogue';
+import { PICKUP_CANVAS, SHOT_CANVAS, type PickupArt } from '../../core/art/hud';
 import { ART_SCALE } from '../art/bake';
 import { joinsBetween, neighbourMask } from '../../core/art/autotile';
 
@@ -132,6 +132,8 @@ const ENEMY_FACTORIES: Record<EnemyType, (scene: Phaser.Scene, spawn: EnemySpawn
 };
 
 type Shape = Phaser.GameObjects.Shape;
+/** The spinning star over a stunned head: paper art, or a plain star without it. */
+type StunMark = Phaser.GameObjects.Image | Shape;
 const PICKUP_SHAPES: Record<WorldPickup['type'], (scene: Phaser.Scene, x: number, y: number, p: WorldPickup) => Shape> = {
   passive: (s, x, y, p) =>
     s.add.star(x, y, 5, 8, 18, COLORS.passive[p.passive ?? 'homing']).setStrokeStyle(2, 0xffffff),
@@ -143,7 +145,7 @@ const PICKUP_SHAPES: Record<WorldPickup['type'], (scene: Phaser.Scene, x: number
       s.add.ellipse(x + side * 6, y - 15, 13, 7, COLORS.heartContainerLeaf).setAngle(side * -30).setStrokeStyle(1, COLORS.heartContainerRim),
     );
     orb.once('destroy', () => leaves.forEach((l) => l.destroy()));
-    return orb;
+    return orb.setData('trim', leaves);
   },
   key: (s, x, y) => s.add.rectangle(x, y, 10, 22, COLORS.key),
   bomb: (s, x, y) => s.add.circle(x, y, 11, COLORS.bomb).setStrokeStyle(3, COLORS.bombFuse),
@@ -188,6 +190,21 @@ const SCRAP_COLORS: Partial<Record<EnemyType, number[]>> = {
 };
 /** A bomb's confetti. */
 const CONFETTI = [COLORS.blast, COLORS.bombFuse, COLORS.key, COLORS.heart, hex(PAPER.cream)];
+
+/** Each pickup's paper art, and the colour it is tinted (passives and stat-ups by what they give). */
+const PICKUP_ART_OF: Record<WorldPickup['type'], (p: WorldPickup) => { art: PickupArt; tint?: number }> = {
+  passive: (p) => ({ art: 'passive', tint: COLORS.passive[p.passive ?? 'homing'] }),
+  heart: () => ({ art: 'heart' }),
+  heartContainer: () => ({ art: 'heartContainer' }),
+  key: () => ({ art: 'key' }),
+  bomb: () => ({ art: 'bomb' }),
+  chest: () => ({ art: 'chest' }),
+  lockedChest: () => ({ art: 'lockedChest' }),
+  openChest: () => ({ art: 'openChest' }),
+  damageUp: () => ({ art: 'statUp', tint: COLORS.damageUp }),
+  rateUp: () => ({ art: 'statUp', tint: COLORS.rateUp }),
+};
+const PICKUP_FRAME = { w: PICKUP_CANVAS, h: PICKUP_CANVAS, anchor: { x: PICKUP_CANVAS / 2, y: PICKUP_CANVAS / 2 } };
 
 /** Which paper floor each kind of room gets. */
 const FLOOR_KIND: Record<RoomKind, FloorKind> = { start: 'normal', normal: 'normal', item: 'item', boss: 'boss' };
@@ -303,7 +320,7 @@ export class GameScene extends Phaser.Scene {
   /** Flying enemies: stopped by walls and stone, but over holes and thorns, and through each other. */
   private flyers!: Phaser.Physics.Arcade.Group;
   /** The star drawn over each currently stunned enemy. */
-  private stunMarks = new Map<Enemy, Shape>();
+  private stunMarks = new Map<Enemy, StunMark>();
   /** Enemies the Poison passive is working on; a many-part body (the worm boss, split or whole) by its hit group. */
   private poisoned = new Map<object, Poison>();
   /** Rolls for the Freeze passive. */
@@ -319,7 +336,7 @@ export class GameScene extends Phaser.Scene {
   bossBar?: BossBarSnapshot;
   /** The player's share of the stun (a glowshroom cloud): no moving or shooting until it wears off. */
   private playerStun: Stunnable = {};
-  private playerStunMark?: Shape;
+  private playerStunMark?: StunMark;
   /** Paper sprites standing in for shapes that have art; the rest draw themselves. */
   private paper!: PaperLayer;
   private playerArt?: PaperActor;
@@ -616,6 +633,12 @@ export class GameScene extends Phaser.Scene {
     while (orbs.length < count) {
       const orb = this.add.circle(this.player.x, this.player.y, size, COLORS.passive.orbital).setStrokeStyle(2, 0xffffff).setDepth(DEPTH.player);
       this.orbs.add(orb);
+      const art = this.paper.piece(pickupKey('orb'), orb.x, orb.y, PICKUP_FRAME);
+      if (art) {
+        art.setTint(COLORS.passive.orbital).setDepth(DEPTH.player + 0.9);
+        this.paper.standIn(orb, art);
+        this.paper.follow(orb, art, undefined, (size * 2) / 20);
+      }
       (orb.body as Phaser.Physics.Arcade.Body).setCircle(size);
       orbs.push(orb);
     }
@@ -646,7 +669,12 @@ export class GameScene extends Phaser.Scene {
     if (!this.dash || this.dash === before) return;
     this.invincibleUntil = Math.max(this.invincibleUntil, this.dash.until);
     this.dashHits.clear();
-    const trail = this.add.circle(this.player.x, this.player.y, TUNING.playerSize / 2, COLORS.passive.dash, 0.5);
+    // An afterimage of the player in the dash's colour.
+    const ghost = this.playerArt?.sprite;
+    const trail = ghost
+      ? this.add.image(ghost.x, ghost.y, ghost.texture.key, ghost.frame.name).setOrigin(ghost.originX, ghost.originY).setScale(ghost.scaleX, ghost.scaleY)
+          .setFlipX(ghost.flipX).setTintFill(COLORS.passive.dash).setAlpha(0.55).setDepth(ghost.depth - 0.001)
+      : this.add.circle(this.player.x, this.player.y, TUNING.playerSize / 2, COLORS.passive.dash, 0.5);
     this.tweens.add({ targets: trail, alpha: 0, duration: 260, onComplete: () => trail.destroy() });
   }
 
@@ -768,8 +796,11 @@ export class GameScene extends Phaser.Scene {
     const { range, showMs } = TUNING.sword;
     const facing = Math.atan2(STEP[aim].y, STEP[aim].x);
     const half = Phaser.Math.DegToRad(arcDeg / 2);
-    const arc = this.add.graphics().setDepth(DEPTH.player - 1);
-    arc.fillStyle(color, 0.55).slice(from.x, from.y, range, facing - half, facing + half).fillPath();
+    // A paper sweep: its shadow, the cut in the sword's colour, and a bright edge.
+    const arc = this.add.graphics().setDepth(DEPTH.player + 0.8);
+    arc.fillStyle(0x060805, 0.35).slice(from.x + 2, from.y + 3, range, facing - half, facing + half).fillPath();
+    arc.fillStyle(color, 0.7).slice(from.x, from.y, range, facing - half, facing + half).fillPath();
+    arc.lineStyle(2, 0xffffff, 0.85).beginPath().arc(from.x, from.y, range, facing - half, facing + half).strokePath();
     this.time.delayedCall(showMs, () => arc.destroy());
     return (target: { x: number; y: number; width: number }) => {
       const dist = Phaser.Math.Distance.Between(from.x, from.y, target.x, target.y);
@@ -826,14 +857,19 @@ export class GameScene extends Phaser.Scene {
       return p ? [{ id: e, at: this.toTileUnits(room, p) }] : [];
     });
     if (!placed.some((p) => p.id === from)) placed.push({ id: from, at: this.toTileUnits(room, at) });
-    const g = this.add.graphics().setDepth(DARK_DEPTH + 3).lineStyle(3, COLORS.passive.chain, 1);
+    const g = this.add.graphics().setDepth(DARK_DEPTH + 3);
     let prev = at;
     for (const target of chainTargets(from, placed, rules.jumps, rules.range)) {
       const part = bodyOf(target);
       if (!part) continue;
-      // A jagged bolt: the straight line nudged sideways at its middle.
+      // A jagged bolt, the straight line nudged sideways at its middle, cut from paper: shadow, colour, white core.
       const mid = { x: (prev.x + part.x) / 2 + (Math.random() - 0.5) * 20, y: (prev.y + part.y) / 2 + (Math.random() - 0.5) * 20 };
-      g.lineBetween(prev.x, prev.y, mid.x, mid.y).lineBetween(mid.x, mid.y, part.x, part.y);
+      const a = prev;
+      const bolt = (dx: number, dy: number, width: number, color: number, alpha: number) =>
+        g.lineStyle(width, color, alpha).lineBetween(a.x + dx, a.y + dy, mid.x + dx, mid.y + dy).lineBetween(mid.x + dx, mid.y + dy, part.x + dx, part.y + dy);
+      bolt(1.5, 2, 4, 0x060805, 0.45);
+      bolt(0, 0, 4, COLORS.passive.chain, 1);
+      bolt(0, 0, 1.2, 0xffffff, 1);
       prev = { x: part.x, y: part.y };
       this.damagePart(part, damage);
     }
@@ -863,7 +899,10 @@ export class GameScene extends Phaser.Scene {
       const part = pieces
         .flatMap((e) => e.parts.filter((p) => p.active && (!e.hitGroup || (p.body.enable && !e.invulnerable?.(p)))))[0];
       if (tick.damage <= 0 || !part) continue;
-      const puff = this.add.circle(part.x, part.y - 8, 7, COLORS.passive.poison, 0.8).setDepth(DEPTH.player + 1);
+      // A paper puff, over the dark so it always reads.
+      const puff =
+        this.paper.piece(pickupKey('puff'), part.x, part.y - 8, PICKUP_FRAME)?.setTint(COLORS.passive.poison).setAlpha(0.9).setDepth(DARK_DEPTH + 1) ??
+        this.add.circle(part.x, part.y - 8, 7, COLORS.passive.poison, 0.8).setDepth(DEPTH.player + 1);
       this.tweens.add({ targets: puff, y: puff.y - 18, alpha: 0, duration: 380, onComplete: () => puff.destroy() });
       this.damagePart(part, tick.damage);
     }
@@ -999,11 +1038,20 @@ export class GameScene extends Phaser.Scene {
       if (!head?.active || !isStunned(enemy, time)) continue;
       let mark = this.stunMarks.get(enemy);
       if (!mark) {
-        mark = this.add.star(head.x, head.y, 4, radius / 2, radius, COLORS.stunMark).setDepth(DEPTH.player + 1);
+        mark = this.stunMark();
         this.stunMarks.set(enemy, mark);
       }
       mark.setPosition(head.x, head.y - head.displayHeight / 2 - radius).setAngle((time / 1000) * spinDegPerSec);
     }
+  }
+
+  /** A star to spin over a stunned head: paper, drawn over the dark so it always reads. */
+  private stunMark(): StunMark {
+    const { radius } = TUNING.stunMark;
+    return (
+      this.paper.piece(pickupKey('stun'), 0, 0, PICKUP_FRAME)?.setScale((radius * 2) / 24 / ART_SCALE).setDepth(DARK_DEPTH + 1) ??
+      this.add.star(0, 0, 4, radius / 2, radius, COLORS.stunMark).setDepth(DEPTH.player + 1)
+    );
   }
 
   /** The same spinning star over the player's head while they are stunned. */
@@ -1014,7 +1062,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     const { radius, spinDegPerSec } = TUNING.stunMark;
-    this.playerStunMark ??= this.add.star(0, 0, 4, radius / 2, radius, COLORS.stunMark).setDepth(DEPTH.player + 1);
+    this.playerStunMark ??= this.stunMark();
     this.playerStunMark
       .setPosition(this.player.x, this.player.y - this.player.displayHeight / 2 - radius)
       .setAngle((time / 1000) * spinDegPerSec);
@@ -1427,6 +1475,13 @@ export class GameScene extends Phaser.Scene {
       const c = tileCenter(room, p.cell.x, p.cell.y);
       const sprite = PICKUP_SHAPES[p.type](this, c.x, c.y, p).setData('pickupId', p.id);
       this.pickupGroup.add(sprite);
+      const look = PICKUP_ART_OF[p.type](p);
+      const art = this.paper.piece(pickupKey(look.art), c.x, c.y, PICKUP_FRAME, c.y + 12);
+      if (art) {
+        if (look.tint !== undefined) art.setTint(look.tint);
+        this.paper.standIn(sprite, art);
+        for (const t of (sprite.getData('trim') as Phaser.GameObjects.GameObject[] | undefined) ?? []) this.cameras.main.ignore(t);
+      }
       (sprite.body as Phaser.Physics.Arcade.Body).setImmovable(true);
     }
   }

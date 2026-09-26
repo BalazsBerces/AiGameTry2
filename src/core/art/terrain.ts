@@ -235,10 +235,8 @@ function floorTile(variant: number, kind: 'normal' | 'item' | 'boss') {
     const pr = r(`p${i}`);
     return fill(blob(pr, x0 + 12 + pr.next() * 24, y0 + 12 + pr.next() * 24, 8 + pr.next() * 5, 6 + pr.next() * 4, 8, 0.15), i ? P.floorDark : patch, 'opacity="0.7"');
   });
-  // The item room's floor carries a worn gold rune ring, the boss room's a scatter of scorched roots.
-  const mark = kind === 'item' && variant === 0
-    ? `<circle cx="${AX}" cy="${AY}" r="15" fill="none" stroke="#c8b060" stroke-width="1.6" stroke-dasharray="5 4" opacity="0.5"/>`
-    : kind === 'boss' && variant === 0
+  // The item room's floor is warmer moss; the boss room's is bare earth with a scatter of scorched roots.
+  const mark = kind === 'boss' && variant === 0
       ? `<path d="M${x0 + 6} ${y0 + 30}q10 -8 18 -2t18 -8" stroke="#2a1e14" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.45"/>`
       : '';
   // Bleeds a pixel past the tile so scaled neighbours never show a seam.

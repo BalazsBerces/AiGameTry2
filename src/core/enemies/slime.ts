@@ -21,9 +21,9 @@ export interface SlimeTierRules {
 /** Placeholder numbers for playtest tuning. */
 export const SLIME = {
   tiers: {
-    big: { hp: 3, restMs: 700, squashMs: 450, hopMs: 360, hopDistance: 1.6, landMs: 300 },
-    medium: { hp: 2, restMs: 450, squashMs: 380, hopMs: 300, hopDistance: 1.8, landMs: 220 },
-    small: { hp: 1, restMs: 250, squashMs: 320, hopMs: 250, hopDistance: 2, landMs: 150 },
+    big: { hp: 3, restMs: 400, squashMs: 380, hopMs: 400, hopDistance: 2.2, landMs: 200 },
+    medium: { hp: 2, restMs: 260, squashMs: 320, hopMs: 350, hopDistance: 2.4, landMs: 150 },
+    small: { hp: 1, restMs: 150, squashMs: 270, hopMs: 300, hopDistance: 2.6, landMs: 100 },
   } satisfies Record<SlimeTier, SlimeTierRules>,
   /** What each tier splits into when killed. */
   splitsInto: { big: 'medium', medium: 'small', small: undefined } as Record<SlimeTier, SlimeTier | undefined>,

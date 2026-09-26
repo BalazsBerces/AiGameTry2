@@ -1,4 +1,7 @@
 import type { EnemyType } from '../rooms/roomGenerator';
+import { SLIME, type SlimeTierRules } from './slime';
+
+const slimePace = (t: SlimeTierRules) => t.hopDistance / ((t.restMs + t.squashMs + t.hopMs + t.landMs) / 1000);
 
 /**
  * How the room validator treats an enemy: walkers must be reachable on foot, stationary
@@ -60,5 +63,5 @@ export const ENEMY_CHASE_SPEED: Record<EnemyType, number> = {
   /** Its flutter drifts toward the player; a swoop is telegraphed. */
   bat: 1.5,
   /** A big slime's hop distance over its whole rest-squash-hop-land cycle. */
-  slime: 1,
+  slime: slimePace(SLIME.tiers.big),
 };

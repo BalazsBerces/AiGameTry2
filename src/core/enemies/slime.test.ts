@@ -57,7 +57,8 @@ describe('slime hops', () => {
 
   it('hops a fixed distance straight at the player', () => {
     const log = hop(1, 600, 'big', START, PLAYER);
-    for (const { from, to } of hops(log)) {
+    // The last hop may still be in the air when the log ends.
+    for (const { from, to } of hops(log).slice(0, -1)) {
       const before = from > 0 ? log[from - 1].at : START;
       const after = log[to].at;
       expect(dist(before, after)).toBeCloseTo(SLIME.tiers.big.hopDistance, 1);

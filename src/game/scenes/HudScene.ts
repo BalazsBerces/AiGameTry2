@@ -5,6 +5,12 @@ import { WEAPON, type PassiveLevels } from '../../core/player/weaponModel';
 import { BossBarView } from '../ui/bossBarView';
 import { COLORS } from '../config';
 import { CELL_PX_H, LABEL_STRIP_H } from '../geometry';
+import { HUD_KEYS } from '../../core/art/catalogue';
+import { SCRAP_SIZE } from '../../core/art/hud';
+import { ART_SCALE, bakedArt } from '../art/bake';
+
+/** The minimap's ink on its paper scrap: rooms seen, the room the player is in, and rooms only glimpsed. */
+const MAP_INK = { visited: 0x9a8a6a, current: 0x4a3a2a, outline: 0x6a5a44 };
 import type { GameScene } from './GameScene';
 
 const HEART = { size: 18, gap: 6, x: 14, y: 14 };
@@ -25,6 +31,10 @@ export class HudScene extends Phaser.Scene {
   private roomText!: Phaser.GameObjects.Text;
   private statUpsText!: Phaser.GameObjects.Text;
   private bossBar!: BossBarView;
+  /** Paper hearts, one per heart the player can hold, made as they are needed. */
+  private hearts: Phaser.GameObjects.Image[] = [];
+  /** The HUD is drawn in paper (its art is baked); otherwise in plain shapes. */
+  private paper = false;
 
   constructor() {
     super('hud');
@@ -32,18 +42,27 @@ export class HudScene extends Phaser.Scene {
 
   create() {
     this.graphics = this.add.graphics();
+    this.hearts = [];
+    this.paper = !!bakedArt(HUD_KEYS.scrap);
     const x = this.scale.width - MAP.w - MAP.margin;
-    this.add.rectangle(x, MAP.margin, MAP.w, MAP.h, COLORS.minimapBackground, 0.7).setOrigin(0);
+    if (this.paper) {
+      // The map on a torn scrap of paper, a little larger than its window.
+      this.hudImage(HUD_KEYS.scrap, x - (SCRAP_SIZE.w - MAP.w) / 2, MAP.margin - (SCRAP_SIZE.h - MAP.h) / 2).setOrigin(0);
+    } else {
+      this.add.rectangle(x, MAP.margin, MAP.w, MAP.h, COLORS.minimapBackground, 0.7).setOrigin(0);
+    }
     this.minimap = this.add.graphics();
     const mask = this.make.graphics({}).fillRect(x, MAP.margin, MAP.w, MAP.h);
     this.minimap.setMask(mask.createGeometryMask());
-    this.add.rectangle(HEART.x + 4, HEART.y + HEART.size + 18, 8, 16, COLORS.key);
+    if (this.paper) this.hudImage(HUD_KEYS.key, HEART.x + 4, HEART.y + HEART.size + 18).setScale(0.85 / ART_SCALE);
+    else this.add.rectangle(HEART.x + 4, HEART.y + HEART.size + 18, 8, 16, COLORS.key);
     this.keysText = this.add.text(HEART.x + 14, HEART.y + HEART.size + 10, '', {
       fontFamily: 'monospace',
       fontSize: '14px',
       color: COLORS.text,
     });
-    this.add.circle(HEART.x + 64, HEART.y + HEART.size + 18, 7, COLORS.bomb).setStrokeStyle(2, COLORS.bombFuse);
+    if (this.paper) this.hudImage(HUD_KEYS.bomb, HEART.x + 64, HEART.y + HEART.size + 16).setScale(0.85 / ART_SCALE);
+    else this.add.circle(HEART.x + 64, HEART.y + HEART.size + 18, 7, COLORS.bomb).setStrokeStyle(2, COLORS.bombFuse);
     this.bombsText = this.add.text(HEART.x + 76, HEART.y + HEART.size + 10, '', {
       fontFamily: 'monospace',
       fontSize: '14px',
@@ -64,7 +83,7 @@ export class HudScene extends Phaser.Scene {
   update() {
     const game = this.scene.get('game') as GameScene;
     const { world } = game;
-    this.roomText.setVisible(!this.bossBar.update(game.bossBar, this.time.now));
+    this.roomText.setVisible(!this.bossBar.update(game.bossBar, game.now));
     this.drawHearts(world.player.health, world.player.maxHealth);
     this.drawPassives(world.player.passives);
     this.drawMinimap(world);
@@ -77,8 +96,26 @@ export class HudScene extends Phaser.Scene {
     this.statUpsText.setText(damage || rate ? `DMG +${(damage * WEAPON.damageUpStep).toFixed(1)}  RATE ×${rate}` : '');
   }
 
+  /** A baked HUD piece at x,y (its centre), at its drawn size. */
+  private hudImage(key: string, x: number, y: number) {
+    return this.add.image(x, y, bakedArt(key)!.texture, key).setScale(1 / ART_SCALE);
+  }
+
   private drawHearts(health: number, maxHealth: number) {
     const g = this.graphics.clear();
+    if (this.paper) {
+      const count = Math.ceil(maxHealth / 2);
+      while (this.hearts.length < count) {
+        const i = this.hearts.length;
+        this.hearts.push(this.hudImage(HUD_KEYS.heart('empty'), HEART.x + i * (HEART.size + HEART.gap) + HEART.size / 2, HEART.y + HEART.size / 2));
+      }
+      this.hearts.forEach((heart, i) => {
+        const halves = Phaser.Math.Clamp(health - i * 2, 0, 2);
+        const key = HUD_KEYS.heart(halves === 2 ? 'full' : halves === 1 ? 'half' : 'empty');
+        heart.setVisible(i < count).setTexture(bakedArt(key)!.texture, key);
+      });
+      return;
+    }
     for (let i = 0; i < maxHealth / 2; i++) {
       const x = HEART.x + i * (HEART.size + HEART.gap);
       const halves = Phaser.Math.Clamp(health - i * 2, 0, 2);
@@ -120,7 +157,7 @@ export class HudScene extends Phaser.Scene {
       });
       const { cellW: w, cellH: h, gap } = MAP;
       if (visited) {
-        g.fillStyle(isCurrent ? COLORS.minimapCurrent : COLORS.minimapVisited);
+        g.fillStyle(this.paper ? (isCurrent ? MAP_INK.current : MAP_INK.visited) : isCurrent ? COLORS.minimapCurrent : COLORS.minimapVisited);
         for (const c of cells) {
           const { x, y } = origin(c);
           const right = has(c.x + 1, c.y);
@@ -130,7 +167,7 @@ export class HudScene extends Phaser.Scene {
           if (right && down && has(c.x + 1, c.y + 1)) g.fillRect(x + w, y + h, gap, gap);
         }
       } else {
-        g.lineStyle(1, COLORS.minimapVisited);
+        g.lineStyle(1, this.paper ? MAP_INK.outline : COLORS.minimapVisited);
         for (const c of cells) this.outlineCell(g, origin(c), c, has);
       }
 

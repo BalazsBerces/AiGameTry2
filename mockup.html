@@ -1,0 +1,43 @@
+<title>Papercut Forest</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@500;700&family=Alegreya+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400&display=swap">
+<style>
+  :root {
+    color-scheme: dark;
+    --ground: #0e120d;
+    --panel: #161c14;
+    --line: #2a3325;
+    --paper: #e8dcc0;
+    --muted: #98a386;
+    --accent: #f0b640;
+    --display: 'Alegreya SC', Georgia, serif;
+    --body: 'Alegreya Sans', 'Segoe UI', system-ui, sans-serif;
+    --mono: 'IBM Plex Mono', ui-monospace, Consolas, monospace;
+  }
+  body { background: var(--ground); color: var(--paper); font: 17px/1.55 var(--body); margin: 0; }
+  #page { max-width: 1120px; margin: 0 auto; padding-inline: 20px; padding-block: 36px 72px; display: flex; flex-direction: column; gap: 22px; }
+  .masthead { display: flex; flex-direction: column; gap: 6px; max-width: 68ch; }
+  .eyebrow { margin: 0; font: 12px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+  h1 { margin: 0; font: 700 clamp(38px, 6vw, 64px)/1 var(--display); letter-spacing: 0.01em; text-wrap: balance; }
+  .lede { margin: 0; color: var(--muted); }
+  h2 { margin: 26px 0 0; font: 700 28px/1.1 var(--display); color: var(--paper); text-wrap: balance; }
+  h3 { margin: 0; font: 500 19px/1.2 var(--display); }
+  h3 span, h4 span { font: 12px var(--mono); color: var(--muted); letter-spacing: 0.04em; margin-left: 6px; }
+  h4 { margin: 0; font: 13px var(--mono); text-transform: uppercase; letter-spacing: 0.1em; color: var(--accent); }
+  .note { margin: 0; color: var(--muted); max-width: 68ch; }
+  figure { margin: 0; }
+  .stage { display: flex; flex-direction: column; gap: 8px; }
+  .stage figcaption { color: var(--muted); font-size: 15px; max-width: 80ch; }
+  .room { display: block; width: 100%; height: auto; border-radius: 3px; box-shadow: 0 18px 40px -18px #000; }
+  .pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 22px; }
+  .strip { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 18px 28px; }
+  .action { display: flex; flex-direction: column; gap: 6px; }
+  .frames { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+  .frames figure { display: flex; flex-direction: column; align-items: center; gap: 2px; background: #34482c; border-radius: 3px; padding: 4px; }
+  .frames figcaption { font: 11px var(--mono); color: var(--paper); opacity: 0.75; }
+  .frames img { display: block; max-width: 100%; height: auto; }
+</style>
+<main id="page"></main>
+<script type="module" src="/src/mockup/mockup.ts"></script>

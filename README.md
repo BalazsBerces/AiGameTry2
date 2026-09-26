@@ -1,8 +1,8 @@
 # AiGameTry2
 
-A top-down roguelike in the style of *The Binding of Isaac*. You fight through three procedurally generated floors (forest, caves and a dungeon) and pick up passive items that change how you attack. Each floor ends with a boss. Everything is drawn with simple shapes, and it runs in the browser.
+A top-down roguelike in the style of *The Binding of Isaac*. You fight through three procedurally generated floors (forest, caves and a dungeon) and pick up passive items that change how you attack. Each floor ends with a boss. The forest is drawn as a dark papercut diorama lit by pools of light (the other floors are still simple shapes under the same lighting), and it runs in the browser.
 
-![A forest room: the player dodging shots from turrets on an island in the middle of the room](docs/forest-room.png)
+![A dark forest room in papercut: goblins close in on the hooded player while two seed spitters on a mossy island fire glowing seeds](docs/forest-room.png)
 
 ## Play it locally
 
@@ -71,10 +71,11 @@ Chests and cleared rooms also drop hearts, keys, bombs and chests. Now and then 
 | `npm test` | Unit tests (Vitest) |
 | `npm run typecheck` | TypeScript type check |
 | `npm run build` | Type check, then a production build into `dist/` |
+| `node scripts/mockup.mjs` | Snapshots the papercut style mockup (`mockup.html` on the running dev server) into `smoke-out/mockup/` |
 
 The code is split in two:
-- **`src/core/`** holds the game's rules as plain, framework-free TypeScript: floor and room generation, enemy and boss decisions, the weapon model, items and the world state. It's all deterministic for a given seed and covered by unit tests beside each module. It's grouped into `map/` (grid, tiles, floor layout, world state), `rooms/` (room generation and validation), `player/` (movement and the weapon model), `enemies/`, `bosses/` and `obstacles/` (terrain with an ability, like the crusher and glowshroom), with the shared `rng` at the top.
-- **`src/game/`** is the [Phaser 3](https://phaser.io/) layer. It handles physics, drawing and input, and asks `core` what should happen. It's split into `scenes/`, `entities/` (with `entities/bosses/`), `ui/` and `effects/`.
+- **`src/core/`** holds the game's rules as plain, framework-free TypeScript: floor and room generation, enemy and boss decisions, the weapon model, items and the world state. It's all deterministic for a given seed and covered by unit tests beside each module. It's grouped into `map/` (grid, tiles, floor layout, world state), `rooms/` (room generation and validation), `player/` (movement and the weapon model), `enemies/`, `bosses/` and `obstacles/` (terrain with an ability, like the crusher and glowshroom), with the shared `rng` at the top. `art/` holds the papercut art as SVG built in code (characters, terrain, pickups, HUD pieces, and the catalogue of everything baked), the animator, draw order and the lights; `juice/` holds hit-stop, screen shake and paper-scrap bursts.
+- **`src/game/`** is the [Phaser 3](https://phaser.io/) layer. It handles physics, drawing and input, and asks `core` what should happen. It's split into `scenes/`, `entities/` (with `entities/bosses/`), `ui/`, `effects/` and `art/`, which bakes the paper art into textures at boot, stands paper sprites in for the physics shapes, and draws the dark, the lights and the scraps.
 
 `scripts/smoke.mjs` drives the running game in a headless Microsoft Edge (through Playwright) and takes screenshots. It's used to check changes in the real game:
 

@@ -16,6 +16,7 @@ import {
 } from '../../../core/bosses/treantAttack';
 import type { Cell } from '../../../core/map/floorGenerator';
 import { COLORS, TUNING } from '../../config';
+import { shakeScreen } from '../../effects/shellBurst';
 import { singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from '../enemy';
 
 /** How the last stand's roots look; placeholders for playtest tuning. Distances in tiles. */
@@ -30,6 +31,9 @@ const RING_LOOK = {
   /** The ground marks drawn while the ring is still a warning. */
   warnSize: 20,
 };
+
+/** How long the Treant's paper puppet shows its throw as a seed volley leaves. */
+const SEED_THROW_MS = 250;
 
 /** Rises past 1 and settles back: a root popping up out of the ground. */
 function easeOutBack(p: number) {
@@ -247,6 +251,8 @@ export function createTreant(scene: Phaser.Scene, x: number, y: number, _cell: C
     scene.tweens.add({ targets: sprite, scale: { from: 1.25, to: 1 }, duration: 220, ease: 'Back.easeOut' });
   };
 
+  /** Whether its branches or roots were slamming home last frame: the screen shakes as each slam lands. */
+  let slamming = false;
   const enemy = singlePartEnemy(scene, sprite, hp, (ctx: EnemyContext) => {
     brain ??= createTreantBrain(ctx.time);
     const player = toTiles(ctx, ctx.player);
@@ -269,6 +275,9 @@ export function createTreant(scene: Phaser.Scene, x: number, y: number, _cell: C
     }
 
     sprite.body.setVelocity((step.walk?.x ?? 0) * walkSpeed, (step.walk?.y ?? 0) * walkSpeed);
+    const slams = enemy.visual?.(ctx.time).hold?.frame === 1 && !brain.ring;
+    if (slams && !slamming) shakeScreen(scene, 'slam');
+    slamming = slams;
     for (const d of decor) d.shape.setPosition(sprite.x + d.dx, sprite.y + d.dy);
 
     ground.clear();
@@ -299,6 +308,27 @@ export function createTreant(scene: Phaser.Scene, x: number, y: number, _cell: C
       branches.clear();
     }
   });
+  enemy.trim = decor.map((d) => d.shape);
+  // Its paper puppet acts out each attack for exactly as long as the attack's own phases last.
+  const windUp = { hold: { action: 'attack' as const, frame: 0 } };
+  const slam = { hold: { action: 'attack' as const, frame: 1 } };
+  enemy.visual = (time) => {
+    if (!brain) return {};
+    if (brain.ring) return { hold: { action: 'attack', frame: 1 + (Math.floor(time / 180) % 2) } };
+    if (brain.sweep) {
+      const phase = branchSweepPhase(brain.sweep.plan, time - brain.sweep.start);
+      if (phase === 'telegraph') return windUp;
+      if (phase === 'swing') return slam;
+    }
+    const { attack } = brain;
+    if (attack?.kind === 'roots') {
+      const { telegraph, hurting } = rootEruptionAt(attack.plan, time - attack.start);
+      if (hurting.length) return slam;
+      if (telegraph.length) return windUp;
+    }
+    if (attack?.kind === 'seeds' && time - attack.start < SEED_THROW_MS) return slam;
+    return {};
+  };
   const hit = enemy.hit;
   enemy.hit = (part, damage) => {
     // Underground, nothing reaches it.

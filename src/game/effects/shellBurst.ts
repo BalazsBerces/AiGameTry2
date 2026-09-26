@@ -90,8 +90,13 @@ function splat(g: Phaser.GameObjects.Graphics, at: Point, radius: number) {
   }
 }
 
-/** Shakes the playfield (the game's camera; the HUD stays put). Each shake cuts short the one before. */
+/**
+ * Shakes the playfield (the game's camera; the HUD stays put), through the scene's shake budget
+ * (core/juice/shake) where it has one, so shakes at once add up to no more than its cap.
+ */
 export function shakeScreen(scene: Phaser.Scene, kind: keyof typeof TUNING.shake) {
   const { ms, intensity } = TUNING.shake[kind];
-  scene.cameras.main.shake(ms, intensity, true);
+  const budget = (scene as unknown as { shakeBy?: (px: number, ms: number) => void }).shakeBy;
+  if (budget) budget.call(scene, intensity * scene.cameras.main.width, ms);
+  else scene.cameras.main.shake(ms, intensity, true);
 }

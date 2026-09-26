@@ -33,7 +33,7 @@ import type { BarHalf, BossBarSnapshot } from '../../../core/bosses/bossBar';
 import { hitsToBreak } from '../../../core/map/tiles';
 import { COLORS, TUNING } from '../../config';
 import { shellBurst, shakeScreen, spray } from '../../effects/shellBurst';
-import { championBoost, championColor, flash, singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from '../enemy';
+import { championBoost, championColor, flash, gameNow, singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from '../enemy';
 
 export interface WormStyle {
   segmentSize: number;
@@ -573,7 +573,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
    * unhurtable, while its twin (if any) holds still.
    */
   const die = (b: BossPiece) => {
-    const now = scene.time.now;
+    const now = gameNow(scene);
     b.dying = { at: now, popped: 0 };
     if (b.half) b.half.death = { pops: 0, of: state.parts.length, blown: false };
     b.rampage = undefined;
@@ -628,7 +628,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
     collidesWithTerrain: false,
     // The boss's pieces are one body: their shared fight state stands for it.
     hitGroup: state.boss?.shared,
-    invulnerable: () => !!state.boss?.dying || !canBeHurt(state.boss?.moment, scene.time.now),
+    invulnerable: () => !!state.boss?.dying || !canBeHurt(state.boss?.moment, gameNow(scene)),
     // Blowing apart, it no longer hurts on touch.
     harmless: () => !!state.boss?.dying,
     update(ctx: EnemyContext) {
@@ -693,7 +693,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
   const hitBoss = (b: BossPiece, part: EnemySprite, index: number, damage: number): Enemy[] => {
     const { shared } = b;
     // Holding still for a moment (its split, its twin's death, its roar), or blowing apart, it doesn't even notice.
-    if (b.dying || !canBeHurt(b.moment, scene.time.now)) return [enemy];
+    if (b.dying || !canBeHurt(b.moment, gameNow(scene))) return [enemy];
     const had = b.pool ?? shared.hp;
     const { pool: left, breaks } = absorbHit(had, damage);
     shared.hp -= had - left;
@@ -723,7 +723,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
     // The bar rips in two, front half (the old head) on the left.
     const bars = pools.map((pool) => ({ pool, startPool: pool, alive: true }));
     shared.bar.halves = bars;
-    shared.bar.splitAt = scene.time.now;
+    shared.bar.splitAt = gameNow(scene);
     return halves.map(({ worm, from }, i) =>
       wormEnemy(scene, style, {
         worm,
@@ -732,7 +732,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
         rng: state.rng.fork(`split ${index} ${i}`),
         nextStepAt: state.nextStepAt,
         // The front half was torn off at its tail, the back half at its head.
-        boss: { ...splitPiece(b, scene.time.now), pool: pools[i], half: bars[i], rawEnd: i === 0 ? 'tail' : 'head' },
+        boss: { ...splitPiece(b, gameNow(scene)), pool: pools[i], half: bars[i], rawEnd: i === 0 ? 'tail' : 'head' },
       }),
     );
   };

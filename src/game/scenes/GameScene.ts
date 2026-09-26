@@ -73,11 +73,25 @@ import { createBat } from '../entities/bat';
 import { softPush } from '../../core/enemies/softPush';
 import { updateGoblinPack } from '../../core/enemies/forestCast';
 import { createFalloff, createHitGate, type Falloff } from '../../core/player/multiHit';
+import { PaperLayer, type PaperActor } from '../art/paperLayer';
+import { LightLayer } from '../art/lightLayer';
+import { HIT_STOP, createHitStop, type HitStop } from '../../core/juice/hitStop';
+import { createShake, type Shake } from '../../core/juice/shake';
+import { shakeScreen } from '../effects/shellBurst';
+import { ScrapLayer } from '../art/scrapLayer';
+import { PAPER } from '../../core/art/palette';
+import { DECOR_CANVAS, JOIN_LOOKS, TILE_CANVAS, type WallSide } from '../../core/art/terrain';
+import { SHOT_ART, TILE_VARIANTS, decorKey, doorKey, floorKey, joinKey, pickupKey, shotKey, tileKey, wallKey, type FloorKind } from '../../core/art/catalogue';
+import { PICKUP_CANVAS, SHOT_CANVAS, type PickupArt } from '../../core/art/hud';
+import { ART_SCALE } from '../art/bake';
+import { joinsBetween, neighbourMask } from '../../core/art/autotile';
 
 type Keys = Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
 type PhysicsArc = Phaser.GameObjects.Arc & { body: Phaser.Physics.Arcade.Body };
 
 const DEPTH = { player: 10 };
+/** The player's feet are this far below the centre of its round body. */
+const PLAYER_FOOT = 9;
 
 /** How a player projectile flies, stored on it: its passives (core/shotFlight), whom it hit, its age. */
 interface Flight {
@@ -118,6 +132,8 @@ const ENEMY_FACTORIES: Record<EnemyType, (scene: Phaser.Scene, spawn: EnemySpawn
 };
 
 type Shape = Phaser.GameObjects.Shape;
+/** The spinning star over a stunned head: paper art, or a plain star without it. */
+type StunMark = Phaser.GameObjects.Image | Shape;
 const PICKUP_SHAPES: Record<WorldPickup['type'], (scene: Phaser.Scene, x: number, y: number, p: WorldPickup) => Shape> = {
   passive: (s, x, y, p) =>
     s.add.star(x, y, 5, 8, 18, COLORS.passive[p.passive ?? 'homing']).setStrokeStyle(2, 0xffffff),
@@ -129,7 +145,7 @@ const PICKUP_SHAPES: Record<WorldPickup['type'], (scene: Phaser.Scene, x: number
       s.add.ellipse(x + side * 6, y - 15, 13, 7, COLORS.heartContainerLeaf).setAngle(side * -30).setStrokeStyle(1, COLORS.heartContainerRim),
     );
     orb.once('destroy', () => leaves.forEach((l) => l.destroy()));
-    return orb;
+    return orb.setData('trim', leaves);
   },
   key: (s, x, y) => s.add.rectangle(x, y, 10, 22, COLORS.key),
   bomb: (s, x, y) => s.add.circle(x, y, 11, COLORS.bomb).setStrokeStyle(3, COLORS.bombFuse),
@@ -147,6 +163,58 @@ const FLOOR_COLOR: Record<RoomKind, (p: Palette) => number> = {
   item: (p) => p.itemFloor,
   boss: (p) => p.bossFloor,
 };
+
+/** Enemies drawn in paper: how far below the centre of their body their feet are, and their frame rate if not the usual. */
+const ENEMY_ART: Partial<Record<EnemyType, { footOffset: number; fps?: number }>> = {
+  goblin: { footOffset: 7 },
+  treantBoss: { footOffset: 30 },
+  seedSpitter: { footOffset: 14 },
+  boar: { footOffset: 8 },
+  // Beating wings: twice the usual frame rate.
+  wasp: { footOffset: 12, fps: 18 },
+};
+
+/** How far a shot in flight lights the ground round it, and how far its glow reaches, in px. */
+const SHOT_LIGHT = { player: { light: 56, halo: 20 }, enemy: { light: 46, halo: 17 } };
+/**
+ * The faint light every living enemy carries, so nothing that can hurt the player is ever lost in
+ * the dark: enough to make out its shape, never enough to light the room.
+ */
+const ENEMY_LIGHT = { radius: 52, intensity: 0.4 };
+/** A glowshroom's light. */
+const GLOWSHROOM_LIGHT = { radius: 100, intensity: 0.85, warm: true };
+
+const hex = (color: string) => parseInt(color.slice(1), 16);
+/** The paper an enemy tears into when it dies; enemies left out tear into their shape's colour. */
+const SCRAP_COLORS: Partial<Record<EnemyType, number[]>> = {
+  goblin: [PAPER.goblin, PAPER.goblinShade, PAPER.goblinTunic].map(hex),
+  seedSpitter: [PAPER.spitter, PAPER.spitterShade, PAPER.leaf].map(hex),
+  boar: [PAPER.boar, PAPER.boarMane, PAPER.tusk].map(hex),
+  wasp: [PAPER.wasp, PAPER.waspStripe, PAPER.wing].map(hex),
+  treantBoss: [PAPER.bark, PAPER.canopy, PAPER.eyeGlow].map(hex),
+};
+/** A bomb's confetti. */
+const CONFETTI = [COLORS.blast, COLORS.bombFuse, COLORS.key, COLORS.heart, hex(PAPER.cream)];
+
+/** Each pickup's paper art, and the colour it is tinted (passives and stat-ups by what they give). */
+const PICKUP_ART_OF: Record<WorldPickup['type'], (p: WorldPickup) => { art: PickupArt; tint?: number }> = {
+  passive: (p) => ({ art: 'passive', tint: COLORS.passive[p.passive ?? 'homing'] }),
+  heart: () => ({ art: 'heart' }),
+  heartContainer: () => ({ art: 'heartContainer' }),
+  key: () => ({ art: 'key' }),
+  bomb: () => ({ art: 'bomb' }),
+  chest: () => ({ art: 'chest' }),
+  lockedChest: () => ({ art: 'lockedChest' }),
+  openChest: () => ({ art: 'openChest' }),
+  damageUp: () => ({ art: 'statUp', tint: COLORS.damageUp }),
+  rateUp: () => ({ art: 'statUp', tint: COLORS.rateUp }),
+};
+const PICKUP_FRAME = { w: PICKUP_CANVAS, h: PICKUP_CANVAS, anchor: { x: PICKUP_CANVAS / 2, y: PICKUP_CANVAS / 2 } };
+
+/** Which paper floor each kind of room gets. */
+const FLOOR_KIND: Record<RoomKind, FloorKind> = { start: 'normal', normal: 'normal', item: 'item', boss: 'boss' };
+/** A standing terrain piece's foot line (a tree's trunk base) lies this far below its tile's centre. */
+const TERRAIN_FOOT = 14;
 
 /** A non-floor tile drawn in its floor's look. */
 function drawTile(scene: Phaser.Scene, x: number, y: number, look: TileLook): Shape {
@@ -257,7 +325,7 @@ export class GameScene extends Phaser.Scene {
   /** Flying enemies: stopped by walls and stone, but over holes and thorns, and through each other. */
   private flyers!: Phaser.Physics.Arcade.Group;
   /** The star drawn over each currently stunned enemy. */
-  private stunMarks = new Map<Enemy, Shape>();
+  private stunMarks = new Map<Enemy, StunMark>();
   /** Enemies the Poison passive is working on; a many-part body (the worm boss, split or whole) by its hit group. */
   private poisoned = new Map<object, Poison>();
   /** Rolls for the Freeze passive. */
@@ -273,7 +341,25 @@ export class GameScene extends Phaser.Scene {
   bossBar?: BossBarSnapshot;
   /** The player's share of the stun (a glowshroom cloud): no moving or shooting until it wears off. */
   private playerStun: Stunnable = {};
-  private playerStunMark?: Shape;
+  private playerStunMark?: StunMark;
+  /** Paper sprites standing in for shapes that have art; the rest draw themselves. */
+  private paper!: PaperLayer;
+  private playerArt?: PaperActor;
+  /** Every room is dark but for its lights. */
+  private light!: LightLayer;
+  /** The game's clock: real time less every hit-stop so far. Gameplay timers all run on it. */
+  now = 0;
+  private hitStop: HitStop = createHitStop();
+  private frozen = false;
+  /** Every screen shake goes through this, so together they never pass its cap. */
+  private shake: Shake = createShake();
+  private scraps!: ScrapLayer;
+  /** The enemy parts carrying a light this frame. */
+  private enemyLights: EnemySprite[] = [];
+  /** What kind each spawned enemy is, for the colour of the scraps it tears into. */
+  private enemyTypes = new Map<Enemy, EnemyType>();
+  /** The canopy and vine joins touching each terrain cell (`roomId|x,y`), gone once the cell's tile is. */
+  private joinArt = new Map<string, Phaser.GameObjects.Image[]>();
 
   constructor() {
     super('game');
@@ -294,6 +380,10 @@ export class GameScene extends Phaser.Scene {
       : undefined;
     const seed = data.seed ?? roomSeed ?? (Number.isFinite(urlSeed) ? urlSeed : Math.floor(Math.random() * 2 ** 31));
     this.world = createWorld(seed);
+    this.hitStop = createHitStop();
+    this.frozen = false;
+    this.shake = createShake();
+    this.now = this.time.now;
     this.enemies = [];
     this.lootCarriers = new Map();
     this.doorLocks = [];
@@ -313,6 +403,11 @@ export class GameScene extends Phaser.Scene {
     this.playerStun = {};
     this.playerStunMark = undefined;
     this.roomObjects = new Map();
+    this.paper = new PaperLayer(this);
+    this.scraps = new ScrapLayer(this, DEPTH.player + 0.95);
+    this.enemyLights = [];
+    this.enemyTypes = new Map();
+    this.joinArt = new Map();
     for (const room of this.world.rooms.values()) {
       const before = this.children.list.length;
       this.drawRoom(room);
@@ -325,6 +420,7 @@ export class GameScene extends Phaser.Scene {
     this.player = this.add.circle(spawn.x, spawn.y, TUNING.playerSize / 2, COLORS.player) as PhysicsArc;
     this.player.setDepth(DEPTH.player);
     this.physics.add.existing(this.player);
+    this.playerArt = this.paper.actor(this.player, 'player', { footOffset: PLAYER_FOOT });
     // A round body too, so the ball slides round corners instead of snagging on them.
     this.player.body.setCircle(TUNING.playerSize / 2);
     this.physics.add.collider(this.player, this.walls);
@@ -342,6 +438,8 @@ export class GameScene extends Phaser.Scene {
       this.walls,
       (shot, wall) => {
         if (!(shot as Phaser.GameObjects.GameObject).active) return; // already spent on another wall this frame
+        const s = shot as Phaser.GameObjects.Arc;
+        this.scraps.burst('impact', { x: s.x, y: s.y }, [s.fillColor, (wall as Phaser.GameObjects.Shape).fillColor]);
         shot.destroy();
         this.hitTerrain(wall as Phaser.GameObjects.Rectangle);
       },
@@ -404,6 +502,8 @@ export class GameScene extends Phaser.Scene {
 
     // The playfield is one map cell; the label strip under it belongs to the HUD.
     this.cameras.main.setViewport(0, 0, CELL_PX_W, CELL_PX_H);
+    this.light = new LightLayer(this);
+    this.lightGlowshrooms(start);
     this.cameras.main.setBackgroundColor(themeForFloor(start.floorIndex).palette.background);
     this.showRoomsAround(start);
     this.followInside(start);
@@ -415,11 +515,16 @@ export class GameScene extends Phaser.Scene {
       const door = jumpTo.layout.doors[0];
       const at = tileCenter(jumpTo, door.cell.x, door.cell.y);
       this.player.body.reset(at.x, at.y);
-      this.enterRoom(jumpTo, this.time.now);
+      this.enterRoom(jumpTo, this.now);
     }
   }
 
-  update(time: number, delta: number) {
+  update(realTime: number, delta: number) {
+    const clock = this.hitStop.step(realTime);
+    if (clock.frozen !== this.frozen) this.freeze(clock.frozen);
+    this.now = clock.gameTime;
+    if (clock.frozen) return;
+    const time = clock.gameTime;
     const dir = new Phaser.Math.Vector2(
       (this.move.right.isDown ? 1 : 0) - (this.move.left.isDown ? 1 : 0),
       (this.move.down.isDown ? 1 : 0) - (this.move.up.isDown ? 1 : 0),
@@ -446,6 +551,87 @@ export class GameScene extends Phaser.Scene {
     this.updateEnemies(time);
     this.updateCrushers(time);
     this.followPlayerAcrossRooms(time);
+    this.paper.update(time);
+    this.scraps.update(delta);
+    this.applyShake(time);
+    this.lightShots();
+    this.light.update(this.player, time, !!themeForFloor(this.currentRoom.floorIndex).paper);
+  }
+
+  /**
+   * A shot glows: it lights the ground round it while it flies, with a soft glow in its colour
+   * over the dark, and is drawn as a glowing paper shape (enemy shots in the usual red, and every
+   * player shot tinted as before); anything else keeps its plain shape.
+   */
+  private dressShot(shot: Phaser.GameObjects.Arc, kind: 'player' | 'enemy', color: number, radius: number) {
+    const size = radius / SHOT_ART[kind];
+    this.light.lights.set(shot, { x: shot.x, y: shot.y, radius: SHOT_LIGHT[kind].light * size, intensity: 0.9 });
+    const halo = this.light.halo(shot.x, shot.y, color, SHOT_LIGHT[kind].halo * size);
+    this.paper.follow(shot, halo, undefined, (halo.scaleX * ART_SCALE));
+    shot.once('destroy', () => {
+      this.light.lights.remove(shot);
+      halo.destroy();
+    });
+    if (kind === 'enemy' && color !== COLORS.enemyShot) return;
+    const art = this.paper.piece(shotKey(kind), shot.x, shot.y, { w: SHOT_CANVAS, h: SHOT_CANVAS, anchor: { x: SHOT_CANVAS / 2, y: SHOT_CANVAS / 2 } });
+    if (!art) return;
+    art.setDepth(kind === 'enemy' ? shot.depth : DEPTH.player + 0.9);
+    if (kind === 'player') art.setTint(color);
+    this.paper.standIn(shot, art);
+    this.paper.follow(shot, art, undefined, size);
+  }
+
+  /** Moves each flying shot's light along with it, and each living enemy's faint light. */
+  private lightShots() {
+    for (const key of this.enemyLights) this.light.lights.remove(key);
+    this.enemyLights = this.enemies.flatMap((e) => e.parts.slice(0, 1)).filter((p) => p.active && p.visible && p.alpha > 0.2);
+    for (const part of this.enemyLights) this.light.lights.set(part, { x: part.x, y: part.y, ...ENEMY_LIGHT });
+    for (const obj of [...this.shots.getChildren(), ...this.enemyShots.getChildren()]) {
+      const shot = obj as Phaser.GameObjects.Arc;
+      const kind = this.shots.contains(shot) ? 'player' : 'enemy';
+      const size = shot.radius / SHOT_ART[kind];
+      this.light.lights.set(shot, { x: shot.x, y: shot.y, radius: SHOT_LIGHT[kind].light * size, intensity: 0.9 });
+    }
+  }
+
+  /** The room's glowshrooms (puffballs, grave mould) each light the dark round them, until they burst. */
+  private lightGlowshrooms(room: WorldRoom) {
+    room.layout.tiles.forEach((row, y) =>
+      row.forEach((tile, x) => {
+        if (tile !== 'glowshroom') return;
+        this.light.lights.set(`${room.floorRoom.id}|${x},${y}`, { ...tileCenter(room, x, y), ...GLOWSHROOM_LIGHT, flicker: x * 31 + y * 17 + 5 });
+      }),
+    );
+  }
+
+  /** Stops or restarts everything that moves on its own: physics, tweens and timers (the game clock stops with them). */
+  private freeze(frozen: boolean) {
+    this.frozen = frozen;
+    if (frozen) {
+      this.physics.pause();
+      this.tweens.pauseAll();
+    } else {
+      this.physics.resume();
+      this.tweens.resumeAll();
+    }
+    this.time.paused = frozen;
+  }
+
+  /** Adds a shake of `px` easing out over `ms` (shakeScreen calls this). */
+  shakeBy(px: number, ms: number) {
+    this.shake.add(this.now, px, ms);
+  }
+
+  /** Jolts the camera by this frame's capped shake. */
+  private applyShake(time: number) {
+    const cam = this.cameras.main;
+    const px = this.shake.amount(time);
+    if (px > 0.25) cam.shake(50, px / cam.width, true);
+  }
+
+  /** A hit lands with weight: the game freezes for `ms` (merged with any freeze already running). */
+  private hitStopFor(ms: number) {
+    this.hitStop.request(this.game.loop.now, ms);
   }
 
   /** Keeps one orb per Orbital level circling the player, evenly spaced. */
@@ -458,6 +644,12 @@ export class GameScene extends Phaser.Scene {
     while (orbs.length < count) {
       const orb = this.add.circle(this.player.x, this.player.y, size, COLORS.passive.orbital).setStrokeStyle(2, 0xffffff).setDepth(DEPTH.player);
       this.orbs.add(orb);
+      const art = this.paper.piece(pickupKey('orb'), orb.x, orb.y, PICKUP_FRAME);
+      if (art) {
+        art.setTint(COLORS.passive.orbital).setDepth(DEPTH.player + 0.9);
+        this.paper.standIn(orb, art);
+        this.paper.follow(orb, art, undefined, (size * 2) / 20);
+      }
       (orb.body as Phaser.Physics.Arcade.Body).setCircle(size);
       orbs.push(orb);
     }
@@ -470,14 +662,14 @@ export class GameScene extends Phaser.Scene {
   private orbHits(part: EnemySprite) {
     if (!part.active) return;
     const group = this.enemies.find((e) => e.parts.includes(part))?.hitGroup ?? part;
-    if (!this.orbGate.pass(group, this.time.now, TUNING.orbital.hitEveryMs)) return;
+    if (!this.orbGate.pass(group, this.now, TUNING.orbital.hitEveryMs)) return;
     this.damagePart(part, TUNING.orbital.damage);
   }
 
   /** Space or Shift: dash the way the player is moving, if they have the passive and it has cooled down. */
   private requestDash() {
     const rules = resolveWeapon(this.world.player.passives, this.world.player.statUps).dash;
-    const now = this.time.now;
+    const now = this.now;
     if (!rules || this.runOver || isStunned(this.playerStun, now)) return;
     const moving = {
       x: (this.move.right.isDown ? 1 : 0) - (this.move.left.isDown ? 1 : 0),
@@ -488,7 +680,12 @@ export class GameScene extends Phaser.Scene {
     if (!this.dash || this.dash === before) return;
     this.invincibleUntil = Math.max(this.invincibleUntil, this.dash.until);
     this.dashHits.clear();
-    const trail = this.add.circle(this.player.x, this.player.y, TUNING.playerSize / 2, COLORS.passive.dash, 0.5);
+    // An afterimage of the player in the dash's colour.
+    const ghost = this.playerArt?.sprite;
+    const trail = ghost
+      ? this.add.image(ghost.x, ghost.y, ghost.texture.key, ghost.frame.name).setOrigin(ghost.originX, ghost.originY).setScale(ghost.scaleX, ghost.scaleY)
+          .setFlipX(ghost.flipX).setTintFill(COLORS.passive.dash).setAlpha(0.55).setDepth(ghost.depth - 0.001)
+      : this.add.circle(this.player.x, this.player.y, TUNING.playerSize / 2, COLORS.passive.dash, 0.5);
     this.tweens.add({ targets: trail, alpha: 0, duration: 260, onComplete: () => trail.destroy() });
   }
 
@@ -497,7 +694,7 @@ export class GameScene extends Phaser.Scene {
     const enemy = this.enemies.find((e) => e.parts.includes(part));
     if (enemy?.harmless?.(part)) return;
     const dash = resolveWeapon(this.world.player.passives, this.world.player.statUps).dash;
-    if (enemy && dash?.damage && isDashing(this.dash, this.time.now)) {
+    if (enemy && dash?.damage && isDashing(this.dash, this.now)) {
       const body = enemy.hitGroup ?? enemy;
       if (!this.dashHits.has(body)) {
         this.dashHits.add(body);
@@ -521,6 +718,8 @@ export class GameScene extends Phaser.Scene {
     if (!aim || time < this.nextShotAt) return;
     const weapon = resolveWeapon(this.world.player.passives, this.world.player.statUps);
     this.nextShotAt = time + weapon.fireDelayMs;
+    this.playerArt?.attack(time);
+    this.playerArt?.faceFor(STEP[aim], time + Math.max(weapon.fireDelayMs, 300));
     if (weapon.mode === 'sword') {
       this.swingSword(aim, weapon.damage, weapon.swordArcDeg);
       // With any shot passive, the swing also throws a short-lived blade wave that carries them.
@@ -559,6 +758,7 @@ export class GameScene extends Phaser.Scene {
       shot.setData({ damage: wave ? weapon.damage * TUNING.bladeWave.damageShare : weapon.damage, homing: weapon.homing, flight });
       this.shots.add(shot);
       (shot.body as Phaser.Physics.Arcade.Body).setCircle(radius).setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
+      this.dressShot(shot, 'player', color, radius);
     }
   }
 
@@ -607,8 +807,11 @@ export class GameScene extends Phaser.Scene {
     const { range, showMs } = TUNING.sword;
     const facing = Math.atan2(STEP[aim].y, STEP[aim].x);
     const half = Phaser.Math.DegToRad(arcDeg / 2);
-    const arc = this.add.graphics().setDepth(DEPTH.player - 1);
-    arc.fillStyle(color, 0.55).slice(from.x, from.y, range, facing - half, facing + half).fillPath();
+    // A paper sweep: its shadow, the cut in the sword's colour, and a bright edge.
+    const arc = this.add.graphics().setDepth(DEPTH.player + 0.8);
+    arc.fillStyle(0x060805, 0.35).slice(from.x + 2, from.y + 3, range, facing - half, facing + half).fillPath();
+    arc.fillStyle(color, 0.7).slice(from.x, from.y, range, facing - half, facing + half).fillPath();
+    arc.lineStyle(2, 0xffffff, 0.85).beginPath().arc(from.x, from.y, range, facing - half, facing + half).strokePath();
     this.time.delayedCall(showMs, () => arc.destroy());
     return (target: { x: number; y: number; width: number }) => {
       const dist = Phaser.Math.Distance.Between(from.x, from.y, target.x, target.y);
@@ -642,8 +845,10 @@ export class GameScene extends Phaser.Scene {
     const at = { x: part.x, y: part.y };
     this.damagePart(part, damage);
     if (!enemy) return;
+    this.hitStopFor(this.enemies.includes(enemy) ? HIT_STOP.hit : HIT_STOP.kill);
+    shakeScreen(this, 'hit');
     const weapon = resolveWeapon(this.world.player.passives, this.world.player.statUps);
-    const time = this.time.now;
+    const time = this.now;
     const alive = this.enemies.includes(enemy);
     // A many-part body carries one poison, whichever piece of it was struck and still standing.
     const body = enemy.hitGroup ?? enemy;
@@ -663,14 +868,19 @@ export class GameScene extends Phaser.Scene {
       return p ? [{ id: e, at: this.toTileUnits(room, p) }] : [];
     });
     if (!placed.some((p) => p.id === from)) placed.push({ id: from, at: this.toTileUnits(room, at) });
-    const g = this.add.graphics().setDepth(DARK_DEPTH + 3).lineStyle(3, COLORS.passive.chain, 1);
+    const g = this.add.graphics().setDepth(DARK_DEPTH + 3);
     let prev = at;
     for (const target of chainTargets(from, placed, rules.jumps, rules.range)) {
       const part = bodyOf(target);
       if (!part) continue;
-      // A jagged bolt: the straight line nudged sideways at its middle.
+      // A jagged bolt, the straight line nudged sideways at its middle, cut from paper: shadow, colour, white core.
       const mid = { x: (prev.x + part.x) / 2 + (Math.random() - 0.5) * 20, y: (prev.y + part.y) / 2 + (Math.random() - 0.5) * 20 };
-      g.lineBetween(prev.x, prev.y, mid.x, mid.y).lineBetween(mid.x, mid.y, part.x, part.y);
+      const a = prev;
+      const bolt = (dx: number, dy: number, width: number, color: number, alpha: number) =>
+        g.lineStyle(width, color, alpha).lineBetween(a.x + dx, a.y + dy, mid.x + dx, mid.y + dy).lineBetween(mid.x + dx, mid.y + dy, part.x + dx, part.y + dy);
+      bolt(1.5, 2, 4, 0x060805, 0.45);
+      bolt(0, 0, 4, COLORS.passive.chain, 1);
+      bolt(0, 0, 1.2, 0xffffff, 1);
       prev = { x: part.x, y: part.y };
       this.damagePart(part, damage);
     }
@@ -700,7 +910,10 @@ export class GameScene extends Phaser.Scene {
       const part = pieces
         .flatMap((e) => e.parts.filter((p) => p.active && (!e.hitGroup || (p.body.enable && !e.invulnerable?.(p)))))[0];
       if (tick.damage <= 0 || !part) continue;
-      const puff = this.add.circle(part.x, part.y - 8, 7, COLORS.passive.poison, 0.8).setDepth(DEPTH.player + 1);
+      // A paper puff, over the dark so it always reads.
+      const puff =
+        this.paper.piece(pickupKey('puff'), part.x, part.y - 8, PICKUP_FRAME)?.setTint(COLORS.passive.poison).setAlpha(0.9).setDepth(DARK_DEPTH + 1) ??
+        this.add.circle(part.x, part.y - 8, 7, COLORS.passive.poison, 0.8).setDepth(DEPTH.player + 1);
       this.tweens.add({ targets: puff, y: puff.y - 18, alpha: 0, duration: 380, onComplete: () => puff.destroy() });
       this.damagePart(part, tick.damage);
     }
@@ -836,11 +1049,20 @@ export class GameScene extends Phaser.Scene {
       if (!head?.active || !isStunned(enemy, time)) continue;
       let mark = this.stunMarks.get(enemy);
       if (!mark) {
-        mark = this.add.star(head.x, head.y, 4, radius / 2, radius, COLORS.stunMark).setDepth(DEPTH.player + 1);
+        mark = this.stunMark();
         this.stunMarks.set(enemy, mark);
       }
       mark.setPosition(head.x, head.y - head.displayHeight / 2 - radius).setAngle((time / 1000) * spinDegPerSec);
     }
+  }
+
+  /** A star to spin over a stunned head: paper, drawn over the dark so it always reads. */
+  private stunMark(): StunMark {
+    const { radius } = TUNING.stunMark;
+    return (
+      this.paper.piece(pickupKey('stun'), 0, 0, PICKUP_FRAME)?.setScale((radius * 2) / 24 / ART_SCALE).setDepth(DARK_DEPTH + 1) ??
+      this.add.star(0, 0, 4, radius / 2, radius, COLORS.stunMark).setDepth(DEPTH.player + 1)
+    );
   }
 
   /** The same spinning star over the player's head while they are stunned. */
@@ -851,7 +1073,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     const { radius, spinDegPerSec } = TUNING.stunMark;
-    this.playerStunMark ??= this.add.star(0, 0, 4, radius / 2, radius, COLORS.stunMark).setDepth(DEPTH.player + 1);
+    this.playerStunMark ??= this.stunMark();
     this.playerStunMark
       .setPosition(this.player.x, this.player.y - this.player.displayHeight / 2 - radius)
       .setAngle((time / 1000) * spinDegPerSec);
@@ -905,6 +1127,7 @@ export class GameScene extends Phaser.Scene {
         const shot = this.add.circle(x, y, radius, color).setData({ homing, bounces }).setDepth(DARK_DEPTH + 2);
         this.enemyShots.add(shot);
         (shot.body as Phaser.Physics.Arcade.Body).setCircle(radius).setVelocity(vx, vy);
+        this.dressShot(shot, 'enemy', color, radius);
       },
       tiles: room.layout.tiles,
       hurtPlayer: () => this.hurtPlayer(),
@@ -930,7 +1153,7 @@ export class GameScene extends Phaser.Scene {
         const result = hitTile(this.world, roomId, cell, hits);
         if (result === 'broken') this.removeTerrain(roomId, cell);
         const shape = this.terrain.get(`${roomId}|${cell.x},${cell.y}`) as Phaser.GameObjects.Rectangle | undefined;
-        if (result === 'damaged' && shape) shape.setAlpha(shape.alpha - 0.25 * hits);
+        if (result === 'damaged' && shape) this.fadeTerrain(shape, 0.25 * hits);
       },
       spawnEnemy: (enemy) => this.addEnemy(enemy),
       removeEnemy: (enemy) => {
@@ -964,7 +1187,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     const flight = shot.getData('flight') as Flight | undefined;
-    const leg = this.legOf(flight, this.time.now);
+    const leg = this.legOf(flight, this.now);
     if (flight && !flight.hits.first(leg, part)) return;
     // Read before destroying: destroy() discards the object's data.
     const damage = (shot.getData('damage') as number) * (leg === 'back' ? flight!.boomerang!.returnDamageFactor : 1);
@@ -972,6 +1195,7 @@ export class GameScene extends Phaser.Scene {
     const shielded = this.shieldBlocks(part, { x: velocity.x, y: velocity.y });
     const { damages, continues } = meetEnemy(flight?.mods ?? PLAIN_SHOT, shielded);
     const at = { x: shot.x, y: shot.y };
+    if (damages) this.scraps.burst('impact', at, [shot.fillColor, 0xffffff]);
     if (!continues) shot.destroy();
     if (damages) this.strike(part, flight ? this.fallOff(flight.falloff[leg], part, damage) : damage);
     else this.clink(at.x, at.y);
@@ -1032,7 +1256,13 @@ export class GameScene extends Phaser.Scene {
     }
     const result = hitTile(this.world, roomId, cell);
     if (result === 'broken') this.removeTerrain(roomId, cell);
-    else if (result === 'damaged') wall.setAlpha(wall.alpha - 0.25);
+    else if (result === 'damaged') this.fadeTerrain(wall, 0.25);
+  }
+
+  /** A cracked rock fades a step toward breaking, its paper art with it. */
+  private fadeTerrain(shape: Phaser.GameObjects.Shape, by: number) {
+    shape.setAlpha(shape.alpha - by);
+    PaperLayer.artOf(shape)?.setAlpha(shape.alpha);
   }
 
   /**
@@ -1057,7 +1287,7 @@ export class GameScene extends Phaser.Scene {
       const at = nearest(e);
       if (at) targets.push({ target: e, at });
     }
-    stunBurst(cell, targets, this.time.now);
+    stunBurst(cell, targets, this.now);
   }
 
   /**
@@ -1086,6 +1316,9 @@ export class GameScene extends Phaser.Scene {
     const key = `${roomId}|${cell.x},${cell.y}`;
     this.terrain.get(key)?.destroy();
     this.terrain.delete(key);
+    this.light.lights.remove(key);
+    for (const art of this.joinArt.get(key) ?? []) art.destroy();
+    this.joinArt.delete(key);
   }
 
   /** Drops a lit bomb at the player's feet, if they have one. */
@@ -1110,6 +1343,11 @@ export class GameScene extends Phaser.Scene {
     for (const cell of detonateBomb(this.world, roomId, tileAt(room, at.x, at.y))) this.removeTerrain(roomId, cell);
     const reach = BOMB_RADIUS * TUNING.tile;
     const flash = this.add.circle(at.x, at.y, reach, COLORS.blast, 0.6).setDepth(DEPTH.player + 1);
+    if (roomId === this.world.currentRoomId) {
+      this.hitStopFor(HIT_STOP.bomb);
+      shakeScreen(this, 'bomb');
+      this.scraps.burst('confetti', at, CONFETTI);
+    }
     this.tweens.add({ targets: flash, alpha: 0, duration: 300, onComplete: () => flash.destroy() });
     if (roomId !== this.world.currentRoomId) return;
     const caught = (o: { x: number; y: number; width: number }) =>
@@ -1134,7 +1372,10 @@ export class GameScene extends Phaser.Scene {
     const enemy = this.enemies.find((e) => e.parts.includes(part));
     if (!enemy) return;
     const where = { x: part.x, y: part.y };
+    const color = part.fillColor;
     const replacements = enemy.hit(part, damage);
+    // Torn to paper scraps when it dies (a split into pieces is not a death).
+    if (!replacements.length) this.scraps.burst('death', where, SCRAP_COLORS[this.enemyTypes.get(enemy)!] ?? [color, 0x1c140f]);
     this.enemies = this.enemies.flatMap((e) => (e === enemy ? replacements : [e]));
     // Newborn enemies (a slime's children) join physics; split pieces keep the parts they had.
     for (const r of replacements) if (r.parts.some((p) => !this.enemyParts.contains(p))) this.addPhysics(r);
@@ -1176,8 +1417,10 @@ export class GameScene extends Phaser.Scene {
 
   /** Takes `halves` half-hearts, unless the player is still flashing from the last hit. */
   private hurtPlayer(halves = 1) {
-    if (this.time.now < this.invincibleUntil) return;
-    this.invincibleUntil = this.time.now + TUNING.invincibleMs;
+    if (this.now < this.invincibleUntil) return;
+    this.invincibleUntil = this.now + TUNING.invincibleMs;
+    this.playerArt?.hurt(this.now);
+    shakeScreen(this, 'hurt');
     for (let i = 0; i < halves; i++) {
       if (damagePlayer(this.world)) {
         this.endRun(false);
@@ -1188,8 +1431,8 @@ export class GameScene extends Phaser.Scene {
 
   /** A walker pushed into thorns; each part has its own brief invincibility so it isn't shredded in a frame. */
   private thornWalker(part: EnemySprite) {
-    if (!part.active || this.time.now < ((part.getData('thornSafeUntil') as number | undefined) ?? 0)) return;
-    part.setData('thornSafeUntil', this.time.now + TUNING.thorn.walkerInvincibleMs);
+    if (!part.active || this.now < ((part.getData('thornSafeUntil') as number | undefined) ?? 0)) return;
+    part.setData('thornSafeUntil', this.now + TUNING.thorn.walkerInvincibleMs);
     this.damagePart(part, TUNING.thorn.walkerDamage);
   }
 
@@ -1222,6 +1465,8 @@ export class GameScene extends Phaser.Scene {
 
     this.showRoomsAround(room);
     this.slideCameraTo(room);
+    this.light.lights.clear();
+    this.lightGlowshrooms(room);
     this.cameras.main.setBackgroundColor(themeForFloor(room.floorIndex).palette.background);
 
     if (!this.world.cleared.has(room.floorRoom.id)) {
@@ -1241,6 +1486,13 @@ export class GameScene extends Phaser.Scene {
       const c = tileCenter(room, p.cell.x, p.cell.y);
       const sprite = PICKUP_SHAPES[p.type](this, c.x, c.y, p).setData('pickupId', p.id);
       this.pickupGroup.add(sprite);
+      const look = PICKUP_ART_OF[p.type](p);
+      const art = this.paper.piece(pickupKey(look.art), c.x, c.y, PICKUP_FRAME, c.y + 12);
+      if (art) {
+        if (look.tint !== undefined) art.setTint(look.tint);
+        this.paper.standIn(sprite, art);
+        for (const t of (sprite.getData('trim') as Phaser.GameObjects.GameObject[] | undefined) ?? []) this.cameras.main.ignore(t);
+      }
       (sprite.body as Phaser.Physics.Arcade.Body).setImmovable(true);
     }
   }
@@ -1251,10 +1503,10 @@ export class GameScene extends Phaser.Scene {
     if (!pickup) return;
     // Chests stay touchable; everything that can drop out of one is locked out briefly after opening.
     const isItem = pickup.type !== 'chest' && pickup.type !== 'lockedChest' && pickup.type !== 'openChest';
-    if (isItem && this.time.now < this.itemLockoutUntil) return;
+    if (isItem && this.now < this.itemLockoutUntil) return;
     const result = touchPickup(this.world, this.world.currentRoomId, id);
     if (result === 'none') return;
-    if (result === 'opened') this.itemLockoutUntil = this.time.now + TUNING.chestLockoutMs;
+    if (result === 'opened') this.itemLockoutUntil = this.now + TUNING.chestLockoutMs;
     if (result === 'damageUp') this.announce('Damage up', COLORS.damageUp);
     if (result === 'rateUp') this.announce('Fire rate up', COLORS.rateUp);
     if (result === 'heartContainer') this.announce('+1 heart!', COLORS.heartUp);
@@ -1265,10 +1517,22 @@ export class GameScene extends Phaser.Scene {
     const at = (c: Cell) => tileCenter(room, c.x, c.y);
     for (const spawn of room.layout.enemies) {
       const enemy = ENEMY_FACTORIES[spawn.type](this, spawn, at, room.layout);
+      this.enemyTypes.set(enemy, spawn.type);
+      this.dressEnemy(enemy, spawn.type, !!spawn.champion);
       const drop = spawn.champion?.drop ?? BOSS_DROPS[spawn.type];
       if (drop) this.lootCarriers.set(enemy, drop);
       this.addEnemy(enemy);
     }
+  }
+
+  /** Gives an enemy with paper art its paper character, standing on its body and animated from what it does. */
+  private dressEnemy(enemy: Enemy, type: EnemyType, champion: boolean) {
+    const look = ENEMY_ART[type];
+    if (!look) return;
+    const actor = this.paper.actor(enemy.parts[0], type, { ...look, champion, scale: champion ? TUNING.champion.scale : 1 });
+    if (!actor) return;
+    if (enemy.visual) actor.visual = (time) => enemy.visual!(time);
+    for (const shape of enemy.trim ?? []) this.cameras.main.ignore(shape);
   }
 
   private lockDoors(room: WorldRoom) {
@@ -1278,6 +1542,10 @@ export class GameScene extends Phaser.Scene {
       const c = tileCenter(room, w.x, w.y);
       const lock = this.add.rectangle(c.x, c.y, t, t, COLORS.lockedDoor);
       this.walls.add(lock);
+      const gate = themeForFloor(room.floorIndex).paper
+        ? this.paper.piece(doorKey(door.side, true), c.x, c.y, TILE_CANVAS, door.side === 'down' ? c.y + t : c.y + t / 2)
+        : undefined;
+      if (gate) this.paper.standIn(lock, gate);
       this.doorLocks.push(lock);
     }
   }
@@ -1342,17 +1610,74 @@ export class GameScene extends Phaser.Scene {
     const b = roomBlock(room);
     const { width, height } = room.layout;
     const corridors = new Set(room.layout.doors.flatMap((d) => doorCorridor(room, d)).map((c) => `${c.x},${c.y}`));
-    const { palette } = themeForFloor(room.floorIndex);
+    const theme = themeForFloor(room.floorIndex);
+    const { palette } = theme;
     const looks = roomLooks(room.floorIndex, room.layout.theme ?? '');
+    const variants = room.layout.variants;
+    const variantAt = (tx: number, ty: number) => variants?.[ty]?.[tx] ?? Math.abs(tx * 7 + ty * 13) % TILE_VARIANTS;
 
     this.add.rectangle(b.x, b.y, b.w, b.h, palette.wall).setOrigin(0);
     const floor = tileCenter(room, 0, 0);
     this.add
       .rectangle(floor.x - t / 2, floor.y - t / 2, width * t, height * t, FLOOR_COLOR[room.floorRoom.kind](palette))
       .setOrigin(0);
+    if (theme.paper) this.drawPaperFloor(room);
+    else this.drawPlainFloor(room);
+
+    for (let ty = -b.pad.y; ty < b.tilesH - b.pad.y; ty++) {
+      for (let tx = -b.pad.x; tx < b.tilesW - b.pad.x; tx++) {
+        if (tx >= 0 && ty >= 0 && tx < width && ty < height) continue;
+        const c = tileCenter(room, tx, ty);
+        if (corridors.has(`${tx},${ty}`)) {
+          const door = room.layout.doors.find((d) => doorCorridor(room, d)[0].x === tx && doorCorridor(room, d)[0].y === ty);
+          const art = theme.paper
+            ? door
+              ? this.paper.piece(doorKey(door.side, false), c.x, c.y, TILE_CANVAS, door.side === 'down' ? c.y + t : c.y + t / 2)
+              : this.paper.piece(floorKey('normal', variantAt(tx, ty)), c.x, c.y, TILE_CANVAS)
+            : undefined;
+          if (!art) this.add.rectangle(c.x, c.y, t, t, palette.door);
+          continue;
+        }
+        const wall = this.add.rectangle(c.x, c.y, t, t, palette.wall);
+        this.walls.add(wall);
+        if (theme.paper) this.paperWall(room, wall, tx, ty, variantAt(tx, ty));
+      }
+    }
+
+    room.layout.tiles.forEach((row, ty) =>
+      row.forEach((tile: Tile, tx) => {
+        if (isWalkable(tile)) return;
+        const c = tileCenter(room, tx, ty);
+        // An L room's missing cell: plain room wall, not terrain that can crack.
+        if (tile === 'wall') {
+          const wall = this.add.rectangle(c.x, c.y, t, t, palette.wall);
+          this.walls.add(wall);
+          if (theme.paper) this.paperWall(room, wall, tx, ty, variantAt(tx, ty));
+          return;
+        }
+        const shape = this.terrainPiece(room, tx, ty, tile, looks[tile as Exclude<Tile, 'floor' | 'wall'>], variants?.[ty]?.[tx]);
+        // Shot-blocking tiles are walls to physics; the rest (holes) only stop walking.
+        if (!blocksShots(tile)) {
+          (hurtsOnTouch(tile) ? this.thorns : this.holes).add(shape);
+          // Thorn can be a Treant sprout it may crush later (crushSprout).
+          if (hurtsOnTouch(tile)) this.terrain.set(`${room.floorRoom.id}|${tx},${ty}`, shape);
+          return;
+        }
+        shape.setData({ roomId: room.floorRoom.id, tile: { x: tx, y: ty } });
+        this.walls.add(shape);
+        this.terrain.set(`${room.floorRoom.id}|${tx},${ty}`, shape);
+      }),
+    );
+    this.drawJoins(room);
+    // Over the tiles, so each pit or pond reads as one shape (paper ponds have banks of their own).
+    if (!looks.hole.art || !theme.paper) drawRegionRims(this.add.graphics(), room, looks.hole.stroke ?? palette.accent);
+  }
+
+  /** The floor as flat colour: each tile tinted by its variant, decor as faint placeholder marks. */
+  private drawPlainFloor(room: WorldRoom) {
+    const t = TUNING.tile;
     const dressing = this.add.graphics();
     const variants = room.layout.variants;
-    // Each floor tile tinted a touch lighter or darker by its variant.
     room.layout.tiles.forEach((row, ty) =>
       row.forEach((tile, tx) => {
         const v = variants?.[ty]?.[tx];
@@ -1367,42 +1692,73 @@ export class GameScene extends Phaser.Scene {
       const kind = theme?.decor.find((k) => k.id === d.kind);
       if (kind) drawDecorMark(dressing, tileCenter(room, d.cell.x, d.cell.y), d.cell, kind);
     }
+  }
 
-    for (let ty = -b.pad.y; ty < b.tilesH - b.pad.y; ty++) {
-      for (let tx = -b.pad.x; tx < b.tilesW - b.pad.x; tx++) {
-        if (tx >= 0 && ty >= 0 && tx < width && ty < height) continue;
-        const c = tileCenter(room, tx, ty);
-        if (corridors.has(`${tx},${ty}`)) this.add.rectangle(c.x, c.y, t, t, palette.door);
-        else this.walls.add(this.add.rectangle(c.x, c.y, t, t, palette.wall));
-      }
-    }
-
+  /** The floor in paper: a moss sheet per tile (the item and boss rooms' own), decor as paper cutouts. */
+  private drawPaperFloor(room: WorldRoom) {
+    const kind = FLOOR_KIND[room.floorRoom.kind];
+    const variants = room.layout.variants;
     room.layout.tiles.forEach((row, ty) =>
-      row.forEach((tile: Tile, tx) => {
-        if (isWalkable(tile)) return;
+      row.forEach((tile, tx) => {
+        if (tile === 'wall') return;
         const c = tileCenter(room, tx, ty);
-        // An L room's missing cell: plain room wall, not terrain that can crack.
-        if (tile === 'wall') {
-          this.walls.add(this.add.rectangle(c.x, c.y, t, t, palette.wall));
-          return;
-        }
-        const look = looks[tile as Exclude<Tile, 'floor' | 'wall'>];
-        const variant = variants?.[ty]?.[tx];
-        const shape = drawTile(this, c.x, c.y, variant === undefined ? look : { ...look, color: shade(look.color, variant) });
-        // Shot-blocking tiles are walls to physics; the rest (holes) only stop walking.
-        if (!blocksShots(tile)) {
-          (hurtsOnTouch(tile) ? this.thorns : this.holes).add(shape);
-          // Thorn can be a Treant sprout it may crush later (crushSprout).
-          if (hurtsOnTouch(tile)) this.terrain.set(`${room.floorRoom.id}|${tx},${ty}`, shape);
-          return;
-        }
-        shape.setData({ roomId: room.floorRoom.id, tile: { x: tx, y: ty } });
-        this.walls.add(shape);
-        this.terrain.set(`${room.floorRoom.id}|${tx},${ty}`, shape);
+        this.paper.piece(floorKey(kind, variants?.[ty]?.[tx] ?? 0), c.x, c.y, TILE_CANVAS);
       }),
     );
-    // Over the tiles, so each pit or pond reads as one shape.
-    drawRegionRims(this.add.graphics(), room, looks.hole.stroke ?? palette.accent);
+    for (const d of room.layout.decor ?? []) {
+      const c = tileCenter(room, d.cell.x, d.cell.y);
+      // Nudged off the tile's centre by its cell, so a scatter of them doesn't sit on the grid.
+      const x = c.x + (((d.cell.x * 7 + d.cell.y * 3) % 5) - 2) * 5;
+      const y = c.y + (((d.cell.x * 3 + d.cell.y * 5) % 5) - 2) * 5;
+      this.paper.piece(decorKey(d.kind, d.cell.x + d.cell.y), x, y, DECOR_CANVAS);
+    }
+  }
+
+  /** A hedge in paper standing in for a wall block: the top wall shows its front face to the room. */
+  private paperWall(room: WorldRoom, wall: Phaser.GameObjects.Rectangle, tx: number, ty: number, variant: number) {
+    const { width, height } = room.layout;
+    const inside = (x: number, y: number) => room.layout.tiles[y]?.[x] !== undefined && room.layout.tiles[y][x] !== 'wall';
+    // The side it faces the room from; a wall block with no room below it gets plain foliage.
+    const side: WallSide =
+      inside(tx, ty + 1) ? 'top'
+      : ty >= height && inside(tx, ty - 1) ? 'bottom'
+      : tx < 0 || (inside(tx + 1, ty) && tx < width) ? 'left'
+      : tx >= width || inside(tx - 1, ty) ? 'right'
+      : 'corner';
+    const footY = side === 'bottom' ? wall.y + TUNING.tile : side === 'top' ? wall.y + TUNING.tile / 2 : wall.y + 14;
+    const art = this.paper.piece(wallKey(side, variant), wall.x, wall.y, TILE_CANVAS, footY);
+    if (art) this.paper.standIn(wall, art);
+  }
+
+  /** A terrain tile's physics shape, standing in paper where its look has art. */
+  private terrainPiece(room: WorldRoom, tx: number, ty: number, tile: Tile, look: TileLook, variant: number | undefined): Shape {
+    const c = tileCenter(room, tx, ty);
+    const shape = drawTile(this, c.x, c.y, variant === undefined ? look : { ...look, color: shade(look.color, variant) });
+    if (!look.art) return shape;
+    const flat = tile === 'hole';
+    const key = tileKey(look.art, variant ?? 0, flat ? neighbourMask(room.layout.tiles, tx, ty) : 0);
+    const art = this.paper.piece(key, c.x, c.y, TILE_CANVAS, flat ? undefined : c.y + TERRAIN_FOOT);
+    if (art) this.paper.standIn(shape, art);
+    return shape;
+  }
+
+  /** Neighbouring trees' canopies and thorns' vines grow into each other across the seam between them. */
+  private drawJoins(room: WorldRoom) {
+    if (!themeForFloor(room.floorIndex).paper) return;
+    const looks = roomLooks(room.floorIndex, room.layout.theme ?? '');
+    const joinable = (['obstacle', 'thorn'] as const).filter((tile) => looks[tile].art && JOIN_LOOKS.includes(looks[tile].art!));
+    for (const j of joinsBetween(room.layout.tiles, joinable)) {
+      const a = tileCenter(room, j.x, j.y);
+      const [dx, dy] = j.dir === 'across' ? [TUNING.tile / 2, 0] : [0, TUNING.tile / 2];
+      const art = this.paper.piece(joinKey(looks[j.tile as 'obstacle' | 'thorn'].art!, j.dir), a.x + dx, a.y + dy, TILE_CANVAS, a.y + dy + TERRAIN_FOOT);
+      if (!art) continue;
+      // Gone as soon as either tile it joins is.
+      const b = j.dir === 'across' ? { x: j.x + 1, y: j.y } : { x: j.x, y: j.y + 1 };
+      for (const cell of [{ x: j.x, y: j.y }, b]) {
+        const key = `${room.floorRoom.id}|${cell.x},${cell.y}`;
+        this.joinArt.set(key, [...(this.joinArt.get(key) ?? []), art]);
+      }
+    }
   }
 
   /** Takes a room's drawn crusher blocks out of the breakable terrain and tracks them for sliding. */
@@ -1416,6 +1772,8 @@ export class GameScene extends Phaser.Scene {
       // Shots still stop on it, but it has no tile of its own to crack.
       shape.setData('roomId', undefined);
       this.crushers.push({ roomId, crusher, shape, readyAt: 0 });
+      const art = PaperLayer.artOf(shape);
+      if (art) this.paper.follow(shape, art, TERRAIN_FOOT);
     }
   }
 
@@ -1472,7 +1830,7 @@ export class GameScene extends Phaser.Scene {
       onComplete: () => {
         body.updateFromGameObject();
         body.enable = true;
-        c.readyAt = this.time.now + cooldownMs;
+        c.readyAt = this.now + cooldownMs;
       },
     });
   }
@@ -1487,7 +1845,12 @@ export class GameScene extends Phaser.Scene {
       return false;
     }
     if (!sproutTile(this.world, roomId, cell, tile)) return false;
-    const shape = drawTile(this, c.x, c.y, roomLooks(room.floorIndex, room.layout.theme ?? '')[tile]);
+    const shape = this.terrainPiece(room, cell.x, cell.y, tile, roomLooks(room.floorIndex, room.layout.theme ?? '')[tile], undefined);
+    const art = PaperLayer.artOf(shape);
+    if (art) {
+      this.paper.follow(shape, art, TERRAIN_FOOT);
+      this.roomObjects.get(roomId)?.push(art);
+    }
     if (!blocksShots(tile)) {
       this.thorns.add(shape);
     } else {

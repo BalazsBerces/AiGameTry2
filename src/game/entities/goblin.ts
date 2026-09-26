@@ -64,6 +64,8 @@ export function createGoblin(scene: Phaser.Scene, x: number, y: number, champion
     const v = chasing ? speed : retreatSpeed;
     sprite.body.setVelocity((dx / len) * v, (dy / len) * v);
   });
+  // The healer channels, its partner glows as it mends.
+  enemy.visual = () => ({ loop: state.mode === 'heal' ? 'heal' : state.mode === 'mend' ? 'healed' : undefined });
   enemy.pack = {
     member: (ctx) => ({ id, hp, maxHp, cell: ctx.tileOf(sprite.x, sprite.y), goblin: state, hit: struck }),
     follow: (decision) => {

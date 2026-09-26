@@ -126,8 +126,8 @@ describe('sub-theme tile looks', () => {
     }
   });
 
-  it('only ever overrides looks: name, colour, outline and shape, never how a tile plays', () => {
-    const lookKeys = new Set(['name', 'color', 'stroke', 'shape']);
+  it('only ever overrides looks: name, colour, outline, shape and paper art, never how a tile plays', () => {
+    const lookKeys = new Set(['name', 'color', 'stroke', 'shape', 'art']);
     for (const floorIndex of [0, 1, 2]) {
       for (const t of roomThemesFor(floorIndex)) {
         for (const override of Object.values(t.looks ?? {})) for (const key of Object.keys(override!)) expect(lookKeys, `${t.id}.${key}`).toContain(key);

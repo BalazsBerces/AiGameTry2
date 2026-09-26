@@ -63,8 +63,16 @@ export const TUNING = {
     fadeMs: 400,
     spurtEveryMs: 170,
   },
-  /** Screen shakes: how long, and how hard (a share of the view). There is none on ordinary hits. */
+  /**
+   * Screen shakes: how long, and how hard (a share of the view's width). Shakes at once add up,
+   * but never past the cap in core/juice/shake.
+   */
   shake: {
+    hit: { ms: 90, intensity: 0.002 },
+    hurt: { ms: 160, intensity: 0.004 },
+    bomb: { ms: 260, intensity: 0.007 },
+    /** The Treant's branches or roots slamming home. */
+    slam: { ms: 300, intensity: 0.007 },
     split: { ms: 380, intensity: 0.014 },
     pop: { ms: 110, intensity: 0.004 },
     head: { ms: 400, intensity: 0.016 },

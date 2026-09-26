@@ -61,5 +61,10 @@ export function createBoar(scene: Phaser.Scene, x: number, y: number, champion =
     const len = Math.hypot(tx, ty) || 1;
     sprite.body.setVelocity((tx / len) * speed, (ty / len) * speed);
   });
+  // Head down for the whole wind-up (the telegraph), then flat out while it dashes.
+  enemy.visual = (time) =>
+    state?.mode === 'windUp' ? { hold: { action: 'attack', frame: 0 } }
+    : state?.mode === 'dash' ? { hold: { action: 'attack', frame: 1 + (Math.floor(time / 110) % 2) } }
+    : {};
   return enemy;
 }

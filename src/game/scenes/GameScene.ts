@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { DIRECTIONS, STEP, type Cell, type Direction, type RoomKind } from '../../core/map/floorGenerator';
 import { distanceField, lineOfSight } from '../../core/map/grid';
-import type { LootDrop, EnemySpawn, EnemyType, Tile } from '../../core/rooms/roomGenerator';
+import type { BossType, LootDrop, EnemySpawn, EnemyType, Tile } from '../../core/rooms/roomGenerator';
 import { themeForFloor, type Palette, type TileLook } from '../../core/map/themes';
 import { roomLooks, roomThemeById, type DecorKind } from '../../core/rooms/roomThemes';
 import { blocksShots, blocksSight, hurtsOnTouch, isWalkable } from '../../core/map/tiles';
@@ -71,6 +71,7 @@ import { burstGlowshroom } from '../../core/map/world';
 import type { Stunnable } from '../../core/enemies/stun';
 import { createBat } from '../entities/bat';
 import { softPush } from '../../core/enemies/softPush';
+import { createKnockback, type Knockback } from '../../core/enemies/knockback';
 import { updateGoblinPack } from '../../core/enemies/forestCast';
 import { createFalloff, createHitGate, type Falloff } from '../../core/player/multiHit';
 import { PaperLayer, type PaperActor } from '../art/paperLayer';
@@ -176,6 +177,9 @@ const ENEMY_ART: Partial<Record<EnemyType, { footOffset: number; fps?: number }>
 
 const hex = (color: string) => parseInt(color.slice(1), 16);
 /** The paper an enemy tears into when it dies; enemies left out tear into their shape's colour. */
+/** Bosses stand their ground: a hit never knocks them back. */
+const BOSSES: ReadonlySet<EnemyType> = new Set<BossType>(['wormBoss', 'ironMaiden', 'candleWitch', 'treantBoss']);
+
 const SCRAP_COLORS: Partial<Record<EnemyType, number[]>> = {
   goblin: [PAPER.goblin, PAPER.goblinShade, PAPER.goblinTunic].map(hex),
   seedSpitter: [PAPER.spitter, PAPER.spitterShade, PAPER.leaf].map(hex),
@@ -343,6 +347,8 @@ export class GameScene extends Phaser.Scene {
   private frozen = false;
   /** Every screen shake goes through this, so together they never pass its cap. */
   private shake: Shake = createShake();
+  /** Enemy parts the player's hits are knocking back (core/knockback). */
+  private knockback: Knockback = createKnockback(TUNING.knockback);
   private scraps!: ScrapLayer;
   /** What kind each spawned enemy is, for the colour of the scraps it tears into. */
   private enemyTypes = new Map<Enemy, EnemyType>();
@@ -371,6 +377,7 @@ export class GameScene extends Phaser.Scene {
     this.hitStop = createHitStop();
     this.frozen = false;
     this.shake = createShake();
+    this.knockback = createKnockback(TUNING.knockback);
     this.now = this.time.now;
     this.enemies = [];
     this.lootCarriers = new Map();
@@ -785,15 +792,16 @@ export class GameScene extends Phaser.Scene {
     for (const part of this.nearestFirst(this.enemies.flatMap((e) => e.parts).filter(inArc), this.player)) {
       const heading = { x: part.x - this.player.x, y: part.y - this.player.y };
       if (this.shieldBlocks(part, heading)) this.clink(part.x - heading.x * 0.3, part.y - heading.y * 0.3);
-      else this.strike(part, this.fallOff(falloff, part, damage));
+      else this.strike(part, this.fallOff(falloff, part, damage), heading);
     }
   }
 
   /**
    * The player's own hit, a shot's or a swing's: hurts the part, then the on-hit passives
-   * (core/onHit) poison and may freeze its enemy and send lightning on to others.
+   * (core/onHit) poison and may freeze its enemy and send lightning on to others. A part still
+   * standing is knocked back along `heading` (core/knockback), unless it is a boss's or rooted.
    */
-  private strike(part: EnemySprite, damage: number) {
+  private strike(part: EnemySprite, damage: number, heading: { x: number; y: number }) {
     const enemy = this.enemies.find((e) => e.parts.includes(part));
     if (enemy?.invulnerable?.(part)) return;
     const at = { x: part.x, y: part.y };
@@ -803,6 +811,10 @@ export class GameScene extends Phaser.Scene {
     const weapon = resolveWeapon(this.world.player.passives, this.world.player.statUps);
     const time = this.now;
     const alive = this.enemies.includes(enemy);
+    const type = this.enemyTypes.get(enemy);
+    if (alive && part.active && !part.body.immovable && part.body.pushable && !(type && BOSSES.has(type))) {
+      this.knockback.hit(part, time, heading);
+    }
     // A many-part body carries one poison, whichever piece of it was struck and still standing.
     const body = enemy.hitGroup ?? enemy;
     if (weapon.poison && this.piecesOf(body).length) {
@@ -980,6 +992,15 @@ export class GameScene extends Phaser.Scene {
       else e.update(ctx);
     }
     this.pushWalkersApart();
+    this.knockBack(time);
+  }
+
+  /** Enemies the player just hit are knocked back on top of their own steering, stunned ones too (core/knockback). */
+  private knockBack(time: number) {
+    for (const obj of [...this.walkers.getChildren(), ...this.flyers.getChildren()]) {
+      const part = obj as EnemySprite;
+      if (part.active) part.body.velocity.add(this.knockback.velocity(part, time));
+    }
   }
 
   /** Overlapping walkers are nudged apart on top of their own steering, so a crowd flows instead of jamming (core/softPush). */
@@ -1145,12 +1166,13 @@ export class GameScene extends Phaser.Scene {
     // Read before destroying: destroy() discards the object's data.
     const damage = (shot.getData('damage') as number) * (leg === 'back' ? flight!.boomerang!.returnDamageFactor : 1);
     const { velocity } = shot.body as Phaser.Physics.Arcade.Body;
-    const shielded = this.shieldBlocks(part, { x: velocity.x, y: velocity.y });
+    const heading = { x: velocity.x, y: velocity.y };
+    const shielded = this.shieldBlocks(part, heading);
     const { damages, continues } = meetEnemy(flight?.mods ?? PLAIN_SHOT, shielded);
     const at = { x: shot.x, y: shot.y };
     if (damages) this.scraps.burst('impact', at, [shot.fillColor, 0xffffff]);
     if (!continues) shot.destroy();
-    if (damages) this.strike(part, flight ? this.fallOff(flight.falloff[leg], part, damage) : damage);
+    if (damages) this.strike(part, flight ? this.fallOff(flight.falloff[leg], part, damage) : damage, heading);
     else this.clink(at.x, at.y);
   }
 

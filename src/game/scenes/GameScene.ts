@@ -78,6 +78,8 @@ import { LightLayer } from '../art/lightLayer';
 import { HIT_STOP, createHitStop, type HitStop } from '../../core/juice/hitStop';
 import { createShake, type Shake } from '../../core/juice/shake';
 import { shakeScreen } from '../effects/shellBurst';
+import { ScrapLayer } from '../art/scrapLayer';
+import { PAPER } from '../../core/art/palette';
 import { DECOR_CANVAS, JOIN_LOOKS, TILE_CANVAS, type WallSide } from '../../core/art/terrain';
 import { SHOT_ART, TILE_VARIANTS, decorKey, doorKey, floorKey, joinKey, shotKey, tileKey, wallKey, type FloorKind } from '../../core/art/catalogue';
 import { SHOT_CANVAS } from '../../core/art/hud';
@@ -174,6 +176,18 @@ const ENEMY_ART: Partial<Record<EnemyType, { footOffset: number; fps?: number }>
 const SHOT_LIGHT = { player: { light: 56, halo: 20 }, enemy: { light: 46, halo: 17 } };
 /** A glowshroom's light. */
 const GLOWSHROOM_LIGHT = { radius: 100, intensity: 0.85, warm: true };
+
+const hex = (color: string) => parseInt(color.slice(1), 16);
+/** The paper an enemy tears into when it dies; enemies left out tear into their shape's colour. */
+const SCRAP_COLORS: Partial<Record<EnemyType, number[]>> = {
+  goblin: [PAPER.goblin, PAPER.goblinShade, PAPER.goblinTunic].map(hex),
+  seedSpitter: [PAPER.spitter, PAPER.spitterShade, PAPER.leaf].map(hex),
+  boar: [PAPER.boar, PAPER.boarMane, PAPER.tusk].map(hex),
+  wasp: [PAPER.wasp, PAPER.waspStripe, PAPER.wing].map(hex),
+  treantBoss: [PAPER.bark, PAPER.canopy, PAPER.eyeGlow].map(hex),
+};
+/** A bomb's confetti. */
+const CONFETTI = [COLORS.blast, COLORS.bombFuse, COLORS.key, COLORS.heart, hex(PAPER.cream)];
 
 /** Which paper floor each kind of room gets. */
 const FLOOR_KIND: Record<RoomKind, FloorKind> = { start: 'normal', normal: 'normal', item: 'item', boss: 'boss' };
@@ -317,6 +331,9 @@ export class GameScene extends Phaser.Scene {
   private frozen = false;
   /** Every screen shake goes through this, so together they never pass its cap. */
   private shake: Shake = createShake();
+  private scraps!: ScrapLayer;
+  /** What kind each spawned enemy is, for the colour of the scraps it tears into. */
+  private enemyTypes = new Map<Enemy, EnemyType>();
   /** The canopy and vine joins touching each terrain cell (`roomId|x,y`), gone once the cell's tile is. */
   private joinArt = new Map<string, Phaser.GameObjects.Image[]>();
 
@@ -363,6 +380,8 @@ export class GameScene extends Phaser.Scene {
     this.playerStunMark = undefined;
     this.roomObjects = new Map();
     this.paper = new PaperLayer(this);
+    this.scraps = new ScrapLayer(this, DEPTH.player + 0.95);
+    this.enemyTypes = new Map();
     this.joinArt = new Map();
     for (const room of this.world.rooms.values()) {
       const before = this.children.list.length;
@@ -394,6 +413,8 @@ export class GameScene extends Phaser.Scene {
       this.walls,
       (shot, wall) => {
         if (!(shot as Phaser.GameObjects.GameObject).active) return; // already spent on another wall this frame
+        const s = shot as Phaser.GameObjects.Arc;
+        this.scraps.burst('impact', { x: s.x, y: s.y }, [s.fillColor, (wall as Phaser.GameObjects.Shape).fillColor]);
         shot.destroy();
         this.hitTerrain(wall as Phaser.GameObjects.Rectangle);
       },
@@ -506,6 +527,7 @@ export class GameScene extends Phaser.Scene {
     this.updateCrushers(time);
     this.followPlayerAcrossRooms(time);
     this.paper.update(time);
+    this.scraps.update(delta);
     this.applyShake(time);
     this.lightShots();
     this.light.update(this.player, time, !!themeForFloor(this.currentRoom.floorIndex).paper);
@@ -1114,6 +1136,7 @@ export class GameScene extends Phaser.Scene {
     const shielded = this.shieldBlocks(part, { x: velocity.x, y: velocity.y });
     const { damages, continues } = meetEnemy(flight?.mods ?? PLAIN_SHOT, shielded);
     const at = { x: shot.x, y: shot.y };
+    if (damages) this.scraps.burst('impact', at, [shot.fillColor, 0xffffff]);
     if (!continues) shot.destroy();
     if (damages) this.strike(part, flight ? this.fallOff(flight.falloff[leg], part, damage) : damage);
     else this.clink(at.x, at.y);
@@ -1264,6 +1287,7 @@ export class GameScene extends Phaser.Scene {
     if (roomId === this.world.currentRoomId) {
       this.hitStopFor(HIT_STOP.bomb);
       shakeScreen(this, 'bomb');
+      this.scraps.burst('confetti', at, CONFETTI);
     }
     this.tweens.add({ targets: flash, alpha: 0, duration: 300, onComplete: () => flash.destroy() });
     if (roomId !== this.world.currentRoomId) return;
@@ -1289,7 +1313,10 @@ export class GameScene extends Phaser.Scene {
     const enemy = this.enemies.find((e) => e.parts.includes(part));
     if (!enemy) return;
     const where = { x: part.x, y: part.y };
+    const color = part.fillColor;
     const replacements = enemy.hit(part, damage);
+    // Torn to paper scraps when it dies (a split into pieces is not a death).
+    if (!replacements.length) this.scraps.burst('death', where, SCRAP_COLORS[this.enemyTypes.get(enemy)!] ?? [color, 0x1c140f]);
     this.enemies = this.enemies.flatMap((e) => (e === enemy ? replacements : [e]));
     // Newborn enemies (a slime's children) join physics; split pieces keep the parts they had.
     for (const r of replacements) if (r.parts.some((p) => !this.enemyParts.contains(p))) this.addPhysics(r);
@@ -1424,6 +1451,7 @@ export class GameScene extends Phaser.Scene {
     const at = (c: Cell) => tileCenter(room, c.x, c.y);
     for (const spawn of room.layout.enemies) {
       const enemy = ENEMY_FACTORIES[spawn.type](this, spawn, at, room.layout);
+      this.enemyTypes.set(enemy, spawn.type);
       this.dressEnemy(enemy, spawn.type, !!spawn.champion);
       const drop = spawn.champion?.drop ?? BOSS_DROPS[spawn.type];
       if (drop) this.lootCarriers.set(enemy, drop);

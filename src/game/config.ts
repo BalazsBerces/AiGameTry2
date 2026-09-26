@@ -122,6 +122,8 @@ export const TUNING = {
   slime: { size: { big: 32, medium: 23, small: 15 }, squash: { x: 1.3, y: 0.6 }, stretch: { x: 0.85, y: 1.2 } },
   /** How hard overlapping walkers are nudged apart: px/s per px of overlap, and the most any one gets (placeholder). */
   softPush: { stiffness: 8, cap: 120 },
+  /** How hard a player's hit knocks an enemy back: px/s at the hit, easing out over `ms` (about a third of a tile in all). */
+  knockback: { speed: 267, ms: 120 },
 };
 
 /** How passives are named on screen (the HUD and the boss-kill upgrade message). */

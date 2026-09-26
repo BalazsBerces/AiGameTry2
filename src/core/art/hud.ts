@@ -73,6 +73,8 @@ function shot(kind: 'player' | 'enemy', radius: number) {
 }
 
 export const SHOT_CANVAS = 28;
+/** The minimap's paper scrap: a little larger than the map window, which sits inside it. */
+export const SCRAP_SIZE = { w: 166, h: 100 };
 
 /** Pickups and status marks are drawn on this square canvas, centred on the pickup. */
 export const PICKUP_CANVAS = 48;

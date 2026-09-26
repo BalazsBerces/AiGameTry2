@@ -3,6 +3,9 @@ import { barShake, layoutBossBar, snapGap, type BarPiece, type BossBarSnapshot }
 import { COLORS, TUNING } from '../config';
 
 const BAR = TUNING.bossBar;
+/** The paper look: the shadow each piece throws, and the pale paper its track is mounted on. */
+const PAPER_SHADOW = 0x060805;
+const PAPER_BACKING = 0xc8b690;
 /** How far each torn edge's teeth reach, in px, and how many there are; each tooth's depth varies. */
 const TOOTH = 5;
 const TEETH = 8;
@@ -110,6 +113,8 @@ export class BossBarView {
     // The torn edges: the first piece's right, the second's left.
     const jagLeft = count > 1 && index === 1;
     const jagRight = (count > 1 && index === 0) || piece.remaining < 1;
+    // Cut from paper: each piece throws the usual shadow down and to the right.
+    this.g.fillStyle(PAPER_SHADOW, 0.45).fillPoints(shape(x0 + 2, x1 + 2, top + 3, bottom + 3, jagLeft, jagRight), true);
     if (piece.state === 'dying') {
       // Failing: it flickers in its old colour, now and then going dark or almost out.
       const beat = Math.floor(time / 55) % 4;
@@ -117,6 +122,8 @@ export class BossBarView {
       this.g.fillStyle(color, beat === 3 ? 0.4 : 1).fillPoints(shape(x0, x1, top, bottom, jagLeft, jagRight), true);
       return;
     }
+    // A paper backing round the track, then the track itself.
+    this.g.fillStyle(flash ? COLORS.bossBarFlash : PAPER_BACKING).fillPoints(shape(x0 - 1.5, x1 + 1.5, top - 1.5, bottom + 1.5, jagLeft, jagRight), true);
     this.g.fillStyle(flash ? COLORS.bossBarFlash : COLORS.bossBarTrack).fillPoints(shape(x0, x1, top, bottom, jagLeft, jagRight), true);
     const fillW = (x1 - x0) * piece.fill * entry;
     if (fillW <= 0) return;
@@ -125,6 +132,8 @@ export class BossBarView {
     // It fills from its left edge; the teeth show only where the fill reaches a torn edge.
     const fx1 = x0 + fillW;
     this.g.fillStyle(color).fillPoints(shape(x0, fx1, top, bottom, jagLeft, jagRight && fx1 >= x1 - 0.5), true);
+    // The sheet's pale cut edge along its top.
+    this.g.fillStyle(0xffffff, 0.22).fillRect(x0 + 1, top + 1, Math.max(0, fillW - 2), Math.max(1, (bottom - top) * 0.22));
   }
 
   /** The snap: a shower of scraps falls from the tear, and sparks fly off it. */

@@ -75,6 +75,7 @@ import { updateGoblinPack } from '../../core/enemies/forestCast';
 import { createFalloff, createHitGate, type Falloff } from '../../core/player/multiHit';
 import { PaperLayer, type PaperActor } from '../art/paperLayer';
 import { LightLayer } from '../art/lightLayer';
+import { HIT_STOP, createHitStop, type HitStop } from '../../core/juice/hitStop';
 import { DECOR_CANVAS, JOIN_LOOKS, TILE_CANVAS, type WallSide } from '../../core/art/terrain';
 import { SHOT_ART, TILE_VARIANTS, decorKey, doorKey, floorKey, joinKey, shotKey, tileKey, wallKey, type FloorKind } from '../../core/art/catalogue';
 import { SHOT_CANVAS } from '../../core/art/hud';
@@ -308,6 +309,10 @@ export class GameScene extends Phaser.Scene {
   private playerArt?: PaperActor;
   /** Every room is dark but for its lights. */
   private light!: LightLayer;
+  /** The game's clock: real time less every hit-stop so far. Gameplay timers all run on it. */
+  now = 0;
+  private hitStop: HitStop = createHitStop();
+  private frozen = false;
   /** The canopy and vine joins touching each terrain cell (`roomId|x,y`), gone once the cell's tile is. */
   private joinArt = new Map<string, Phaser.GameObjects.Image[]>();
 
@@ -330,6 +335,9 @@ export class GameScene extends Phaser.Scene {
       : undefined;
     const seed = data.seed ?? roomSeed ?? (Number.isFinite(urlSeed) ? urlSeed : Math.floor(Math.random() * 2 ** 31));
     this.world = createWorld(seed);
+    this.hitStop = createHitStop();
+    this.frozen = false;
+    this.now = this.time.now;
     this.enemies = [];
     this.lootCarriers = new Map();
     this.doorLocks = [];
@@ -456,11 +464,16 @@ export class GameScene extends Phaser.Scene {
       const door = jumpTo.layout.doors[0];
       const at = tileCenter(jumpTo, door.cell.x, door.cell.y);
       this.player.body.reset(at.x, at.y);
-      this.enterRoom(jumpTo, this.time.now);
+      this.enterRoom(jumpTo, this.now);
     }
   }
 
-  update(time: number, delta: number) {
+  update(realTime: number, delta: number) {
+    const clock = this.hitStop.step(realTime);
+    if (clock.frozen !== this.frozen) this.freeze(clock.frozen);
+    this.now = clock.gameTime;
+    if (clock.frozen) return;
+    const time = clock.gameTime;
     const dir = new Phaser.Math.Vector2(
       (this.move.right.isDown ? 1 : 0) - (this.move.left.isDown ? 1 : 0),
       (this.move.down.isDown ? 1 : 0) - (this.move.up.isDown ? 1 : 0),
@@ -535,6 +548,24 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
+  /** Stops or restarts everything that moves on its own: physics, tweens and timers (the game clock stops with them). */
+  private freeze(frozen: boolean) {
+    this.frozen = frozen;
+    if (frozen) {
+      this.physics.pause();
+      this.tweens.pauseAll();
+    } else {
+      this.physics.resume();
+      this.tweens.resumeAll();
+    }
+    this.time.paused = frozen;
+  }
+
+  /** A hit lands with weight: the game freezes for `ms` (merged with any freeze already running). */
+  private hitStopFor(ms: number) {
+    this.hitStop.request(this.game.loop.now, ms);
+  }
+
   /** Keeps one orb per Orbital level circling the player, evenly spaced. */
   private circleOrbs(time: number) {
     const count = resolveWeapon(this.world.player.passives, this.world.player.statUps).orbitals;
@@ -557,14 +588,14 @@ export class GameScene extends Phaser.Scene {
   private orbHits(part: EnemySprite) {
     if (!part.active) return;
     const group = this.enemies.find((e) => e.parts.includes(part))?.hitGroup ?? part;
-    if (!this.orbGate.pass(group, this.time.now, TUNING.orbital.hitEveryMs)) return;
+    if (!this.orbGate.pass(group, this.now, TUNING.orbital.hitEveryMs)) return;
     this.damagePart(part, TUNING.orbital.damage);
   }
 
   /** Space or Shift: dash the way the player is moving, if they have the passive and it has cooled down. */
   private requestDash() {
     const rules = resolveWeapon(this.world.player.passives, this.world.player.statUps).dash;
-    const now = this.time.now;
+    const now = this.now;
     if (!rules || this.runOver || isStunned(this.playerStun, now)) return;
     const moving = {
       x: (this.move.right.isDown ? 1 : 0) - (this.move.left.isDown ? 1 : 0),
@@ -584,7 +615,7 @@ export class GameScene extends Phaser.Scene {
     const enemy = this.enemies.find((e) => e.parts.includes(part));
     if (enemy?.harmless?.(part)) return;
     const dash = resolveWeapon(this.world.player.passives, this.world.player.statUps).dash;
-    if (enemy && dash?.damage && isDashing(this.dash, this.time.now)) {
+    if (enemy && dash?.damage && isDashing(this.dash, this.now)) {
       const body = enemy.hitGroup ?? enemy;
       if (!this.dashHits.has(body)) {
         this.dashHits.add(body);
@@ -732,8 +763,9 @@ export class GameScene extends Phaser.Scene {
     const at = { x: part.x, y: part.y };
     this.damagePart(part, damage);
     if (!enemy) return;
+    this.hitStopFor(this.enemies.includes(enemy) ? HIT_STOP.hit : HIT_STOP.kill);
     const weapon = resolveWeapon(this.world.player.passives, this.world.player.statUps);
-    const time = this.time.now;
+    const time = this.now;
     const alive = this.enemies.includes(enemy);
     // A many-part body carries one poison, whichever piece of it was struck and still standing.
     const body = enemy.hitGroup ?? enemy;
@@ -1055,7 +1087,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     const flight = shot.getData('flight') as Flight | undefined;
-    const leg = this.legOf(flight, this.time.now);
+    const leg = this.legOf(flight, this.now);
     if (flight && !flight.hits.first(leg, part)) return;
     // Read before destroying: destroy() discards the object's data.
     const damage = (shot.getData('damage') as number) * (leg === 'back' ? flight!.boomerang!.returnDamageFactor : 1);
@@ -1154,7 +1186,7 @@ export class GameScene extends Phaser.Scene {
       const at = nearest(e);
       if (at) targets.push({ target: e, at });
     }
-    stunBurst(cell, targets, this.time.now);
+    stunBurst(cell, targets, this.now);
   }
 
   /**
@@ -1210,6 +1242,7 @@ export class GameScene extends Phaser.Scene {
     for (const cell of detonateBomb(this.world, roomId, tileAt(room, at.x, at.y))) this.removeTerrain(roomId, cell);
     const reach = BOMB_RADIUS * TUNING.tile;
     const flash = this.add.circle(at.x, at.y, reach, COLORS.blast, 0.6).setDepth(DEPTH.player + 1);
+    if (roomId === this.world.currentRoomId) this.hitStopFor(HIT_STOP.bomb);
     this.tweens.add({ targets: flash, alpha: 0, duration: 300, onComplete: () => flash.destroy() });
     if (roomId !== this.world.currentRoomId) return;
     const caught = (o: { x: number; y: number; width: number }) =>
@@ -1276,9 +1309,9 @@ export class GameScene extends Phaser.Scene {
 
   /** Takes `halves` half-hearts, unless the player is still flashing from the last hit. */
   private hurtPlayer(halves = 1) {
-    if (this.time.now < this.invincibleUntil) return;
-    this.invincibleUntil = this.time.now + TUNING.invincibleMs;
-    this.playerArt?.hurt(this.time.now);
+    if (this.now < this.invincibleUntil) return;
+    this.invincibleUntil = this.now + TUNING.invincibleMs;
+    this.playerArt?.hurt(this.now);
     for (let i = 0; i < halves; i++) {
       if (damagePlayer(this.world)) {
         this.endRun(false);
@@ -1289,8 +1322,8 @@ export class GameScene extends Phaser.Scene {
 
   /** A walker pushed into thorns; each part has its own brief invincibility so it isn't shredded in a frame. */
   private thornWalker(part: EnemySprite) {
-    if (!part.active || this.time.now < ((part.getData('thornSafeUntil') as number | undefined) ?? 0)) return;
-    part.setData('thornSafeUntil', this.time.now + TUNING.thorn.walkerInvincibleMs);
+    if (!part.active || this.now < ((part.getData('thornSafeUntil') as number | undefined) ?? 0)) return;
+    part.setData('thornSafeUntil', this.now + TUNING.thorn.walkerInvincibleMs);
     this.damagePart(part, TUNING.thorn.walkerDamage);
   }
 
@@ -1354,10 +1387,10 @@ export class GameScene extends Phaser.Scene {
     if (!pickup) return;
     // Chests stay touchable; everything that can drop out of one is locked out briefly after opening.
     const isItem = pickup.type !== 'chest' && pickup.type !== 'lockedChest' && pickup.type !== 'openChest';
-    if (isItem && this.time.now < this.itemLockoutUntil) return;
+    if (isItem && this.now < this.itemLockoutUntil) return;
     const result = touchPickup(this.world, this.world.currentRoomId, id);
     if (result === 'none') return;
-    if (result === 'opened') this.itemLockoutUntil = this.time.now + TUNING.chestLockoutMs;
+    if (result === 'opened') this.itemLockoutUntil = this.now + TUNING.chestLockoutMs;
     if (result === 'damageUp') this.announce('Damage up', COLORS.damageUp);
     if (result === 'rateUp') this.announce('Fire rate up', COLORS.rateUp);
     if (result === 'heartContainer') this.announce('+1 heart!', COLORS.heartUp);
@@ -1680,7 +1713,7 @@ export class GameScene extends Phaser.Scene {
       onComplete: () => {
         body.updateFromGameObject();
         body.enable = true;
-        c.readyAt = this.time.now + cooldownMs;
+        c.readyAt = this.now + cooldownMs;
       },
     });
   }

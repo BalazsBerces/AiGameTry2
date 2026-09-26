@@ -64,7 +64,7 @@ export class HudScene extends Phaser.Scene {
   update() {
     const game = this.scene.get('game') as GameScene;
     const { world } = game;
-    this.roomText.setVisible(!this.bossBar.update(game.bossBar, this.time.now));
+    this.roomText.setVisible(!this.bossBar.update(game.bossBar, game.now));
     this.drawHearts(world.player.health, world.player.maxHealth);
     this.drawPassives(world.player.passives);
     this.drawMinimap(world);

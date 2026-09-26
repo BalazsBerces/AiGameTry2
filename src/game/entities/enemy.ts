@@ -115,6 +115,9 @@ export const HIT_EVENT = 'enemy-hit';
 /** How long a hit part stays white. */
 export const FLASH_MS = 70;
 
+/** The game's clock, which stands still through hit-stops (core/juice/hitStop): every gameplay timer runs on it. */
+export const gameNow = (scene: Phaser.Scene) => (scene as unknown as { now?: number }).now ?? scene.time.now;
+
 /** Stat multipliers for a champion, or none for a regular enemy. */
 export const championBoost = (champion: boolean) => (champion ? TUNING.champion : { scale: 1, hp: 1, speed: 1 });
 
@@ -141,7 +144,7 @@ export function roundBody(sprite: EnemySprite) {
 
 /** A part that took damage flashes white: its paper art, or its plain shape for a moment. */
 export function flash(scene: Phaser.Scene, part: EnemySprite) {
-  part.emit(HIT_EVENT, scene.time.now);
+  part.emit(HIT_EVENT, gameNow(scene));
   if (!part.isFilled) return;
   const color = part.fillColor;
   if (color === 0xffffff) return;

@@ -65,6 +65,20 @@ export class LightLayer {
     scene.add.image(0, 0, 'vignette').setOrigin(0).setScrollFactor(0).setDepth(ROOM_DARK_DEPTH + 0.5);
   }
 
+  /**
+   * A soft glow in `color` laid over the dark, for something that is itself a light (a shot);
+   * `radius` is how far it reaches. The caller keeps it on its owner and destroys it with it.
+   */
+  halo(x: number, y: number, color: number, radius: number): Phaser.GameObjects.Image {
+    return this.scene.add
+      .image(x, y, 'light-brush')
+      .setTint(color)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setAlpha(0.55)
+      .setScale(radius / BRUSH)
+      .setDepth(ROOM_DARK_DEPTH + 1.5);
+  }
+
   update(player: { x: number; y: number }) {
     const cam = this.scene.cameras.main;
     const left = cam.scrollX - MARGIN;

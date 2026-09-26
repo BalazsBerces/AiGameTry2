@@ -76,7 +76,9 @@ import { createFalloff, createHitGate, type Falloff } from '../../core/player/mu
 import { PaperLayer, type PaperActor } from '../art/paperLayer';
 import { LightLayer } from '../art/lightLayer';
 import { DECOR_CANVAS, JOIN_LOOKS, TILE_CANVAS, type WallSide } from '../../core/art/terrain';
-import { TILE_VARIANTS, decorKey, doorKey, floorKey, joinKey, tileKey, wallKey, type FloorKind } from '../../core/art/catalogue';
+import { SHOT_ART, TILE_VARIANTS, decorKey, doorKey, floorKey, joinKey, shotKey, tileKey, wallKey, type FloorKind } from '../../core/art/catalogue';
+import { SHOT_CANVAS } from '../../core/art/hud';
+import { ART_SCALE } from '../art/bake';
 import { joinsBetween, neighbourMask } from '../../core/art/autotile';
 
 type Keys = Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
@@ -164,6 +166,11 @@ const ENEMY_ART: Partial<Record<EnemyType, { footOffset: number; fps?: number }>
   // Beating wings: twice the usual frame rate.
   wasp: { footOffset: 12, fps: 18 },
 };
+
+/** How far a shot in flight lights the ground round it, and how far its glow reaches, in px. */
+const SHOT_LIGHT = { player: { light: 56, halo: 20 }, enemy: { light: 46, halo: 17 } };
+/** A glowshroom's light. */
+const GLOWSHROOM_LIGHT = { radius: 100, intensity: 0.85, warm: true };
 
 /** Which paper floor each kind of room gets. */
 const FLOOR_KIND: Record<RoomKind, FloorKind> = { start: 'normal', normal: 'normal', item: 'item', boss: 'boss' };
@@ -437,6 +444,7 @@ export class GameScene extends Phaser.Scene {
     // The playfield is one map cell; the label strip under it belongs to the HUD.
     this.cameras.main.setViewport(0, 0, CELL_PX_W, CELL_PX_H);
     this.light = new LightLayer(this);
+    this.lightGlowshrooms(start);
     this.cameras.main.setBackgroundColor(themeForFloor(start.floorIndex).palette.background);
     this.showRoomsAround(start);
     this.followInside(start);
@@ -480,7 +488,51 @@ export class GameScene extends Phaser.Scene {
     this.updateCrushers(time);
     this.followPlayerAcrossRooms(time);
     this.paper.update(time);
+    this.lightShots();
     this.light.update(this.player);
+  }
+
+  /**
+   * A shot glows: it lights the ground round it while it flies, with a soft glow in its colour
+   * over the dark, and is drawn as a glowing paper shape (enemy shots in the usual red, and every
+   * player shot tinted as before); anything else keeps its plain shape.
+   */
+  private dressShot(shot: Phaser.GameObjects.Arc, kind: 'player' | 'enemy', color: number, radius: number) {
+    const size = radius / SHOT_ART[kind];
+    this.light.lights.set(shot, { x: shot.x, y: shot.y, radius: SHOT_LIGHT[kind].light * size, intensity: 0.9 });
+    const halo = this.light.halo(shot.x, shot.y, color, SHOT_LIGHT[kind].halo * size);
+    this.paper.follow(shot, halo, undefined, (halo.scaleX * ART_SCALE));
+    shot.once('destroy', () => {
+      this.light.lights.remove(shot);
+      halo.destroy();
+    });
+    if (kind === 'enemy' && color !== COLORS.enemyShot) return;
+    const art = this.paper.piece(shotKey(kind), shot.x, shot.y, { w: SHOT_CANVAS, h: SHOT_CANVAS, anchor: { x: SHOT_CANVAS / 2, y: SHOT_CANVAS / 2 } });
+    if (!art) return;
+    art.setDepth(kind === 'enemy' ? shot.depth : DEPTH.player + 0.9);
+    if (kind === 'player') art.setTint(color);
+    this.paper.standIn(shot, art);
+    this.paper.follow(shot, art, undefined, size);
+  }
+
+  /** Moves each flying shot's light along with it. */
+  private lightShots() {
+    for (const obj of [...this.shots.getChildren(), ...this.enemyShots.getChildren()]) {
+      const shot = obj as Phaser.GameObjects.Arc;
+      const kind = this.shots.contains(shot) ? 'player' : 'enemy';
+      const size = shot.radius / SHOT_ART[kind];
+      this.light.lights.set(shot, { x: shot.x, y: shot.y, radius: SHOT_LIGHT[kind].light * size, intensity: 0.9 });
+    }
+  }
+
+  /** The room's glowshrooms (puffballs, grave mould) each light the dark round them, until they burst. */
+  private lightGlowshrooms(room: WorldRoom) {
+    room.layout.tiles.forEach((row, y) =>
+      row.forEach((tile, x) => {
+        if (tile !== 'glowshroom') return;
+        this.light.lights.set(`${room.floorRoom.id}|${x},${y}`, { ...tileCenter(room, x, y), ...GLOWSHROOM_LIGHT });
+      }),
+    );
   }
 
   /** Keeps one orb per Orbital level circling the player, evenly spaced. */
@@ -596,6 +648,7 @@ export class GameScene extends Phaser.Scene {
       shot.setData({ damage: wave ? weapon.damage * TUNING.bladeWave.damageShare : weapon.damage, homing: weapon.homing, flight });
       this.shots.add(shot);
       (shot.body as Phaser.Physics.Arcade.Body).setCircle(radius).setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
+      this.dressShot(shot, 'player', color, radius);
     }
   }
 
@@ -942,6 +995,7 @@ export class GameScene extends Phaser.Scene {
         const shot = this.add.circle(x, y, radius, color).setData({ homing, bounces }).setDepth(DARK_DEPTH + 2);
         this.enemyShots.add(shot);
         (shot.body as Phaser.Physics.Arcade.Body).setCircle(radius).setVelocity(vx, vy);
+        this.dressShot(shot, 'enemy', color, radius);
       },
       tiles: room.layout.tiles,
       hurtPlayer: () => this.hurtPlayer(),
@@ -1129,6 +1183,7 @@ export class GameScene extends Phaser.Scene {
     const key = `${roomId}|${cell.x},${cell.y}`;
     this.terrain.get(key)?.destroy();
     this.terrain.delete(key);
+    this.light.lights.remove(key);
     for (const art of this.joinArt.get(key) ?? []) art.destroy();
     this.joinArt.delete(key);
   }
@@ -1268,6 +1323,8 @@ export class GameScene extends Phaser.Scene {
 
     this.showRoomsAround(room);
     this.slideCameraTo(room);
+    this.light.lights.clear();
+    this.lightGlowshrooms(room);
     this.cameras.main.setBackgroundColor(themeForFloor(room.floorIndex).palette.background);
 
     if (!this.world.cleared.has(room.floorRoom.id)) {

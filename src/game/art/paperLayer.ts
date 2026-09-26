@@ -110,7 +110,7 @@ type Art = Phaser.GameObjects.Image;
 export class PaperLayer {
   private actors: PaperActor[] = [];
   /** Pieces that move with a shape (sliding logs, sprouting bushes): kept on it every frame. */
-  private followers: { shape: Shape; art: Art; footOffset: number }[] = [];
+  private followers: { shape: Shape; art: Art; footOffset?: number; scale: number; alpha: number }[] = [];
   private serial = 0;
 
   constructor(private scene: Phaser.Scene) {}
@@ -139,9 +139,12 @@ export class PaperLayer {
     return shape.getData('art') as Art | undefined;
   }
 
-  /** Keeps a stand-in on its moving shape: position, scale, alpha and depth follow it every frame. */
-  follow(shape: Shape, art: Art, footOffset: number) {
-    this.followers.push({ shape, art, footOffset });
+  /**
+   * Keeps a stand-in on its moving shape: position, scale (times `scale`) and alpha (times its own) follow it every
+   * frame, and so does its depth by its feet if it stands (`footOffset` below the shape's centre).
+   */
+  follow(shape: Shape, art: Art, footOffset?: number, scale = 1) {
+    this.followers.push({ shape, art, footOffset, scale, alpha: art.alpha });
   }
 
   /** A paper character for `shape`, or undefined if `kind` has no baked art (the shape keeps drawing itself). */
@@ -159,14 +162,14 @@ export class PaperLayer {
 
   update(time: number) {
     this.actors = this.actors.filter((a) => a.sync(time));
-    this.followers = this.followers.filter(({ shape, art, footOffset }) => {
+    this.followers = this.followers.filter(({ shape, art, footOffset, scale, alpha }) => {
       if (!shape.active) return false;
       art
         .setPosition(shape.x, shape.y)
-        .setScale(shape.scaleX / ART_SCALE, shape.scaleY / ART_SCALE)
-        .setAlpha(shape.alpha)
+        .setScale((shape.scaleX * scale) / ART_SCALE, (shape.scaleY * scale) / ART_SCALE)
+        .setAlpha(shape.alpha * alpha)
         .setVisible(shape.visible);
-      if (art.depth >= 1) art.setDepth(footDepth(shape.y + footOffset, 0));
+      if (footOffset !== undefined && art.depth >= 1) art.setDepth(footDepth(shape.y + footOffset, 0));
       return true;
     });
   }

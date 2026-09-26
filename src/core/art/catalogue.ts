@@ -1,6 +1,7 @@
 import { CHARACTERS, type Action, type View } from './characters';
 import { DECOR_CANVAS, DECOR_KINDS, JOIN_LOOKS, MASKED_LOOKS, TILE_CANVAS, TILE_LOOKS, terrainSvg, type WallSide } from './terrain';
 import type { Mask } from './autotile';
+import { SHOT_CANVAS, hudSvg } from './hud';
 
 /**
  * Every piece of paper art the game bakes at boot, by key: what the texture baker draws and the
@@ -69,7 +70,20 @@ function terrainEntries(): ArtEntry[] {
   ];
 }
 
+/** A glowing paper shot, drawn at the size of a player shot (7 px) or an enemy's (6 px); other sizes scale it. */
+export const SHOT_ART = { player: 7, enemy: 6 } as const;
+export const shotKey = (kind: keyof typeof SHOT_ART) => `s:${kind}`;
+
+function shotEntries(): ArtEntry[] {
+  return (Object.keys(SHOT_ART) as (keyof typeof SHOT_ART)[]).map((kind) => ({
+    key: shotKey(kind),
+    w: SHOT_CANVAS,
+    h: SHOT_CANVAS,
+    svg: () => hudSvg.shot(kind, SHOT_ART[kind]),
+  }));
+}
+
 /** The whole catalogue, in a fixed order. */
 export function artCatalogue(): ArtEntry[] {
-  return [...characterEntries(), ...terrainEntries()];
+  return [...characterEntries(), ...terrainEntries(), ...shotEntries()];
 }

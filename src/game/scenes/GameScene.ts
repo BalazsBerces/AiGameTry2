@@ -197,7 +197,8 @@ const CONFETTI = [COLORS.blast, COLORS.bombFuse, COLORS.key, COLORS.heart, hex(P
 
 
 const PASSIVE_TEXTURES: Partial<Record<Passive, string>> = {
-  freeze: 'passive-freeze',
+  freeze: 'freeze',
+  poison: 'poison'
 };
 
 const TEST_PASSIVVE_TEXTURE = 'passive-test';

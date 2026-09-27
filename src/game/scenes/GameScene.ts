@@ -6,7 +6,12 @@ import { themeForFloor, type Palette, type TileLook } from '../../core/map/theme
 import { roomLooks, roomThemeById, type DecorKind } from '../../core/rooms/roomThemes';
 import { blocksShots, blocksSight, hurtsOnTouch, isWalkable } from '../../core/map/tiles';
 import { crusherWakes, settleCrusher, slideCrusher, type Crusher } from '../../core/obstacles/crusher';
-import { launchVelocity, resolveWeapon, type Weapon } from '../../core/player/weaponModel';
+import {
+  launchVelocity,
+  resolveWeapon,
+  type Passive,
+  type Weapon,
+} from '../../core/player/weaponModel';
 import { fan, ring } from '../../core/bosses/bulletPatterns';
 import { isDashing, tryDash, type Dash } from '../../core/player/dash';
 import { stepMomentum, type Momentum } from '../../core/player/momentum';
@@ -189,6 +194,13 @@ const SCRAP_COLORS: Partial<Record<EnemyType, number[]>> = {
 };
 /** A bomb's confetti. */
 const CONFETTI = [COLORS.blast, COLORS.bombFuse, COLORS.key, COLORS.heart, hex(PAPER.cream)];
+
+
+const PASSIVE_TEXTURES: Partial<Record<Passive, string>> = {
+  freeze: 'passive-freeze',
+};
+
+const TEST_PASSIVVE_TEXTURE = 'passive-test';
 
 /** Each pickup's paper art, and the colour it is tinted (passives and stat-ups by what they give). */
 const PICKUP_ART_OF: Record<WorldPickup['type'], (p: WorldPickup) => { art: PickupArt; tint?: number }> = {
@@ -1452,22 +1464,71 @@ export class GameScene extends Phaser.Scene {
 
   /** Redraws the current room's pickups: loot placed in plain sight, and the rest once the room is cleared. */
   private showPickups() {
-    this.pickupGroup.clear(true, true);
-    const room = this.currentRoom;
-    for (const p of shownPickups(this.world, room.floorRoom.id)) {
-      const c = tileCenter(room, p.cell.x, p.cell.y);
-      const sprite = PICKUP_SHAPES[p.type](this, c.x, c.y, p).setData('pickupId', p.id);
-      this.pickupGroup.add(sprite);
-      const look = PICKUP_ART_OF[p.type](p);
-      const art = this.paper.piece(pickupKey(look.art), c.x, c.y, PICKUP_FRAME, c.y + 12);
-      if (art) {
-        if (look.tint !== undefined) art.setTint(look.tint);
-        this.paper.standIn(sprite, art);
-        for (const t of (sprite.getData('trim') as Phaser.GameObjects.GameObject[] | undefined) ?? []) this.cameras.main.ignore(t);
-      }
-      (sprite.body as Phaser.Physics.Arcade.Body).setImmovable(true);
+  this.pickupGroup.clear(true, true);
+
+  const room = this.currentRoom;
+
+  for (const p of shownPickups(this.world, room.floorRoom.id)) {
+    const c = tileCenter(room, p.cell.x, p.cell.y);
+
+    const sprite = PICKUP_SHAPES[p.type](this, c.x, c.y, p)
+      .setData('pickupId', p.id);
+
+    this.pickupGroup.add(sprite);
+
+    const customPassiveTexture =
+      p.type === 'passive' && p.passive
+        ? PASSIVE_TEXTURES[p.passive]
+        : undefined;
+
+    if (customPassiveTexture) {
+      const art = this.add.image(
+        c.x,
+        c.y,
+        customPassiveTexture
+      );
+
+      art.setDisplaySize(40, 40);
+
+      this.paper.standIn(sprite, art);
+
+      (sprite.body as Phaser.Physics.Arcade.Body)
+        .setImmovable(true);
+
+      continue;
     }
+
+    // Ha nincs saját kép, ide esik vissza:
+    // ez a régi, alap paper art rendszer
+    const look = PICKUP_ART_OF[p.type](p);
+
+    const art = this.paper.piece(
+      pickupKey(look.art),
+      c.x,
+      c.y,
+      PICKUP_FRAME,
+      c.y + 12
+    );
+
+    if (art) {
+      if (look.tint !== undefined) {
+        art.setTint(look.tint);
+      }
+
+      this.paper.standIn(sprite, art);
+
+      for (
+        const t of
+        (sprite.getData('trim') as Phaser.GameObjects.GameObject[] | undefined) ?? []
+      ) {
+        this.cameras.main.ignore(t);
+      }
+    }
+
+    (sprite.body as Phaser.Physics.Arcade.Body)
+      .setImmovable(true);
   }
+}
 
   private touchPickup(sprite: Phaser.GameObjects.GameObject) {
     const id = sprite.getData('pickupId') as number;

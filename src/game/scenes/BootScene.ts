@@ -8,6 +8,17 @@ export class BootScene extends Phaser.Scene {
     super('boot');
   }
 
+  preload(){
+    this.load.image(
+      'freeze',
+      '/art/passives/freeze.png'
+    )
+    this.load.image(
+      'poison',
+      '/art/passives/poison.png'
+    )
+  }
+
   create() {
     const { width, height } = this.scale;
     const label = this.add

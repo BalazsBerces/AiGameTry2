@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(foreach \\($n in 35,36,37,38,39,49,50,53\\) { git worktree remove --force \"../aiGameTry2-wt-$n\" }; git worktree prune; git worktree list)",
+      "PowerShell(foreach \\($n in '40','42','43','45','46','47','51'\\) { git worktree add -q -b \"issue-$n\" \"../aiGameTry2-wt-$n\" room-archetypes; New-Item -ItemType Junction -Path \"C:\\\\Users\\\\cup\\\\IdeaProjects\\\\aiGameTry2-wt-$n\\\\node_modules\" -Target C:\\\\Users\\\\cup\\\\IdeaProjects\\\\aiGameTry2\\\\node_modules | Out-Null }; git worktree list)",
+      "Bash(rm \"/c/Users/cup/.claude/projects/c--Users-cup-IdeaProjects-aiGameTry2/memory/kiting-rules-wip.md\")"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\cup\\.claude\\projects\\c--Users-cup-IdeaProjects-aiGameTry2\\memory"
+    ]
+  }
+}

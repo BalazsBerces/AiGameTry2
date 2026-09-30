@@ -81,8 +81,34 @@ function Test-IssueReady {
     $blockers = @($Issue.blockedBy)
 
     foreach ($blocker in $blockers) {
-        if ($null -ne $blocker.state -and
-            $blocker.state.ToString().ToUpperInvariant() -eq "OPEN") {
+        if ($null -eq $blocker) {
+            continue
+        }
+
+        # GitHub CLI verziótól függően a blockedBy elem
+        # nem feltétlenül tartalmaz state mezőt.
+        # Ezért a blocker aktuális állapotát külön kérjük le.
+        $blockerUrl = $null
+
+        if ($blocker.PSObject.Properties.Name -contains "url") {
+            $blockerUrl = $blocker.url
+        }
+
+        if ([string]::IsNullOrWhiteSpace($blockerUrl)) {
+            throw "Egy blockerhez nem kaptunk URL-t, ezért nem dönthető el biztonságosan, hogy az issue feloldott-e."
+        }
+
+        $blockerState = & gh issue view $blockerUrl `
+            --json state `
+            --jq ".state"
+
+        if ($LASTEXITCODE -ne 0) {
+            throw "Nem sikerült lekérni a blocker állapotát: $blockerUrl"
+        }
+
+        $blockerState = ($blockerState | Out-String).Trim().ToUpperInvariant()
+
+        if ($blockerState -eq "OPEN") {
             return $false
         }
     }

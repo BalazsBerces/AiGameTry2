@@ -10,7 +10,6 @@ import {
   launchVelocity,
   resolveWeapon,
   PASSIVE_NAMES,
-  type Passive,
   type Weapon,
 } from '../../core/player/weaponModel';
 import { fan, ring } from '../../core/bosses/bulletPatterns';
@@ -89,6 +88,7 @@ import { HIT_STOP, createHitStop, type HitStop } from '../../core/juice/hitStop'
 import { createShake, type Shake } from '../../core/juice/shake';
 import { shakeScreen } from '../effects/shellBurst';
 import { ScrapLayer } from '../art/scrapLayer';
+import { passiveArtKey } from '../art/passiveArt';
 import { PAPER } from '../../core/art/palette';
 import { DECOR_CANVAS, JOIN_LOOKS, TILE_CANVAS, type WallSide } from '../../core/art/terrain';
 import { SHOT_ART, TILE_VARIANTS, decorKey, doorKey, floorKey, joinKey, pickupKey, shotKey, tileKey, wallKey, type FloorKind } from '../../core/art/catalogue';
@@ -208,11 +208,6 @@ const SCRAP_COLORS: Partial<Record<EnemyType, number[]>> = {
 /** A bomb's confetti. */
 const CONFETTI = [COLORS.blast, COLORS.bombFuse, COLORS.key, COLORS.heart, hex(PAPER.cream)];
 
-
-const PASSIVE_TEXTURES: Partial<Record<Passive, string>> = {
-  freeze: 'freeze',
-  poison: 'poison'
-};
 
 /** Each pickup's paper art, and the colour it is tinted (passives and stat-ups by what they give). */
 const PICKUP_ART_OF: Record<WorldPickup['type'], (p: WorldPickup) => { art: PickupArt; tint?: number }> = {
@@ -1688,7 +1683,7 @@ export class GameScene extends Phaser.Scene {
 
     const customPassiveTexture =
       p.type === 'passive' && p.passive
-        ? PASSIVE_TEXTURES[p.passive]
+        ? passiveArtKey(this.textures, p.passive)
         : undefined;
 
     if (customPassiveTexture) {

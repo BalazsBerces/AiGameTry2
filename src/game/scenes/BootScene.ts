@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { COLORS } from '../config';
 import { bakeArt } from '../art/bake';
+import { PASSIVE_ART } from '../art/passiveArt';
 
 /** Bakes the paper art into textures before the first run starts. */
 export class BootScene extends Phaser.Scene {
@@ -8,15 +9,8 @@ export class BootScene extends Phaser.Scene {
     super('boot');
   }
 
-  preload(){
-    this.load.image(
-      'freeze',
-      '/art/passives/freeze.png'
-    )
-    this.load.image(
-      'poison',
-      '/art/passives/poison.png'
-    )
+  preload() {
+    for (const { key, url } of PASSIVE_ART) this.load.image(key, url);
   }
 
   create() {

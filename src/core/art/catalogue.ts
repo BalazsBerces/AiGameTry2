@@ -1,5 +1,5 @@
 import { CHARACTERS, type Action, type View } from './characters';
-import { DECOR_CANVAS, DECOR_KINDS, JOIN_LOOKS, MASKED_LOOKS, TILE_CANVAS, TILE_LOOKS, WALL_STYLES, floorCanvas, floorLooks, terrainSvg, wallCanvas, type Shell, type WallSide, type WallStyle } from './terrain';
+import { DECOR_CANVAS, DECOR_KINDS, JOIN_LOOKS, MASKED_LOOKS, TILE_CANVAS, TILE_LOOKS, WALL_STYLES, floorCanvas, floorLooks, hasGround, terrainSvg, wallCanvas, type Shell, type WallSide, type WallStyle } from './terrain';
 import type { Mask } from './autotile';
 import { HEART_CANVAS, ICON_CANVAS, PICKUP_ART, PICKUP_CANVAS, SHOT_CANVAS, hudSvg, pickupSvg, type PickupArt } from './hud';
 
@@ -50,6 +50,8 @@ export type DoorSide = 'up' | 'down' | 'left' | 'right';
 const DOOR_ART_SIDE = { up: 'top', down: 'bottom', left: 'left', right: 'right' } as const;
 export const doorKey = (shell: Shell, side: DoorSide, locked: boolean) => `d:${shell}:${side}:${locked ? 'locked' : 'open'}`;
 export type FloorKind = 'normal' | 'item' | 'boss';
+/** The paper ground under a floor whose pieces are only marks (`hasGround`). */
+export const groundKey = (shell: Shell, kind: FloorKind) => `g:${shell}:${kind}`;
 export const floorKey = (shell: Shell, kind: FloorKind, look: number) => `f:${shell}:${kind}:${look % floorLooks(shell)}`;
 /**
  * The look of the floor piece at tile x,y. The forest's is just the tile's variant; a floor with
@@ -83,6 +85,7 @@ function terrainEntries(): ArtEntry[] {
         ),
       ),
       ...(['up', 'down', 'left', 'right'] as const).flatMap((side) => [false, true].map((l) => tileEntry(doorKey(shell, side, l), () => terrainSvg.door(DOOR_ART_SIDE[side], l, shell)))),
+      ...(hasGround(shell) ? (['normal', 'item', 'boss'] as const).map((kind) => tileEntry(groundKey(shell, kind), () => terrainSvg.ground(kind))) : []),
       ...(['normal', 'item', 'boss'] as const).flatMap((kind) => Array.from({ length: floorLooks(shell) }, (_, v) => v).map((v) => ({ key: floorKey(shell, kind, v), w: floorCanvas(shell).w, h: floorCanvas(shell).h, svg: () => terrainSvg.floor(kind, v, shell) }))),
     ]),
     ...DECOR_KINDS.flatMap((kind) =>

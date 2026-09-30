@@ -190,8 +190,8 @@ export const wallCanvas = (style: WallStyle) => (style === 'hedge' ? TILE_CANVAS
 export const floorCanvas = (shell: Shell) => (shell === 'caves' ? CAVE_FLOOR_CANVAS : TILE_CANVAS);
 /** How many looks a floor's pieces come in. */
 export const floorLooks = (shell: Shell) => (shell === 'caves' ? CAVE_FLOOR_LOOKS : 4);
-/** The ground painted under a floor's pieces in one sheet, if its pieces have none of their own. */
-export const floorBase = (shell: Shell, kind: 'normal' | 'item' | 'boss'): string | undefined => (shell === 'caves' ? CAVE_FLOOR_BASE[kind] : undefined);
+/** Whether a floor's pieces are only marks, laid over a ground of paper of their own (`terrainSvg.ground`) drawn first. */
+export const hasGround = (shell: Shell) => shell === 'caves';
 
 /**
  * A hedge wall tile. Every side is a clump of dark foliage from above; the top wall also shows
@@ -348,7 +348,7 @@ function rockWall(side: WallSide, variant: number, veined: boolean) {
   const into = INTO[side];
   // A side wall is drawn over the one above it and under the one below, so it must not reach up
   // into the tile above (a doorway may be there); it spills down, out and a little into the room.
-  const noHigher = side === 'left' || side === 'right' ? WY - H - 3 : -Infinity;
+  const noHigher = side === 'left' || side === 'right' || side === 'corner' ? WY - H - 3 : -Infinity;
   const clampUp = (p: Pt) => ({ x: p.x, y: Math.max(p.y, noHigher) });
   const top = side === 'top';
   const parts: { y: number; svg: string }[] = [];
@@ -367,8 +367,7 @@ function rockWall(side: WallSide, variant: number, veined: boolean) {
     const tops = [lip, WY + 2, WY + 8, WY + 13, WY + 18];
     const tones = [C.strataDark, C.strataLight, C.strata, C.ochre, C.strataLight];
     const bands = tops.map((y, i) => {
-      // The lip rises and dips the most, so the cliff's top edge never runs straight.
-      const edge = across(11).map((x) => ({ x, y: y + wander(x, i === 0 ? 10 : i === 1 ? 7 : 5) }));
+      const edge = across(11).map((x) => ({ x, y: y + wander(x, i ? 5 : 3) }));
       const under = i + 1 < tops.length ? [{ x: x1, y: tops[i + 1] + 3 }, { x: x0, y: tops[i + 1] + 3 }] : foot;
       return sheet(fill(polyPath([...edge, ...under]), tones[i]));
     });
@@ -403,8 +402,7 @@ function rockWall(side: WallSide, variant: number, veined: boolean) {
 
   // The bed: a dark heap of rock spilling well past the tile, shifted away from the room.
   const bedC = top ? { x: WX, y: WY - 22 } : { x: WX - into.x * 5, y: WY - into.y * 5 };
-  // A corner's heap is the biggest: it spills into the room's corner and rounds it off.
-  const bedR = top ? { x: 48, y: 22 } : side === 'corner' ? { x: 52, y: 50 } : { x: 40 - Math.abs(into.x) * 6, y: 38 - Math.abs(into.y) * 6 };
+  const bedR = top ? { x: 48, y: 22 } : { x: 40 - Math.abs(into.x) * 6, y: 38 - Math.abs(into.y) * 6 };
   const bedPts = jagged(r, bedC.x, bedC.y, bedR.x, bedR.y, 18, 0.2).map(clampUp).map((p) => (top ? { x: p.x, y: Math.min(p.y, WY - 4) } : p));
   const bed = sheet(fill(polyPath(bedPts), C.rockDeep));
 
@@ -434,29 +432,8 @@ function rockWall(side: WallSide, variant: number, veined: boolean) {
       const y = Math.max(WY + into.y * out + into.x * along, noHigher + 6);
       parts.push({ y, svg: crag(r, x, y, 3 + r.next() * 4, r.next() < 0.3 ? OCHRE_ROCK : ROCK) });
     }
-    // Outcrops: big crags bulging out into the room, so its edge is never a straight line.
-    for (let i = 0, outcrops = Math.floor(r.next() * 3); i < outcrops; i++) {
-      const rad = 9 + r.next() * 5;
-      const along = (r.next() - 0.5) * 40;
-      const out = 15 + r.next() * 7;
-      const x = WX + into.x * out + into.y * along;
-      const y = Math.max(WY + into.y * out + into.x * along, noHigher + rad * 1.1);
-      parts.push({ y, svg: crag(r, x, y, rad, r.next() < 0.25 ? OCHRE_ROCK : ROCK) });
-    }
   }
   parts.sort((a, b) => a.y - b.y);
-
-  // A soft shadow where the rock meets the floor, fading the wall's foot into the room.
-  let foot = '';
-  if (side !== 'corner') {
-    foot = [-26, 0, 26].map((a) => {
-      const along = a + (r.next() - 0.5) * 16;
-      const out = (top ? H + 3 : 24) + r.next() * 4;
-      const p = { x: WX + into.x * out + into.y * along, y: Math.max(WY + into.y * out + into.x * along, noHigher + 12) };
-      const [rx, ry] = into.x ? [9 + r.next() * 4, 20 + r.next() * 8] : [20 + r.next() * 8, 7 + r.next() * 3];
-      return fill(blob(r, p.x, p.y, rx, ry, 10, 0.25), P.shadow, 'opacity="0.28"');
-    }).join('');
-  }
 
   // Crystal: one seam running the length of the wall, through the bedrock under the loose crags
   // (on the top wall, along a layer of its face). It crosses every tile edge at the same point, so
@@ -484,8 +461,8 @@ function rockWall(side: WallSide, variant: number, veined: boolean) {
     }
   }
   return top
-    ? foot + face + seamSvg + clusters + (drips ? sheet(drips, 2) : '') + bed + parts.map((p) => p.svg).join('')
-    : foot + bed + seamSvg + parts.map((p) => p.svg).join('') + clusters;
+    ? face + seamSvg + clusters + (drips ? sheet(drips, 2) : '') + bed + parts.map((p) => p.svg).join('')
+    : bed + seamSvg + parts.map((p) => p.svg).join('') + clusters;
 }
 
 /** Where each wall's crystal seam runs: along the wall, set back from the room (on the top wall, along its face). */
@@ -571,9 +548,9 @@ function mineDoor(side: 'top' | 'bottom' | 'left' | 'right', locked: boolean) {
 }
 
 /**
- * A cave floor piece's canvas: three tiles across. The piece has no ground of its own (the room's
- * earth is painted under it in one sheet), only see-through marks that spill freely over its
- * neighbours and blend where they overlap, so the floor never shows a tile edge.
+ * A cave floor piece's canvas: three tiles across. The piece has no ground of its own (every tile
+ * gets a sheet of earth paper first, see `caveGround`), only see-through marks that spill freely
+ * over its neighbours and blend where they overlap, so the floor never shows a tile edge.
  */
 export const CAVE_FLOOR_CANVAS = { w: 144, h: 144, anchor: { x: 72, y: 72 } };
 const { x: FX, y: FY } = CAVE_FLOOR_CANVAS.anchor;
@@ -581,8 +558,13 @@ const { x: FX, y: FY } = CAVE_FLOOR_CANVAS.anchor;
 /** How many looks a cave floor comes in: far more than its tiles' variants, so no look is seen repeating. */
 export const CAVE_FLOOR_LOOKS = 12;
 
-/** The earth painted under a cave room's floor pieces, by room kind. */
-export const CAVE_FLOOR_BASE = { normal: C.earth, item: C.earth, boss: C.bossEarth } as const;
+/**
+ * A tile's sheet of earth paper, under the cave floor's marks: plain, so the grain is all that shows
+ * of it and no edge between two tiles can be seen. Bleeds a pixel past the tile like the forest's.
+ */
+function caveGround(kind: 'normal' | 'item' | 'boss') {
+  return `<rect x="${AX - H - 1}" y="${AY - H - 1}" width="${TILE + 2}" height="${TILE + 2}" fill="${kind === 'boss' ? C.bossEarth : C.earth}"/>`;
+}
 
 /**
  * The cave floor's marks: broad faint mottling in the earth, and one thing of note placed anywhere
@@ -767,5 +749,7 @@ export const terrainSvg = {
     shell === 'caves'
       ? svgDoc(CAVE_FLOOR_CANVAS.w, CAVE_FLOOR_CANVAS.h, caveFloor(variant, kind), 31 + variant)
       : tileDoc(floorTile(variant, kind), 31 + variant),
+  /** The paper ground under a floor that has one (`hasGround`). */
+  ground: (kind: 'normal' | 'item' | 'boss') => tileDoc(caveGround(kind), 43),
   decor: (kind: string, variant: number) => svgDoc(DECOR_CANVAS.w, DECOR_CANVAS.h, (DECOR_ART[kind] ?? DECOR_ART.pebbles)(variant), 37),
 };

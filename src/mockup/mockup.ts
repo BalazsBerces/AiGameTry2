@@ -2,7 +2,7 @@ import { CHARACTERS, type Action, type View } from '../core/art/characters';
 import { hudSvg, HEART_CANVAS, ICON_CANVAS, SHOT_CANVAS } from '../core/art/hud';
 import { PAPER } from '../core/art/palette';
 import { DOWN, LEFT, RIGHT, UP, type Mask } from '../core/art/autotile';
-import { CAVE_FLOOR_CANVAS, CAVE_WALL_CANVAS, DECOR_CANVAS, TILE, TILE_CANVAS, WALL_STYLES, floorBase, floorCanvas, floorLooks, terrainSvg, wallCanvas, type Shell, type WallSide, type WallStyle } from '../core/art/terrain';
+import { CAVE_FLOOR_CANVAS, CAVE_WALL_CANVAS, DECOR_CANVAS, TILE, TILE_CANVAS, WALL_STYLES, floorCanvas, floorLooks, hasGround, terrainSvg, wallCanvas, type Shell, type WallSide, type WallStyle } from '../core/art/terrain';
 import { createRng } from '../core/rng';
 import { floorLook } from '../core/art/catalogue';
 
@@ -129,8 +129,7 @@ function drawRoom(sheet: Sheet, scene: Scene, lit: boolean, id: string): string 
         return;
       }
       const fc = floorCanvas(shell);
-      const base = floorBase(shell, scene.floor);
-      if (base) ground.push(`<rect x="${c.x - TILE / 2}" y="${c.y - TILE / 2}" width="${TILE}" height="${TILE}" fill="${base}"/>`);
+      if (hasGround(shell)) ground.push(tile(terrainSvg.ground(scene.floor), c.x, c.y));
       flat.push(place(terrainSvg.floor(scene.floor, floorLook(shell, variant, gx, gy), shell), fc.w, fc.h, fc.anchor.x, fc.anchor.y, c.x, c.y));
       if (ch === 'D' || ch === 'G') {
         const side = gy === 0 ? 'top' : gy === map.length - 1 ? 'bottom' : gx === 0 ? 'left' : 'right';
@@ -384,10 +383,17 @@ function caveShellSheet(): string {
     .join('');
   // Each floor piece on its ground, the dashed square its own tile: its marks reach well past it.
   const FC = CAVE_FLOOR_CANVAS;
+  /** `cols`×`rows` tiles of paper ground, the first's top-left corner at x,y. */
+  const groundUnder = (kind: 'normal' | 'item' | 'boss', cols: number, rows: number, x: number, y: number) => {
+    const href = uri(terrainSvg.ground(kind));
+    return Array.from({ length: rows }, (_, gy) => Array.from({ length: cols }, (_, gx) =>
+      `<image href="${href}" width="${TILE_CANVAS.w}" height="${TILE_CANVAS.h}" x="${x + gx * TILE + TILE / 2 - TILE_CANVAS.anchor.x}" y="${y + gy * TILE + TILE / 2 - TILE_CANVAS.anchor.y}"/>`,
+    ).join('')).join('');
+  };
   const floors = (['normal', 'item', 'boss'] as const)
     .flatMap((kind) => Array.from({ length: floorLooks('caves') }, (_, v) => v).map((v) => {
       const tileBox = `<rect x="${FC.anchor.x - TILE / 2}" y="${FC.anchor.y - TILE / 2}" width="${TILE}" height="${TILE}" fill="none" stroke="#e8dcc0" stroke-opacity="0.35" stroke-dasharray="3 3"/>`;
-      return `<figure><svg width="${FC.w * 0.75}" height="${FC.h * 0.75}" viewBox="0 0 ${FC.w} ${FC.h}" role="img" aria-label="${kind} floor ${v + 1}"><rect width="${FC.w}" height="${FC.h}" fill="${floorBase('caves', kind)}"/><image href="${uri(terrainSvg.floor(kind, v, 'caves'))}" width="${FC.w}" height="${FC.h}"/>${tileBox}</svg><figcaption>${kind} ${v + 1}</figcaption></figure>`;
+      return `<figure><svg width="${FC.w * 0.75}" height="${FC.h * 0.75}" viewBox="0 0 ${FC.w} ${FC.h}" role="img" aria-label="${kind} floor ${v + 1}">${groundUnder(kind, 3, 3, FC.anchor.x - TILE * 1.5, FC.anchor.y - TILE * 1.5)}<image href="${uri(terrainSvg.floor(kind, v, 'caves'))}" width="${FC.w}" height="${FC.h}"/>${tileBox}</svg><figcaption>${kind} ${v + 1}</figcaption></figure>`;
     }))
     .join('');
   // A 6×4 stretch of each floor, variants picked at random, to judge whether the grid shows.
@@ -399,7 +405,7 @@ function caveShellSheet(): string {
       return `<image href="${uri(svg)}" width="${FC.w}" height="${FC.h}" x="${gx * TILE + TILE / 2 - FC.anchor.x}" y="${gy * TILE + TILE / 2 - FC.anchor.y}"/>`;
     }).join('')).join('');
     const [w, h] = [TILE * cols, TILE * rows];
-    return `<figure><svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="${kind} floor, laid out"><rect width="${w}" height="${h}" fill="${floorBase('caves', kind)}"/>${cells}</svg><figcaption>${kind}, laid out</figcaption></figure>`;
+    return `<figure><svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="${kind} floor, laid out">${groundUnder(kind, cols, rows, 0, 0)}${cells}</svg><figcaption>${kind}, laid out</figcaption></figure>`;
   };
   return walls.join('') +
     `<section class="strip"><h3>Mine-prop doorways <span>timber props and lintel; locked ones barred by a rusted iron grate</span></h3><div class="frames">${doors}</div></section>` +

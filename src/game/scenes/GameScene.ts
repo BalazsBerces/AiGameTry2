@@ -90,8 +90,8 @@ import { shakeScreen } from '../effects/shellBurst';
 import { ScrapLayer } from '../art/scrapLayer';
 import { passiveArtKey } from '../art/passiveArt';
 import { PAPER } from '../../core/art/palette';
-import { DECOR_CANVAS, JOIN_LOOKS, TILE_CANVAS, WALL_STYLES, floorBase, floorCanvas, wallCanvas, type Shell, type WallSide } from '../../core/art/terrain';
-import { SHOT_ART, TILE_VARIANTS, decorKey, doorKey, floorKey, floorLook, joinKey, pickupKey, shotKey, tileKey, wallKey, type FloorKind } from '../../core/art/catalogue';
+import { DECOR_CANVAS, JOIN_LOOKS, TILE_CANVAS, WALL_STYLES, floorCanvas, hasGround, wallCanvas, type Shell, type WallSide } from '../../core/art/terrain';
+import { SHOT_ART, TILE_VARIANTS, decorKey, doorKey, floorKey, floorLook, groundKey, joinKey, pickupKey, shotKey, tileKey, wallKey, type FloorKind } from '../../core/art/catalogue';
 import { PICKUP_CANVAS, SHOT_CANVAS, type PickupArt } from '../../core/art/hud';
 import { ART_SCALE } from '../art/bake';
 import { joinsBetween, neighbourMask } from '../../core/art/autotile';
@@ -2014,26 +2014,29 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  /** A corridor tile's paper floor, on its own ground where the floor's pieces have none. */
+  /** A corridor tile's paper floor, on its own paper ground where the floor's pieces have none. */
   private corridorFloor(shell: Shell, c: { x: number; y: number }, look: number) {
-    const base = floorBase(shell, 'normal');
-    if (base !== undefined) this.add.rectangle(c.x, c.y, TUNING.tile, TUNING.tile, hex(base));
+    if (hasGround(shell)) this.paper.piece(groundKey(shell, 'normal'), c.x, c.y, TILE_CANVAS);
     return this.paper.piece(floorKey(shell, 'normal', look), c.x, c.y, floorCanvas(shell));
   }
 
   /**
    * The floor in paper: a sheet per tile (the item and boss rooms' own), decor as paper cutouts. A
-   * floor whose pieces are only marks (the caves') gets its ground painted under them in one sheet.
+   * floor whose pieces are only marks (the caves') first gets a sheet of paper ground on every tile,
+   * so the marks spilling from one tile to the next all lie on top of it.
    */
   private drawPaperFloor(room: WorldRoom) {
     const kind = FLOOR_KIND[room.floorRoom.kind];
     const shell = themeForFloor(room.floorIndex).shell ?? 'forest';
     const variants = room.layout.variants;
-    const base = floorBase(shell, kind);
-    if (base !== undefined) {
-      const t = TUNING.tile;
-      const c = tileCenter(room, 0, 0);
-      this.add.rectangle(c.x - t / 2, c.y - t / 2, room.layout.width * t, room.layout.height * t, hex(base)).setOrigin(0);
+    if (hasGround(shell)) {
+      room.layout.tiles.forEach((row, ty) =>
+        row.forEach((tile, tx) => {
+          if (tile === 'wall') return;
+          const c = tileCenter(room, tx, ty);
+          this.paper.piece(groundKey(shell, kind), c.x, c.y, TILE_CANVAS);
+        }),
+      );
     }
     room.layout.tiles.forEach((row, ty) =>
       row.forEach((tile, tx) => {

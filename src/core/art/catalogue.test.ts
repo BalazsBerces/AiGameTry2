@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { artCatalogue, doorKey, floorKey, floorLook, wallKey, type DoorSide, type FloorKind } from './catalogue';
+import { artCatalogue, doorKey, floorKey, floorLook, groundKey, wallKey, type DoorSide, type FloorKind } from './catalogue';
 import { CAVE_FLOOR_LOOKS, WALL_STYLES, type WallSide } from './terrain';
 
 const SIDES: WallSide[] = ['top', 'bottom', 'left', 'right', 'corner'];
@@ -53,6 +53,11 @@ describe('the art catalogue', () => {
     it('holds walls in both styles for every side and variant, doors for every side open and locked, floors for every kind and look', () => {
       for (const key of [...walls, ...doors, ...floors]) expect(byKey.has(key), key).toBe(true);
       expect(new Set([...walls, ...doors, ...floors]).size).toBe(2 * 5 * 4 + 4 * 2 + 3 * CAVE_FLOOR_LOOKS);
+    });
+
+    it('lays its floor marks over a paper ground of their own, one per room kind', () => {
+      for (const kind of FLOORS) expect(byKey.has(groundKey('caves', kind)), kind).toBe(true);
+      expect(byKey.has(groundKey('forest', 'normal'))).toBe(false);
     });
 
     it('picks each floor tile a look by its variant and where it lies, the same every time', () => {

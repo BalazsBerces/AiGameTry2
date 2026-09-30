@@ -7,13 +7,18 @@ describe('draw order by foot', () => {
     expect(footDepth(301, 5)).toBeGreaterThan(footDepth(300, 9));
   });
 
+  it('sorts by foot the same way in rooms above the map origin (negative y)', () => {
+    expect(footDepth(-300, 0)).toBeGreaterThan(footDepth(-300.5, 999_999));
+    expect(footDepth(0, 0)).toBeGreaterThan(footDepth(-1, 999_999));
+  });
+
   it('breaks a tie on the same foot line the same way every time, by serial', () => {
     expect(footDepth(300, 2)).toBeGreaterThan(footDepth(300, 1));
     expect(footDepth(300, 2)).toBe(footDepth(300, 2));
   });
 
   it('keeps everything standing inside its band, however far down the map', () => {
-    for (const y of [0, 432, 8640, 40000]) {
+    for (const y of [-40000, -432, 0, 432, 8640, 40000]) {
       for (const serial of [0, 999_999]) {
         const d = footDepth(y, serial);
         expect(d).toBeGreaterThanOrEqual(STANDING.from);

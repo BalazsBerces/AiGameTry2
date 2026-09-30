@@ -90,8 +90,8 @@ import { shakeScreen } from '../effects/shellBurst';
 import { ScrapLayer } from '../art/scrapLayer';
 import { passiveArtKey } from '../art/passiveArt';
 import { PAPER } from '../../core/art/palette';
-import { DECOR_CANVAS, JOIN_LOOKS, TILE_CANVAS, WALL_STYLES, wallCanvas, type Shell, type WallSide } from '../../core/art/terrain';
-import { SHOT_ART, TILE_VARIANTS, decorKey, doorKey, floorKey, joinKey, pickupKey, shotKey, tileKey, wallKey, type FloorKind } from '../../core/art/catalogue';
+import { DECOR_CANVAS, JOIN_LOOKS, TILE_CANVAS, WALL_STYLES, floorBase, floorCanvas, wallCanvas, type Shell, type WallSide } from '../../core/art/terrain';
+import { SHOT_ART, TILE_VARIANTS, decorKey, doorKey, floorKey, floorLook, joinKey, pickupKey, shotKey, tileKey, wallKey, type FloorKind } from '../../core/art/catalogue';
 import { PICKUP_CANVAS, SHOT_CANVAS, type PickupArt } from '../../core/art/hud';
 import { ART_SCALE } from '../art/bake';
 import { joinsBetween, neighbourMask } from '../../core/art/autotile';
@@ -622,7 +622,7 @@ export class GameScene extends Phaser.Scene {
     const spawned = request.spawns.map((s) => `${s.count}x ${s.tier ? `${s.tier} ` : ''}${s.type}`).join(', ');
     const onOff = (on: boolean) => (on ? 'ON' : 'off');
     this.arena.help.setText(
-      `${spawned}${request.champion ? ' (champion)' : ''}   R respawn · G god ${onOff(god)} · F freeze ${onOff(frozen)}`,
+      `${spawned}${request.champion ? ' (champion)' : ''}   R respawn Â· G god ${onOff(god)} Â· F freeze ${onOff(frozen)}`,
     );
   }
 
@@ -1321,7 +1321,7 @@ export class GameScene extends Phaser.Scene {
     };
   }
 
-  /** World position → fractional interior tile coordinates (2.5 = centre of tile 2). */
+  /** World position â†’ fractional interior tile coordinates (2.5 = centre of tile 2). */
   private toTileUnits(room: WorldRoom, p: { x: number; y: number }) {
     const origin = tileCenter(room, 0, 0);
     return { x: (p.x - origin.x) / TUNING.tile + 0.5, y: (p.y - origin.y) / TUNING.tile + 0.5 };
@@ -1712,8 +1712,8 @@ export class GameScene extends Phaser.Scene {
       continue;
     }
 
-    // Ha nincs saját kép, ide esik vissza:
-    // ez a régi, alap paper art rendszer
+    // Ha nincs sajĂˇt kĂ©p, ide esik vissza:
+    // ez a rĂ©gi, alap paper art rendszer
     const look = PICKUP_ART_OF[p.type](p);
 
     const art = this.paper.piece(
@@ -1953,7 +1953,7 @@ export class GameScene extends Phaser.Scene {
           const art = theme.paper
             ? door
               ? this.paper.piece(doorKey(shell, door.side, false), c.x, c.y, TILE_CANVAS, doorFoot(shell, door.side, c.y))
-              : this.paper.piece(floorKey(shell, 'normal', variantAt(tx, ty)), c.x, c.y, TILE_CANVAS)
+              : this.corridorFloor(shell, c, floorLook(shell, variantAt(tx, ty), tx, ty))
             : undefined;
           if (!art) this.add.rectangle(c.x, c.y, t, t, palette.door);
           continue;
@@ -2014,23 +2014,41 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  /** The floor in paper: a moss sheet per tile (the item and boss rooms' own), decor as paper cutouts. */
+  /** A corridor tile's paper floor, on its own ground where the floor's pieces have none. */
+  private corridorFloor(shell: Shell, c: { x: number; y: number }, look: number) {
+    const base = floorBase(shell, 'normal');
+    if (base !== undefined) this.add.rectangle(c.x, c.y, TUNING.tile, TUNING.tile, hex(base));
+    return this.paper.piece(floorKey(shell, 'normal', look), c.x, c.y, floorCanvas(shell));
+  }
+
+  /**
+   * The floor in paper: a sheet per tile (the item and boss rooms' own), decor as paper cutouts. A
+   * floor whose pieces are only marks (the caves') gets its ground painted under them in one sheet.
+   */
   private drawPaperFloor(room: WorldRoom) {
     const kind = FLOOR_KIND[room.floorRoom.kind];
     const shell = themeForFloor(room.floorIndex).shell ?? 'forest';
     const variants = room.layout.variants;
+    const base = floorBase(shell, kind);
+    if (base !== undefined) {
+      const t = TUNING.tile;
+      const c = tileCenter(room, 0, 0);
+      this.add.rectangle(c.x - t / 2, c.y - t / 2, room.layout.width * t, room.layout.height * t, hex(base)).setOrigin(0);
+    }
     room.layout.tiles.forEach((row, ty) =>
       row.forEach((tile, tx) => {
         if (tile === 'wall') return;
         const c = tileCenter(room, tx, ty);
-        this.paper.piece(floorKey(shell, kind,variants?.[ty]?.[tx] ?? 0), c.x, c.y, TILE_CANVAS);
+        this.paper.piece(floorKey(shell, kind, floorLook(shell, variants?.[ty]?.[tx] ?? 0, tx, ty)), c.x, c.y, floorCanvas(shell));
       }),
     );
+    // Decor is nudged off its tile's centre by its cell, so a scatter of it doesn't sit on the grid;
+    // further on floors whose ground shows no grid at all.
+    const nudge = shell === 'caves' ? 9 : 5;
     for (const d of room.layout.decor ?? []) {
       const c = tileCenter(room, d.cell.x, d.cell.y);
-      // Nudged off the tile's centre by its cell, so a scatter of them doesn't sit on the grid.
-      const x = c.x + (((d.cell.x * 7 + d.cell.y * 3) % 5) - 2) * 5;
-      const y = c.y + (((d.cell.x * 3 + d.cell.y * 5) % 5) - 2) * 5;
+      const x = c.x + (((d.cell.x * 7 + d.cell.y * 3) % 5) - 2) * nudge;
+      const y = c.y + (((d.cell.x * 3 + d.cell.y * 5) % 5) - 2) * nudge;
       this.paper.piece(decorKey(d.kind, d.cell.x + d.cell.y), x, y, DECOR_CANVAS);
     }
   }

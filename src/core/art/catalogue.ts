@@ -1,5 +1,5 @@
 import { CHARACTERS, type Action, type View } from './characters';
-import { DECOR_CANVAS, DECOR_KINDS, JOIN_LOOKS, MASKED_LOOKS, TILE_CANVAS, TILE_LOOKS, WALL_STYLES, terrainSvg, wallCanvas, type Shell, type WallSide, type WallStyle } from './terrain';
+import { DECOR_CANVAS, DECOR_KINDS, JOIN_LOOKS, MASKED_LOOKS, TILE_CANVAS, TILE_LOOKS, WALL_STYLES, floorCanvas, floorLooks, terrainSvg, wallCanvas, type Shell, type WallSide, type WallStyle } from './terrain';
 import type { Mask } from './autotile';
 import { HEART_CANVAS, ICON_CANVAS, PICKUP_ART, PICKUP_CANVAS, SHOT_CANVAS, hudSvg, pickupSvg, type PickupArt } from './hud';
 
@@ -50,7 +50,19 @@ export type DoorSide = 'up' | 'down' | 'left' | 'right';
 const DOOR_ART_SIDE = { up: 'top', down: 'bottom', left: 'left', right: 'right' } as const;
 export const doorKey = (shell: Shell, side: DoorSide, locked: boolean) => `d:${shell}:${side}:${locked ? 'locked' : 'open'}`;
 export type FloorKind = 'normal' | 'item' | 'boss';
-export const floorKey = (shell: Shell, kind: FloorKind, variant: number) => `f:${shell}:${kind}:${variant % TILE_VARIANTS}`;
+export const floorKey = (shell: Shell, kind: FloorKind, look: number) => `f:${shell}:${kind}:${look % floorLooks(shell)}`;
+/**
+ * The look of the floor piece at tile x,y. The forest's is just the tile's variant; a floor with
+ * more looks than variants (the caves') mixes in where the tile is, so no look falls into a pattern.
+ */
+export function floorLook(shell: Shell, variant: number, x: number, y: number): number {
+  if (floorLooks(shell) === TILE_VARIANTS) return variant;
+  // An integer hash of where the tile lies: neighbours land on unrelated looks, with no rows or diagonals.
+  let h = Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(variant, 1274126177);
+  h = Math.imul(h ^ (h >>> 13), 1103515245);
+  h ^= h >>> 16;
+  return (h >>> 0) % floorLooks(shell);
+}
 const SHELLS = Object.keys(WALL_STYLES) as Shell[];
 export const decorKey = (kind: string, variant: number) => `k:${kind}:${variant % TILE_VARIANTS}`;
 
@@ -71,7 +83,7 @@ function terrainEntries(): ArtEntry[] {
         ),
       ),
       ...(['up', 'down', 'left', 'right'] as const).flatMap((side) => [false, true].map((l) => tileEntry(doorKey(shell, side, l), () => terrainSvg.door(DOOR_ART_SIDE[side], l, shell)))),
-      ...(['normal', 'item', 'boss'] as const).flatMap((kind) => variants.map((v) => tileEntry(floorKey(shell, kind, v), () => terrainSvg.floor(kind, v, shell)))),
+      ...(['normal', 'item', 'boss'] as const).flatMap((kind) => Array.from({ length: floorLooks(shell) }, (_, v) => v).map((v) => ({ key: floorKey(shell, kind, v), w: floorCanvas(shell).w, h: floorCanvas(shell).h, svg: () => terrainSvg.floor(kind, v, shell) }))),
     ]),
     ...DECOR_KINDS.flatMap((kind) =>
       variants.map((v) => ({ key: decorKey(kind, v), w: DECOR_CANVAS.w, h: DECOR_CANVAS.h, svg: () => terrainSvg.decor(kind, v) })),

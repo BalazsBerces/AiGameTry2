@@ -186,6 +186,12 @@ export const WALL_STYLES = { forest: ['hedge'], caves: ['strata', 'veined'] } as
 export type WallStyle = (typeof WALL_STYLES)[Shell][number];
 /** The canvas a wall style's pieces are drawn on (cave rock spills far past its tile). */
 export const wallCanvas = (style: WallStyle) => (style === 'hedge' ? TILE_CANVAS : CAVE_WALL_CANVAS);
+/** The canvas a floor's pieces are drawn on (cave floor marks spill far past their tile). */
+export const floorCanvas = (shell: Shell) => (shell === 'caves' ? CAVE_FLOOR_CANVAS : TILE_CANVAS);
+/** How many looks a floor's pieces come in. */
+export const floorLooks = (shell: Shell) => (shell === 'caves' ? CAVE_FLOOR_LOOKS : 4);
+/** The ground painted under a floor's pieces in one sheet, if its pieces have none of their own. */
+export const floorBase = (shell: Shell, kind: 'normal' | 'item' | 'boss'): string | undefined => (shell === 'caves' ? CAVE_FLOOR_BASE[kind] : undefined);
 
 /**
  * A hedge wall tile. Every side is a clump of dark foliage from above; the top wall also shows
@@ -342,7 +348,7 @@ function rockWall(side: WallSide, variant: number, veined: boolean) {
   const into = INTO[side];
   // A side wall is drawn over the one above it and under the one below, so it must not reach up
   // into the tile above (a doorway may be there); it spills down, out and a little into the room.
-  const noHigher = side === 'left' || side === 'right' || side === 'corner' ? WY - H - 3 : -Infinity;
+  const noHigher = side === 'left' || side === 'right' ? WY - H - 3 : -Infinity;
   const clampUp = (p: Pt) => ({ x: p.x, y: Math.max(p.y, noHigher) });
   const top = side === 'top';
   const parts: { y: number; svg: string }[] = [];
@@ -361,7 +367,8 @@ function rockWall(side: WallSide, variant: number, veined: boolean) {
     const tops = [lip, WY + 2, WY + 8, WY + 13, WY + 18];
     const tones = [C.strataDark, C.strataLight, C.strata, C.ochre, C.strataLight];
     const bands = tops.map((y, i) => {
-      const edge = across(11).map((x) => ({ x, y: y + wander(x, i ? 5 : 3) }));
+      // The lip rises and dips the most, so the cliff's top edge never runs straight.
+      const edge = across(11).map((x) => ({ x, y: y + wander(x, i === 0 ? 10 : i === 1 ? 7 : 5) }));
       const under = i + 1 < tops.length ? [{ x: x1, y: tops[i + 1] + 3 }, { x: x0, y: tops[i + 1] + 3 }] : foot;
       return sheet(fill(polyPath([...edge, ...under]), tones[i]));
     });
@@ -396,7 +403,8 @@ function rockWall(side: WallSide, variant: number, veined: boolean) {
 
   // The bed: a dark heap of rock spilling well past the tile, shifted away from the room.
   const bedC = top ? { x: WX, y: WY - 22 } : { x: WX - into.x * 5, y: WY - into.y * 5 };
-  const bedR = top ? { x: 48, y: 22 } : { x: 40 - Math.abs(into.x) * 6, y: 38 - Math.abs(into.y) * 6 };
+  // A corner's heap is the biggest: it spills into the room's corner and rounds it off.
+  const bedR = top ? { x: 48, y: 22 } : side === 'corner' ? { x: 52, y: 50 } : { x: 40 - Math.abs(into.x) * 6, y: 38 - Math.abs(into.y) * 6 };
   const bedPts = jagged(r, bedC.x, bedC.y, bedR.x, bedR.y, 18, 0.2).map(clampUp).map((p) => (top ? { x: p.x, y: Math.min(p.y, WY - 4) } : p));
   const bed = sheet(fill(polyPath(bedPts), C.rockDeep));
 
@@ -426,8 +434,29 @@ function rockWall(side: WallSide, variant: number, veined: boolean) {
       const y = Math.max(WY + into.y * out + into.x * along, noHigher + 6);
       parts.push({ y, svg: crag(r, x, y, 3 + r.next() * 4, r.next() < 0.3 ? OCHRE_ROCK : ROCK) });
     }
+    // Outcrops: big crags bulging out into the room, so its edge is never a straight line.
+    for (let i = 0, outcrops = Math.floor(r.next() * 3); i < outcrops; i++) {
+      const rad = 9 + r.next() * 5;
+      const along = (r.next() - 0.5) * 40;
+      const out = 15 + r.next() * 7;
+      const x = WX + into.x * out + into.y * along;
+      const y = Math.max(WY + into.y * out + into.x * along, noHigher + rad * 1.1);
+      parts.push({ y, svg: crag(r, x, y, rad, r.next() < 0.25 ? OCHRE_ROCK : ROCK) });
+    }
   }
   parts.sort((a, b) => a.y - b.y);
+
+  // A soft shadow where the rock meets the floor, fading the wall's foot into the room.
+  let foot = '';
+  if (side !== 'corner') {
+    foot = [-26, 0, 26].map((a) => {
+      const along = a + (r.next() - 0.5) * 16;
+      const out = (top ? H + 3 : 24) + r.next() * 4;
+      const p = { x: WX + into.x * out + into.y * along, y: Math.max(WY + into.y * out + into.x * along, noHigher + 12) };
+      const [rx, ry] = into.x ? [9 + r.next() * 4, 20 + r.next() * 8] : [20 + r.next() * 8, 7 + r.next() * 3];
+      return fill(blob(r, p.x, p.y, rx, ry, 10, 0.25), P.shadow, 'opacity="0.28"');
+    }).join('');
+  }
 
   // Crystal: one seam running the length of the wall, through the bedrock under the loose crags
   // (on the top wall, along a layer of its face). It crosses every tile edge at the same point, so
@@ -455,8 +484,8 @@ function rockWall(side: WallSide, variant: number, veined: boolean) {
     }
   }
   return top
-    ? face + seamSvg + clusters + (drips ? sheet(drips, 2) : '') + bed + parts.map((p) => p.svg).join('')
-    : bed + seamSvg + parts.map((p) => p.svg).join('') + clusters;
+    ? foot + face + seamSvg + clusters + (drips ? sheet(drips, 2) : '') + bed + parts.map((p) => p.svg).join('')
+    : foot + bed + seamSvg + parts.map((p) => p.svg).join('') + clusters;
 }
 
 /** Where each wall's crystal seam runs: along the wall, set back from the room (on the top wall, along its face). */
@@ -542,69 +571,104 @@ function mineDoor(side: 'top' | 'bottom' | 'left' | 'right', locked: boolean) {
 }
 
 /**
- * The cave floor, kept inside its tile so any mix of variants tiles seamlessly, and quiet enough
- * that the grid never shows: packed earth with the odd sunk slab or hairline crack; the item
- * room's a worn flagstone patch, an old shrine; the boss room's darker earth, now and then
- * broken by a burrow.
+ * A cave floor piece's canvas: three tiles across. The piece has no ground of its own (the room's
+ * earth is painted under it in one sheet), only see-through marks that spill freely over its
+ * neighbours and blend where they overlap, so the floor never shows a tile edge.
  */
-function caveFloor(variant: number, kind: 'normal' | 'item' | 'boss') {
-  const r = (part: string) => pieceRng('caveFloor', kind, variant, part);
-  const x0 = AX - H;
-  const y0 = AY - H;
-  const base = kind === 'boss' ? C.bossEarth : C.earth;
-  const patches = [0, 1].map((i) => {
-    const pr = r(`p${i}`);
-    // Broad and faint, so no tile's patch stands out as a spot repeated across the room.
-    return fill(blob(pr, x0 + 14 + pr.next() * 20, y0 + 14 + pr.next() * 20, 11 + pr.next() * 4, 9 + pr.next() * 4, 9, 0.25), i ? C.earthDark : C.earthPatch, 'opacity="0.35"');
-  });
-  const crack = (cr: ReturnType<typeof pieceRng>) => {
-    const sx = x0 + 8 + cr.next() * 18;
-    const sy = y0 + 10 + cr.next() * 26;
-    return `<path d="M${n(sx)} ${n(sy)}l${n(5 + cr.next() * 4)} ${n(cr.next() * 4 - 2)}l${n(4 + cr.next() * 3)} ${n(3 + cr.next() * 3)}m-4 -2l2 -5" stroke="${C.crack}" stroke-width="0.9" fill="none" opacity="0.75"/>`;
+export const CAVE_FLOOR_CANVAS = { w: 144, h: 144, anchor: { x: 72, y: 72 } };
+const { x: FX, y: FY } = CAVE_FLOOR_CANVAS.anchor;
+
+/** How many looks a cave floor comes in: far more than its tiles' variants, so no look is seen repeating. */
+export const CAVE_FLOOR_LOOKS = 12;
+
+/** The earth painted under a cave room's floor pieces, by room kind. */
+export const CAVE_FLOOR_BASE = { normal: C.earth, item: C.earth, boss: C.bossEarth } as const;
+
+/**
+ * The cave floor's marks: broad faint mottling in the earth, and one thing of note placed anywhere
+ * (reaching well past the tile): a sunk slab, a long hairline crack, a scatter of grit. The item
+ * room's floor is broken paving from some old shrine, stones lying at all angles; the boss room's
+ * earth is darker, raked by long gouges and holed by burrows.
+ */
+function caveFloor(look: number, kind: 'normal' | 'item' | 'boss') {
+  const r = pieceRng('caveFloor', kind, look);
+  const anywhere = (reach: number) => ({ x: FX + (r.next() - 0.5) * 2 * reach, y: FY + (r.next() - 0.5) * 2 * reach });
+  // Mottling: big soft stains, mostly past the tile, that pool with the neighbours' into one ground.
+  const stains = kind === 'boss' ? [C.earthDark, C.gouge, C.earthPatch, C.gouge] : [C.earthPatch, C.earthDark, C.slab, C.earthDark];
+  const mottle = stains.map((color, i) => {
+    const p = anywhere(26);
+    return fill(blob(r, p.x, p.y, 16 + r.next() * 20, 12 + r.next() * 14, 11, 0.3, r.next() * 3), color, `opacity="${n(0.12 + r.next() * (i === 2 ? 0.08 : 0.14))}"`);
+  }).join('');
+  const crack = (reach: number, len: number) => {
+    const p = anywhere(reach);
+    let a = r.next() * Math.PI * 2;
+    let d = `M${n(p.x)} ${n(p.y)}`;
+    const branch: string[] = [];
+    for (let s = 0, x = p.x, y = p.y; s < len; s += 6) {
+      a += (r.next() - 0.5) * 0.9;
+      x += Math.cos(a) * 6;
+      y += Math.sin(a) * 6;
+      d += `L${n(x)} ${n(y)}`;
+      if (r.next() < 0.15) branch.push(`M${n(x)} ${n(y)}l${n(Math.cos(a + 1.1) * 5)} ${n(Math.sin(a + 1.1) * 5)}`);
+    }
+    return `<path d="${d}${branch.join('')}" stroke="${C.crack}" stroke-width="0.9" fill="none" opacity="0.7" stroke-linejoin="round"/>`;
   };
+  const grit = (count: number, near = anywhere(30), spread = 30) =>
+    Array.from({ length: count }, () => {
+      const p = { x: near.x + (r.next() - 0.5) * spread, y: near.y + (r.next() - 0.5) * spread * 0.7 };
+      return fill(cutPoly(r, ring(p.x, p.y, 1 + r.next() * 1.8, 0.8 + r.next() * 1.2, 5, r.next() * 3), 0.4), r.next() < 0.5 ? C.gougeRim : C.slab);
+    }).join('');
+  const stone = (p: Pt, rx: number, ry: number, color: string) =>
+    fill(cutPoly(r, ring(p.x, p.y, rx, ry, 5 + Math.floor(r.next() * 3), r.next() * 3), 1.4), color) +
+    `<path d="M${n(p.x - rx * 0.6)} ${n(p.y - ry * 0.55)}l${n(rx * 0.9)} ${n(-ry * 0.25)}" stroke="${C.slabLight}" stroke-width="1" opacity="0.5"/>`;
+
+  // Most looks are quiet ground; anything that catches the eye is rare, so no mark is seen repeating.
   let marks = '';
   if (kind === 'normal') {
-    // A flat stone slab sunk in the earth on half the tiles, cut to a different shape each time.
-    const sr = r('slab');
-    const [sx, sy] = [x0 + 15 + sr.next() * 18, y0 + 15 + sr.next() * 18];
-    const [rx, ry] = [6 + sr.next() * 5, 4 + sr.next() * 3];
-    const slab = variant === 0
-      ? fill(cutPoly(sr, ring(sx, sy, rx, ry, 5 + (variant % 3), sr.next() * 3), 1.4), C.slab, 'opacity="0.85"') +
-        `<path d="M${n(sx - rx * 0.6)} ${n(sy - ry * 0.55)}l${n(rx * 0.9)} ${n(-ry * 0.25)}" stroke="${C.slabLight}" stroke-width="1" opacity="0.6"/>`
-      : '';
-    marks = slab + (variant === 2 ? crack(r('crack0')) : '');
+    const slab = () => stone(anywhere(30), 6 + r.next() * 6, 4 + r.next() * 4, C.slab);
+    marks = [
+      () => '', () => grit(2), () => '', () => grit(3),
+      slab, () => slab() + crack(20, 12),
+      () => crack(24, 40 + r.next() * 30), () => crack(30, 24),
+      () => grit(5 + Math.floor(r.next() * 5)), () => grit(3) + crack(26, 14),
+      () => '', () => crack(30, 18) + grit(2),
+    ][look % CAVE_FLOOR_LOOKS]();
   } else if (kind === 'item') {
-    // Four worn flagstones with earth between them, their edges rounded off by feet.
-    marks = [0, 1].flatMap((i) => [0, 1].map((j) => {
-      const fr = r(`flag${i}${j}`);
-      const [fx, fy] = [x0 + 3 + i * 22, y0 + 3 + j * 22];
-      return fill(cutPoly(fr, [{ x: fx, y: fy }, { x: fx + 19, y: fy }, { x: fx + 19, y: fy + 19 }, { x: fx, y: fy + 19 }], 1.3), (i + j + variant) % 2 ? C.flagstone : C.flagstoneLight) +
-        (fr.next() < 0.5 ? `<path d="M${n(fx + 2 + fr.next() * 6)} ${n(fy + 3 + fr.next() * 6)}l${n(4 + fr.next() * 4)} ${n(3 + fr.next() * 3)}l${n(fr.next() * 3)} ${n(4 + fr.next() * 3)}" stroke="${C.crack}" stroke-width="0.9" fill="none" opacity="0.6"/>` : '');
-    })).join('');
+    // Broken paving from some old shrine: worn stones at all angles, many gone, a crack or two through them.
+    const count = [0, 1, 2, 1, 0, 3, 1, 2, 0, 1, 2, 1][look % CAVE_FLOOR_LOOKS];
+    const stones = Array.from({ length: count }, () => {
+      const p = anywhere(32);
+      return stone(p, 6 + r.next() * 8, 5 + r.next() * 6, r.next() < 0.5 ? C.flagstone : C.flagstoneLight);
+    }).join('');
+    marks = (stones ? sheet(stones) : '') + (r.next() < 0.4 ? crack(28, 16 + r.next() * 20) : '');
   } else {
-    // The worm's room: each piece something different, placed anywhere, so the floor never repeats.
-    const gr = r('boss');
-    const spot = (margin: number) => ({ x: x0 + margin + gr.next() * (TILE - margin * 2), y: y0 + margin + gr.next() * (TILE - margin * 2) });
-    const crumbs = (count: number, near?: { x: number; y: number }, spread = 20) =>
-      Array.from({ length: count }, () => {
-        const p = near ? { x: near.x + (gr.next() - 0.5) * spread, y: near.y + (gr.next() - 0.5) * spread * 0.7 } : spot(4);
-        return fill(cutPoly(gr, ring(p.x, p.y, 1.2 + gr.next() * 1.8, 1 + gr.next() * 1.2, 5, gr.next() * 3), 0.4), gr.next() < 0.5 ? C.gougeRim : C.slab);
-      }).join('');
-    // Mostly quiet earth, so the floor never shows its grid; one look in four has a burrow in it.
-    // Bones and shards lie on it as decor, scattered off the grid.
-    if (variant === 3) {
-      // A burrow: a dark hole with the earth it threw up heaped round it.
-      const p = spot(16);
-      const rad = 5 + gr.next() * 3;
-      marks = fill(blob(gr, p.x, p.y + 1, rad + 4, (rad + 4) * 0.75, 10, 0.2), C.gougeRim, 'opacity="0.7"') +
-        fill(blob(gr, p.x, p.y, rad, rad * 0.7, 9, 0.18), C.gouge) +
-        fill(blob(gr, p.x + 1, p.y + 1.5, rad * 0.6, rad * 0.4, 7, 0.2), '#000', 'opacity="0.6"') +
-        sheet(crumbs(3 + Math.floor(gr.next() * 3), p, rad * 3));
-    } else {
-      marks = (variant === 1 ? crack(r('crack0')) : '') + (variant === 2 ? crumbs(1 + Math.floor(gr.next() * 2)) : '');
-    }
+    const gouge = () => {
+      // A long gouge raked through the earth by something huge, curving as it went.
+      const p = anywhere(20);
+      const a = r.next() * Math.PI;
+      const len = 26 + r.next() * 30;
+      const [dx, dy] = [Math.cos(a) * len, Math.sin(a) * len];
+      const bend = { x: p.x + (r.next() - 0.5) * 50, y: p.y + (r.next() - 0.5) * 50 };
+      const d = `M${n(p.x - dx)} ${n(p.y - dy)}Q${n(bend.x)} ${n(bend.y)} ${n(p.x + dx)} ${n(p.y + dy)}`;
+      return `<path d="${d}" stroke="${C.gougeRim}" stroke-width="9" fill="none" stroke-linecap="round" opacity="0.25"/>` +
+        `<path d="${d}" stroke="${C.gouge}" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.45"/>`;
+    };
+    const burrow = () => {
+      const p = anywhere(20);
+      const rad = 5 + r.next() * 4;
+      return fill(blob(r, p.x, p.y + 1, rad + 5, (rad + 5) * 0.75, 10, 0.25), C.gougeRim, 'opacity="0.6"') +
+        fill(blob(r, p.x, p.y, rad, rad * 0.7, 9, 0.18), C.gouge) +
+        fill(blob(r, p.x + 1, p.y + 1.5, rad * 0.6, rad * 0.4, 7, 0.2), '#000', 'opacity="0.6"') +
+        sheet(grit(3 + Math.floor(r.next() * 3), p, rad * 3));
+    };
+    marks = [
+      () => '', () => grit(2), () => '', () => grit(3), () => '', () => crack(26, 30),
+      gouge, () => gouge() + grit(2),
+      burrow, () => grit(4),
+      () => crack(20, 16) + grit(2), () => '',
+    ][look % CAVE_FLOOR_LOOKS]();
   }
-  return `<rect x="${x0 - 1}" y="${y0 - 1}" width="${TILE + 2}" height="${TILE + 2}" fill="${base}"/>` + patches.join('') + marks;
+  return mottle + marks;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -700,6 +764,8 @@ export const terrainSvg = {
   door: (side: 'top' | 'bottom' | 'left' | 'right', locked: boolean, shell: Shell = 'forest') =>
     tileDoc(shell === 'caves' ? mineDoor(side, locked) : doorway(side, locked), 29),
   floor: (kind: 'normal' | 'item' | 'boss', variant: number, shell: Shell = 'forest') =>
-    tileDoc(shell === 'caves' ? caveFloor(variant, kind) : floorTile(variant, kind), 31 + variant),
+    shell === 'caves'
+      ? svgDoc(CAVE_FLOOR_CANVAS.w, CAVE_FLOOR_CANVAS.h, caveFloor(variant, kind), 31 + variant)
+      : tileDoc(floorTile(variant, kind), 31 + variant),
   decor: (kind: string, variant: number) => svgDoc(DECOR_CANVAS.w, DECOR_CANVAS.h, (DECOR_ART[kind] ?? DECOR_ART.pebbles)(variant), 37),
 };

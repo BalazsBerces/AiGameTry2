@@ -195,26 +195,28 @@ function drawHud(sheet: Sheet, w: number): string {
   const icons =
     `<use href="#${sheet.id(hudSvg.key(), ICON_CANVAS, ICON_CANVAS)}" x="10" y="38"/>` + text(38, 57, '× 1') +
     `<use href="#${sheet.id(hudSvg.bomb(), ICON_CANVAS, ICON_CANVAS)}" x="72" y="38"/>` + text(100, 57, '× 2');
-  const mw = 164;
-  const mh = 96;
-  const mx = w - mw - 6;
+  const mw = 150;
+  const mh = 84;
+  const mx = w - mw - 10;
+  // The minimap as in the game: nothing behind it, bone rooms outlined in dark ink.
+  const ink = '#14100c';
+  const bone = '#d8ccb0';
   const cells = [
-    { x: 0, y: 0, c: 'current' }, { x: -1, y: 0, c: 'visited' }, { x: 1, y: 0, c: 'visited' }, { x: 0, y: -1, c: 'unseen' },
-    { x: 2, y: 0, c: 'item' }, { x: -1, y: 1, c: 'unseen' }, { x: 0, y: 1, c: 'boss' },
+    { x: 0, y: 0, c: 'current' }, { x: -1, y: 0, c: 'visited' }, { x: 1, y: 0, c: 'visited' }, { x: 0, y: -1, c: 'glimpsed' },
+    { x: 2, y: 0, c: 'item' }, { x: -1, y: 1, c: 'glimpsed' }, { x: 0, y: 1, c: 'boss' },
   ]
     .map((m) => {
-      const x = mx + mw / 2 - 8 + m.x * 19;
-      const y = 6 + mh / 2 - 5 + m.y * 13;
-      const ink = PAPER.mapInk;
-      const shape = m.c === 'unseen'
-        ? `<rect x="${x}" y="${y}" width="16" height="10" fill="none" stroke="${ink}" stroke-width="1.2" stroke-dasharray="2 1.5"/>`
-        : `<rect x="${x}" y="${y}" width="16" height="10" fill="${m.c === 'current' ? ink : '#9a8a6a'}"/>`;
-      const dot = m.c === 'item' ? `<circle cx="${x + 8}" cy="${y + 5}" r="2.6" fill="#c89a2a"/>` : m.c === 'boss' ? `<circle cx="${x + 8}" cy="${y + 5}" r="2.6" fill="${PAPER.heart}"/>` : '';
+      const x = mx + mw / 2 - 8 + m.x * 18;
+      const y = 10 + mh / 2 - 5 + m.y * 12;
+      const shape = m.c === 'glimpsed'
+        ? `<rect x="${x + 0.5}" y="${y + 0.5}" width="15" height="9" fill="${ink}" fill-opacity="0.55" stroke="${bone}" stroke-width="1"/>`
+        : `<rect x="${x + 1}" y="${y + 1}" width="14" height="8" fill="${m.c === 'current' ? '#f6f0e2' : bone}" stroke="${ink}" stroke-width="2"/>`;
+      const symbol = m.c === 'item' ? PAPER.key : m.c === 'boss' ? PAPER.heart : undefined;
+      const dot = symbol ? `<circle cx="${x + 8}" cy="${y + 5}" r="4.5" fill="${symbol}" stroke="${ink}" stroke-width="1.5"/>` : '';
       return shape + dot;
     })
     .join('');
-  const scrap = `<use href="#${sheet.id(hudSvg.scrap(mw, mh), mw, mh)}" x="${mx}" y="6"/>`;
-  return hearts + icons + scrap + cells + text(w - 10, 120, 'FLOOR 1', 'end');
+  return hearts + icons + cells + text(w - 10, 120, 'FLOOR 1', 'end');
 }
 
 function roomSvg(sheet: Sheet, scene: Scene, lit: boolean, id: string, hud: boolean): string {

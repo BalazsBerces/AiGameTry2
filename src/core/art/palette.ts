@@ -108,8 +108,5 @@ export const PAPER = {
   bomb: '#2a2a33',
   bombLight: '#4a4a58',
   fuse: '#ff9a3c',
-  scrap: '#e8d9b8',
-  scrapShade: '#c8b690',
-  mapInk: '#5a4a3a',
   champion: '#f2b632',
 } as const;

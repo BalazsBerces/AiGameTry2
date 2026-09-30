@@ -48,15 +48,6 @@ function bomb() {
   );
 }
 
-/** The torn scrap of paper the minimap is drawn on: straight cut sides, ragged top and bottom. */
-function scrap(w: number, h: number) {
-  const r = pieceRng('scrap', w, h);
-  const top = Array.from({ length: 12 }, (_, i) => ({ x: 4 + (i / 11) * (w - 8), y: 4 + r.next() * 3 }));
-  const bottom = Array.from({ length: 12 }, (_, i) => ({ x: w - 4 - (i / 11) * (w - 8), y: h - 5 - r.next() * 3 }));
-  const d = `M${[...top, ...bottom].map((p) => `${n(p.x)} ${n(p.y)}`).join('L')}Z`;
-  return sheet(fill(d, P.scrap) + `<path d="${d}" fill="none" stroke="${P.scrapShade}" stroke-width="1"/>`, 2);
-}
-
 /** A glowing paper shot: the player's a pale blue four-point star, an enemy's an orange seed. */
 function shot(kind: 'player' | 'enemy', radius: number) {
   const s = SHOT_CANVAS / 2;
@@ -73,9 +64,6 @@ function shot(kind: 'player' | 'enemy', radius: number) {
 }
 
 export const SHOT_CANVAS = 28;
-/** The minimap's paper scrap: a little larger than the map window, which sits inside it. */
-export const SCRAP_SIZE = { w: 166, h: 100 };
-
 /** Pickups and status marks are drawn on this square canvas, centred on the pickup. */
 export const PICKUP_CANVAS = 48;
 const C = PICKUP_CANVAS / 2;
@@ -166,6 +154,5 @@ export const hudSvg = {
   heart: (level: 'full' | 'half' | 'empty') => svgDoc(HEART_CANVAS, HEART_CANVAS, heart(level), 41),
   key: () => svgDoc(ICON_CANVAS, ICON_CANVAS, key(), 43),
   bomb: () => svgDoc(ICON_CANVAS, ICON_CANVAS, bomb(), 47),
-  scrap: (w: number, h: number) => svgDoc(w, h, scrap(w, h), 53),
   shot: (kind: 'player' | 'enemy', radius: number) => svgDoc(SHOT_CANVAS, SHOT_CANVAS, shot(kind, radius), 59),
 };

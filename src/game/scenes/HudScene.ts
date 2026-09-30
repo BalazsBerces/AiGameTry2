@@ -48,7 +48,7 @@ export class HudScene extends Phaser.Scene {
     this.graphics = this.add.graphics();
     this.hearts = [];
     this.passiveIcons = new Map();
-    this.paper = !!bakedArt(HUD_KEYS.scrap);
+    this.paper = !!bakedArt(HUD_KEYS.heart('full'));
     const x = this.scale.width - MAP.w - MAP.margin;
     // No backing: only the rooms and their marks are drawn over the game.
     this.minimap = this.add.graphics();

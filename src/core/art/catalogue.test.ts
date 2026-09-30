@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { artCatalogue, doorKey, floorKey, floorLook, groundKey, wallKey, type DoorSide, type FloorKind } from './catalogue';
+import { artCatalogue, doorKey, floorKey, floorLook, groundKey, joinKey, tileKey, wallKey, type DoorSide, type FloorKind } from './catalogue';
 import { CAVE_FLOOR_LOOKS, WALL_STYLES, type WallSide } from './terrain';
+import { themeForFloor } from '../map/themes';
+import { roomThemesFor } from '../rooms/roomThemes';
 
 const SIDES: WallSide[] = ['top', 'bottom', 'left', 'right', 'corner'];
 const DOORS: DoorSide[] = ['up', 'down', 'left', 'right'];
@@ -14,7 +16,7 @@ const fnv = (text: string) => {
   return (h >>> 0).toString(16);
 };
 
-const byKey =new Map(artCatalogue().map((e) => [e.key, e]));
+const byKey = new Map(artCatalogue().map((e) => [e.key, e]));
 const svgOf = (key: string) => {
   const entry = byKey.get(key);
   if (!entry) throw new Error(`no art for ${key}`);
@@ -98,5 +100,49 @@ describe('the art catalogue', () => {
     it('comes out the same when built twice', () => {
       for (const key of [...walls, ...doors, ...floors]) expect(svgOf(key), key).toBe(svgOf(key));
     });
+  });
+
+  describe('the caves terrain', () => {
+    const MASKS = Array.from({ length: 16 }, (_, m) => m);
+    // Every look the caves draw a tile with: the floor's own and each sub-theme's overrides.
+    const caveArts = [
+      ...Object.values(themeForFloor(1).looks).map((look) => look.art!),
+      ...roomThemesFor(1).flatMap((theme) => Object.values(theme.looks ?? {}).map((look) => look.art!)),
+    ];
+    const fitted = ['chasm', 'rift'];
+    const tiles = caveArts.flatMap((art) => VARIANTS.flatMap((v) => (fitted.includes(art) ? MASKS : [0]).map((m) => tileKey(art, v, m))));
+    const joins = ['stalagmite', 'thorn vine'].flatMap((art) => (['across', 'down'] as const).map((d) => joinKey(art, d)));
+
+    it("names art for every look, sub-themes' included", () => {
+      expect([...caveArts].sort()).toEqual(
+        ['boulder', 'chasm', 'crystal cluster', 'crystal spire', 'giant mushroom', 'glowshroom', 'loose rock', 'mushroom cap', 'rift', 'stalagmite', 'thorn vine'],
+      );
+    });
+
+    it('holds every variant of each look, every neighbour mask of chasm and rift, and stalagmite and thorn-vine joins', () => {
+      for (const key of [...tiles, ...joins]) expect(byKey.has(key), key).toBe(true);
+      expect(new Set(tiles).size).toBe(9 * 4 + 2 * 4 * 16);
+    });
+
+    it('fits chasm and rift pieces to their neighbours: each mask a piece of its own', () => {
+      for (const art of fitted) expect(new Set(MASKS.map((m) => svgOf(tileKey(art, 0, m)))).size, art).toBe(16);
+      expect(svgOf(tileKey('rift', 0, 5))).not.toBe(svgOf(tileKey('chasm', 0, 5)));
+    });
+
+    it('comes out the same when built twice', () => {
+      for (const key of [...tiles, ...joins]) expect(svgOf(key), key).toBe(svgOf(key));
+    });
+  });
+
+  it('keeps the forest terrain, joins and decor exactly as they were drawn', () => {
+    const forest = ['tree', 'oak', 'willow', 'bush', 'reed clump', 'bramble bush', 'pond', 'bog', 'thorn bush', 'rolling log', 'mirror stone', 'puffball'];
+    const decor = ['grass', 'leaves', 'flowers', 'puddle', 'reeds', 'lilypad', 'thornLitter', 'berries', 'pebbles'];
+    const entries = artCatalogue().filter((e) => {
+      const [kind, name] = e.key.split(':');
+      return kind === 'k' ? decor.includes(name) : ['t', 'j'].includes(kind) && forest.includes(name);
+    });
+    expect(entries.length).toBe(212);
+    // The fingerprint of the forest's terrain tiles, joins and decor before the caves got theirs.
+    expect(fnv(entries.map((e) => e.key + e.svg()).join('\n'))).toBe('4a2d21a6');
   });
 });

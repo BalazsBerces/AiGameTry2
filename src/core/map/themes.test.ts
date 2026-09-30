@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { bossForFloor } from '../rooms/roomGenerator';
 import { createRng } from '../rng';
+import { roomLooks, roomThemesFor } from '../rooms/roomThemes';
+import { hasTileArt } from '../art/terrain';
 import { themeForFloor } from './themes';
 
 describe('floor themes', () => {
@@ -93,9 +95,18 @@ describe('floor themes', () => {
     for (const tile of ['obstacle', 'rock', 'crusher'] as const) expect(brown(caves.looks[tile].color), tile).toBe(true);
   });
 
-  it('keeps the caves crystals cyan and glowshrooms green against the brown', () => {
+  it('keeps the caves crystals cyan and glowshrooms violet against the brown', () => {
     expect(themeForFloor(1).looks.crystal.color).toBe(0x7fd4e0);
-    expect(themeForFloor(1).looks.glowshroom.color).toBe(0x6ae0a0);
+    const [r, g, b] = [16, 8, 0].map((s) => (themeForFloor(1).looks.glowshroom.color >> s) & 0xff);
+    expect(r > g && b > g, 'violet: red and blue over green').toBe(true);
+  });
+
+  it("draws every caves look, and every caves sub-theme's own, in paper art that exists", () => {
+    for (const [tile, look] of Object.entries(themeForFloor(1).looks)) expect(look.art && hasTileArt(look.art), tile).toBe(true);
+    for (const theme of roomThemesFor(1)) {
+      for (const [tile, look] of Object.entries(roomLooks(1, theme.id))) expect(look.art && hasTileArt(look.art), `${theme.id} ${tile}`).toBe(true);
+      for (const override of Object.values(theme.looks ?? {})) expect(override.art, `${theme.id} ${override.name}`).toBeDefined();
+    }
   });
 
   it("keeps the caves' brown boss floor apart from the forest's", () => {

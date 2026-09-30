@@ -2,7 +2,7 @@ import { CHARACTERS, type Action, type View } from '../core/art/characters';
 import { hudSvg, HEART_CANVAS, ICON_CANVAS, SHOT_CANVAS } from '../core/art/hud';
 import { PAPER } from '../core/art/palette';
 import { DOWN, LEFT, RIGHT, UP, type Mask } from '../core/art/autotile';
-import { CAVE_FLOOR_CANVAS, CAVE_WALL_CANVAS, DECOR_CANVAS, TILE, TILE_CANVAS, WALL_STYLES, floorCanvas, floorLooks, hasGround, terrainSvg, wallCanvas, type Shell, type WallSide, type WallStyle } from '../core/art/terrain';
+import { CAVE_FLOOR_CANVAS, CAVE_WALL_CANVAS, DECOR_CANVAS, JOIN_LOOKS, MASKED_LOOKS, TILE, TILE_CANVAS, WALL_STYLES, floorCanvas, floorLooks, hasGround, terrainSvg, wallCanvas, type Shell, type WallSide, type WallStyle } from '../core/art/terrain';
 import { createRng } from '../core/rng';
 import { floorLook } from '../core/art/catalogue';
 
@@ -60,6 +60,11 @@ const BOSS_MAP = [
 ];
 
 const LOOK: Record<string, string> = { T: 'tree', b: 'bush', '~': 'pond', x: 'thorn bush', L: 'rolling log', M: 'mirror stone', o: 'puffball' };
+/** The same map letters in the caves, and each cave sub-theme's own looks laid over them. */
+const CAVE_LOOK: Record<string, string> = { T: 'stalagmite', b: 'loose rock', '~': 'chasm', x: 'thorn vine', L: 'boulder', M: 'crystal cluster', o: 'glowshroom' };
+const GROTTO_LOOK = { ...CAVE_LOOK, T: 'crystal spire' };
+const HOLLOW_LOOK = { ...CAVE_LOOK, T: 'giant mushroom', b: 'mushroom cap' };
+const RIFT_LOOK = { ...CAVE_LOOK, '~': 'rift' };
 
 interface Actor {
   kind: string;
@@ -90,6 +95,8 @@ interface Scene {
   wallStyle?: WallStyle;
   /** The dressing scattered over its floor; the forest's unless named. */
   decor?: string[];
+  /** What each map letter is drawn as; the forest's unless named. */
+  looks?: Record<string, string>;
 }
 
 const at = (gx: number, gy: number) => ({ x: (gx + 0.5) * TILE, y: (gy + 0.5) * TILE });
@@ -136,15 +143,15 @@ function drawRoom(sheet: Sheet, scene: Scene, lit: boolean, id: string): string 
         standing.push({ y: gy === 0 ? -50 : c.y + TILE / 2, svg: tile(terrainSvg.door(side, ch === 'G', shell), c.x, c.y) });
         return;
       }
-      const look = LOOK[ch];
+      const look = (scene.looks ?? LOOK)[ch];
       if (!look) return;
       const same = (dx: number, dy: number) => cell(gx + dx, gy + dy) === ch;
       const mask: Mask = (same(0, -1) ? UP : 0) | (same(1, 0) ? RIGHT : 0) | (same(0, 1) ? DOWN : 0) | (same(-1, 0) ? LEFT : 0);
       const svg = tile(terrainSvg.tile(look, variant, mask), c.x, c.y);
-      if (look === 'pond') flat.push(svg);
+      if (MASKED_LOOKS.includes(look)) flat.push(svg);
       else standing.push({ y: c.y, svg });
-      // Neighbouring trees and thorns grow into each other across the seam.
-      if (look === 'tree' || look === 'thorn bush') {
+      // Neighbouring trees and thorns (stalagmites, vines) grow into each other across the seam.
+      if (JOIN_LOOKS.includes(look)) {
         if (same(1, 0)) standing.push({ y: c.y + 0.1, svg: tile(terrainSvg.join(look, 'across'), c.x + TILE / 2, c.y) });
         if (same(0, 1)) standing.push({ y: c.y + TILE / 2, svg: tile(terrainSvg.join(look, 'down'), c.x, c.y + TILE / 2) });
       }
@@ -280,19 +287,56 @@ const BOSS: Scene = {
   ],
 };
 
+/** A cave room: stalagmites fused along the walls, a chasm, a thorn-vine patch, a boulder, crystal and glowshrooms. */
 const CAVE_MAP = [
   '#######D#######',
+  '#TT....b....TT#',
+  '#T....M...b..T#',
+  '#..L..........#',
+  'D.....xx...o..G',
+  '#.~~.....xx...#',
+  '#.~~~....b...T#',
+  '#T.~~..o....bb#',
+  '###############',
+];
+/** A crystal grotto: spires, and crystal enough (3 or more) for veined walls. */
+const GROTTO_MAP = [
+  '#######D#######',
+  '#T..M.......TT#',
+  '#.....b...M...#',
+  '#..T..........#',
+  'D......MM.....#',
   '#.............#',
-  '#.............#',
-  '#.............#',
-  'D.............G',
-  '#.............#',
-  '#.............#',
-  '#.............#',
+  '#.~~.....b..T.#',
+  '#T.~.........M#',
+  '###############',
+];
+/** A mushroom hollow: giant mushrooms, clumps of caps, glowshrooms everywhere. */
+const HOLLOW_MAP = [
+  '#######D#######',
+  '#T..o.....b.TT#',
+  '#..b....o.....#',
+  '#.....T.......#',
+  'D..o......bb..#',
+  '#.......o.....#',
+  '#.bb.......o.T#',
+  '#TT..o...b...T#',
+  '###############',
+];
+/** A rift: a long torn chasm across the room. */
+const RIFT_MAP = [
+  '#######D#######',
+  '#T..b.......TT#',
+  '#.....~~......#',
+  '#......~~~....#',
+  'D.......~~....#',
+  '#..~~....~....#',
+  '#..~~~......b.#',
+  '#T.........bbT#',
   '###############',
 ];
 
-/** The caves' room shell alone: its terrain, decor and cast come in later passes. */
+/** The caves' rooms: their terrain in paper; the cave cast comes in later passes. */
 const CAVE: Scene = {
   map: CAVE_MAP,
   floor: 'normal',
@@ -300,11 +344,14 @@ const CAVE: Scene = {
   shell: 'caves',
   wallStyle: 'strata',
   decor: ['pebbles'],
+  looks: CAVE_LOOK,
   actors: [{ kind: 'player', x: 330, y: 250, action: 'idle', frame: 0 }],
   shots: [],
 };
 
-const CAVE_GROTTO: Scene = { ...CAVE, seed: 29, wallStyle: 'veined', map: CAVE_MAP.map((row) => row.replace('G', '#')) };
+const CAVE_GROTTO: Scene = { ...CAVE, seed: 29, wallStyle: 'veined', map: GROTTO_MAP, looks: GROTTO_LOOK };
+const CAVE_HOLLOW: Scene = { ...CAVE, seed: 37, map: HOLLOW_MAP, looks: HOLLOW_LOOK };
+const CAVE_RIFT: Scene = { ...CAVE, seed: 41, map: RIFT_MAP, looks: RIFT_LOOK, actors: [{ kind: 'player', x: 250, y: 200, action: 'idle', frame: 0 }] };
 const CAVE_BOSS: Scene = { ...CAVE, map: BOSS_MAP.map((row) => row.replace(/[Tbx]/g, '.')), floor: 'boss', seed: 31, actors: [{ kind: 'player', x: 344, y: 330, action: 'idle', frame: 0, view: 'up' }] };
 
 const img = (svg: string, w: number, h: number, scale: number, flip = false, alt = '') =>
@@ -413,6 +460,26 @@ function caveShellSheet(): string {
     `<section class="strip"><h3>Floors laid out <span>variants at random: no grid to be seen</span></h3><div class="frames">${patch('normal')}${patch('item')}${patch('boss')}</div></section>`;
 }
 
+/** Every caves terrain piece: each look's variants, chasm and rift pieces for every neighbour mask, and the joins. */
+function caveTerrainSheet(): string {
+  const fig = (svg: string, label: string) => `<figure>${img(svg, TILE_CANVAS.w, TILE_CANVAS.h, 1.5, false, label)}<figcaption>${label}</figcaption></figure>`;
+  const strip = (title: string, figs: string) => `<section class="strip"><h3>${title}</h3><div class="frames">${figs}</div></section>`;
+  const variants = [0, 1, 2, 3];
+  const looks: [string, string][] = [
+    ['stalagmite', 'Stalagmites'], ['loose rock', 'Loose rock <span>breakable</span>'], ['thorn vine', 'Thorn vines <span>hurt on touch</span>'],
+    ['boulder', 'Boulders <span>the crusher</span>'], ['crystal cluster', 'Crystal clusters <span>reflect shots</span>'], ['glowshroom', 'Glowshrooms <span>stun burst</span>'],
+    ['crystal spire', 'Crystal spires <span>crystal grotto</span>'], ['giant mushroom', 'Giant mushrooms <span>mushroom hollow</span>'], ['mushroom cap', 'Mushroom caps <span>mushroom hollow, breakable</span>'],
+  ];
+  const tiles = looks.map(([look, title]) => strip(title, variants.map((v) => fig(terrainSvg.tile(look, v, 0), `${look} ${v + 1}`)).join('')));
+  const joins = strip('Joins <span>neighbouring stalagmites fuse, thorn vines reach into each other</span>',
+    ['stalagmite', 'thorn vine'].flatMap((look) => (['across', 'down'] as const).map((d) => fig(terrainSvg.join(look, d), `${look}, ${d}`))).join(''));
+  const maskName = (m: number) => [[UP, 'up'], [RIGHT, 'right'], [DOWN, 'down'], [LEFT, 'left']].filter(([bit]) => m & (bit as number)).map(([, name]) => name).join('+') || 'alone';
+  const masked = (['chasm', 'rift'] as const).map((look) =>
+    strip(`${look === 'chasm' ? 'Chasm' : 'Rift <span>rift sub-theme</span>'} <span>a piece for every neighbour mask (named: where it carries on)</span>`,
+      Array.from({ length: 16 }, (_, m) => fig(terrainSvg.tile(look, m % 4, m), maskName(m))).join('')));
+  return tiles.join('') + joins + masked.join('');
+}
+
 function cavesSheet(): string {
   const lit = new Sheet('c');
   const caveLit = roomSvg(lit, CAVE, true, 'c', false);
@@ -420,23 +487,31 @@ function cavesSheet(): string {
   const caveUnlit = roomSvg(unlit, CAVE, false, 'cu', false);
   const grotto = new Sheet('cg');
   const grottoUnlit = roomSvg(grotto, CAVE_GROTTO, false, 'cg', false);
+  const hollow = new Sheet('ch');
+  const hollowUnlit = roomSvg(hollow, CAVE_HOLLOW, false, 'ch', false);
+  const rift = new Sheet('cr');
+  const riftUnlit = roomSvg(rift, CAVE_RIFT, false, 'cr', false);
   const boss = new Sheet('cb');
   const bossUnlit = roomSvg(boss, CAVE_BOSS, false, 'cb', false);
   const defs = (s: Sheet) => `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>${s.defs.join('')}</defs></svg>`;
   return `
 <div class="caves">
 <header class="masthead">
-  <p class="eyebrow">Floor 2 · room shell for approval</p>
+  <p class="eyebrow">Floor 2 · room shell and terrain</p>
   <h1>Papercut Caves</h1>
-  <p class="lede">Warm earth, cold light: umber and ochre rock paper, icy cyan-white crystal as the hard accent, violet fungus (and deep-teal slime) to come. This sheet covers the room shell only: walls, doors and floors. Terrain, decor and the cave cast follow once this is signed off.</p>
+  <p class="lede">Warm earth, cold light: umber and ochre rock paper, icy cyan-white crystal as the hard accent, violet fungus as the second hue (and deep-teal slime to come). This sheet covers the room shell (walls, doors, floors) and every cave terrain tile. Decor and the cave cast follow.</p>
 </header>
-${defs(lit)}${defs(unlit)}${defs(grotto)}${defs(boss)}
-<figure class="stage">${caveLit}<figcaption>A sample cave room, lit as in the game: rock-strata walls, mine-prop doorways top and left, the right door barred while enemies live.</figcaption></figure>
+${defs(lit)}${defs(unlit)}${defs(grotto)}${defs(hollow)}${defs(rift)}${defs(boss)}
+<figure class="stage">${caveLit}<figcaption>A sample cave room, lit as in the game: stalagmites fused along the walls, a chasm, thorn vines, a boulder, a crystal cluster and glowshrooms; the right door barred while enemies live.</figcaption></figure>
 <div class="pair">
   <figure class="stage small">${caveUnlit}<figcaption>The same room with the lights on.</figcaption></figure>
-  <figure class="stage small">${grottoUnlit}<figcaption>A crystal-heavy room: crystal-veined walls all the way round.</figcaption></figure>
+  <figure class="stage small">${grottoUnlit}<figcaption>A crystal grotto: crystal spires, and crystal enough for veined walls all the way round.</figcaption></figure>
+  <figure class="stage small">${hollowUnlit}<figcaption>A mushroom hollow: giant mushrooms, clumps of mushroom caps and glowshrooms.</figcaption></figure>
+  <figure class="stage small">${riftUnlit}<figcaption>A rift: the chasm's lip torn red.</figcaption></figure>
   <figure class="stage small">${bossUnlit}<figcaption>The worm's room: darker earth broken by burrows (bones and shards come as decor).</figcaption></figure>
 </div>
+<h2>Terrain</h2>
+${caveTerrainSheet()}
 <h2>Room shell pieces</h2>
 ${caveShellSheet()}
 </div>`;

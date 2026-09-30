@@ -74,7 +74,7 @@ const ROOM_THEMES: readonly RoomTheme[] = [
     roles: { cover: 'obstacle', breakable: 'rock', pit: 'hole', hazard: 'crystal', feature: 'crystal' },
     filler: ['crystal', 'obstacle'],
     decor: [{ id: 'shards', mark: 'cross', color: 0x9fe4f0 }, { id: 'glints', mark: 'dot', color: 0xd8f8ff }, { id: 'pebbles', mark: 'dot', color: 0x8a7458 }],
-    looks: { obstacle: { name: 'crystal spire', shape: 'round', color: 0x4a6a74, stroke: 0x7fd4e0 } },
+    looks: { obstacle: { name: 'crystal spire', shape: 'round', color: 0x4a6a74, stroke: 0x7fd4e0, art: 'crystal spire' } },
     encounterWeights: { ledgeSentries: 4, siege: 2 },
   },
   {
@@ -82,7 +82,7 @@ const ROOM_THEMES: readonly RoomTheme[] = [
     roles: { cover: 'obstacle', breakable: 'rock', pit: 'hole', hazard: 'glowshroom', feature: 'glowshroom' },
     filler: ['obstacle', 'rock'],
     decor: [{ id: 'spores', mark: 'dot', color: 0x9ae0a0 }, { id: 'caps', mark: 'ring', color: 0xd0a060 }, { id: 'moss', mark: 'dash', color: 0x5a8a4a }],
-    looks: { obstacle: { name: 'giant mushroom', color: 0xb07a4a, stroke: 0xe0c090 }, rock: { name: 'mushroom cap', color: 0xc08a5a } },
+    looks: { obstacle: { name: 'giant mushroom', color: 0xb07a4a, stroke: 0xe0c090, art: 'giant mushroom' }, rock: { name: 'mushroom cap', color: 0xc08a5a, art: 'mushroom cap' } },
     encounterWeights: { batColony: 4, prowlers: 2 },
   },
   {
@@ -90,7 +90,7 @@ const ROOM_THEMES: readonly RoomTheme[] = [
     roles: { cover: 'rock', breakable: 'rock', pit: 'hole', hazard: 'hole', feature: 'obstacle' },
     filler: ['obstacle', 'rock'],
     decor: [{ id: 'cracks', mark: 'dash', color: 0x2a1e14 }, { id: 'pebbles', mark: 'dot', color: 0x8a7458 }, { id: 'dust', mark: 'dot', color: 0xa89070 }],
-    looks: { hole: { name: 'rift', color: 0x000000, stroke: 0x6a3a2a } },
+    looks: { hole: { name: 'rift', color: 0x000000, stroke: 0x6a3a2a, art: 'rift' } },
     encounterWeights: { wormNest: 4, batColony: 2 },
   },
   {

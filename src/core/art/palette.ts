@@ -135,6 +135,15 @@ export const PAPER = {
     fungusLight: '#b85aa8',
     fungusShade: '#4e1e5a',
     fungusGill: '#e08ec4',
+    fungusGlow: '#c060d0',
+
+    chasm: '#060403',
+    riftLip: '#5e2c1e',
+    riftLight: '#8a4028',
+    riftGlow: '#d0582c',
+    vine: '#3e2630',
+    vineLight: '#5e3c48',
+    thornSpike: '#b03c52',
 
     slime: '#1a5250',
     slimeLight: '#347e78',

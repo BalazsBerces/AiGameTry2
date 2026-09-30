@@ -87,15 +87,15 @@ const THEMES: readonly FloorTheme[] = [
       door: 0x5a4a3a,
       accent: 0x7fd4e0,
     },
-    // Earthy browns; the cyan crystals and green glowshrooms are the colour in the dark.
+    // Earthy browns; the cyan crystals and violet glowshrooms are the colour in the dark.
     looks: {
-      obstacle: { name: 'stalagmite', shape: 'round', color: 0x7a6450, stroke: 0x4a3a2c, inset: 4 },
-      rock: { name: 'loose rock', shape: 'block', color: 0x9a8468, stroke: 0x5a4632, inset: 10 },
-      hole: { name: 'chasm', shape: 'block', color: 0x050302, stroke: 0x2a1e14, inset: 0 },
-      thorn: { name: 'thorn vine', shape: 'round', color: 0x4a3626, stroke: 0xb0607a, inset: 4 },
-      crusher: { name: 'boulder', shape: 'round', color: 0x6a5440, stroke: 0x3a2c20, inset: 2 },
-      crystal: { name: 'crystal cluster', shape: 'block', color: 0x7fd4e0, stroke: 0xd8f8ff, inset: 5 },
-      glowshroom: { name: 'glowshroom', shape: 'round', color: 0x6ae0a0, stroke: 0xd0ffe0, inset: 8 },
+      obstacle: { name: 'stalagmite', shape: 'round', color: 0x7a6450, stroke: 0x4a3a2c, inset: 4, art: 'stalagmite' },
+      rock: { name: 'loose rock', shape: 'block', color: 0x9a8468, stroke: 0x5a4632, inset: 10, art: 'loose rock' },
+      hole: { name: 'chasm', shape: 'block', color: 0x050302, stroke: 0x2a1e14, inset: 0, art: 'chasm' },
+      thorn: { name: 'thorn vine', shape: 'round', color: 0x4a3626, stroke: 0xb0607a, inset: 4, art: 'thorn vine' },
+      crusher: { name: 'boulder', shape: 'round', color: 0x6a5440, stroke: 0x3a2c20, inset: 2, art: 'boulder' },
+      crystal: { name: 'crystal cluster', shape: 'block', color: 0x7fd4e0, stroke: 0xd8f8ff, inset: 5, art: 'crystal cluster' },
+      glowshroom: { name: 'glowshroom', shape: 'round', color: 0xa050c0, stroke: 0xe8b0f0, inset: 8, art: 'glowshroom' },
     },
     bosses: ['wormBoss'],
     walker: 'ghoul',

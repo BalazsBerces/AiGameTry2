@@ -130,16 +130,16 @@ function canopyJoin(look: Foliage, dir: 'across' | 'down') {
   return sheet(fill(ragged(r('dark'), AX, y, rx, ry, 12, 0.24), look.dark), 2) + sheet(fill(ragged(r('main'), AX, y - 3, rx * 0.7, ry * 0.6, 9, 0.22), look.main));
 }
 
-function vineJoin(dir: 'across' | 'down') {
-  const r = pieceRng('vineJoin', dir);
+function vineJoin(dir: 'across' | 'down', look: { stem: string; spike: string; key: string } = { stem: P.thorn, spike: P.thornSpike, key: 'vineJoin' }) {
+  const r = pieceRng(look.key, dir);
   const [dx, dy] = dir === 'across' ? [26, 0] : [0, 26];
   const bend = (r.next() - 0.5) * 10;
   const spikes = [-0.4, 0.3].map((k) => {
     const s = { x: AX + dx * k + (dir === 'down' ? bend / 2 : 0), y: AY + dy * k + (dir === 'across' ? bend / 2 : 0) };
-    return fill(`M${n(s.x - 2)} ${n(s.y)}L${n(s.x)} ${n(s.y - 6)}L${n(s.x + 2)} ${n(s.y)}Z`, P.thornSpike);
+    return fill(`M${n(s.x - 2)} ${n(s.y)}L${n(s.x)} ${n(s.y - 6)}L${n(s.x + 2)} ${n(s.y)}Z`, look.spike);
   });
   return sheet(
-    `<path d="M${AX - dx} ${AY - dy}Q${n(AX + (dir === 'down' ? bend : 0))} ${n(AY + (dir === 'across' ? bend : 0))} ${AX + dx} ${AY + dy}" stroke="${P.thorn}" stroke-width="4.5" fill="none" stroke-linecap="round"/>` + spikes.join(''),
+    `<path d="M${AX - dx} ${AY - dy}Q${n(AX + (dir === 'down' ? bend : 0))} ${n(AY + (dir === 'across' ? bend : 0))} ${AX + dx} ${AY + dy}" stroke="${look.stem}" stroke-width="4.5" fill="none" stroke-linecap="round"/>` + spikes.join(''),
   );
 }
 
@@ -654,6 +654,299 @@ function caveFloor(look: number, kind: 'normal' | 'item' | 'boss') {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Terrain in the caves
+// ---------------------------------------------------------------------------------------------
+
+/** A spire of rock rising from `foot`: a dark flank, a lit left face, growth rings; `snapped` breaks its tip off. */
+function rockSpire(r: Rng, x: number, foot: number, h: number, w: number, tone: RockTone, snapped = false) {
+  const lean = (r.next() - 0.5) * w * 0.6;
+  const at = (k: number, s: number) => ({ x: x + lean * k + s * w * (1 - k) ** 0.8 + (r.next() - 0.5) * 1.6, y: foot - h * k });
+  const top = snapped ? [at(0.84, -1), { x: x + lean * 0.9 + 1, y: foot - h * 0.8 }, at(0.88, 1)] : [{ x: x + lean, y: foot - h }];
+  const left = [at(0, -1), at(0.3, -1), at(0.6, -1)];
+  const right = [at(0.6, 1), at(0.3, 1), at(0, 1)];
+  const ridge = [0.6, 0.3, 0].map((k) => ({ x: x + lean * k - w * 0.12 * (1 - k), y: foot - h * k }));
+  const rings = [0.28, 0.52].map((k) => {
+    const [a, b] = [at(k, -1), at(k, 1)];
+    return `<path d="M${n(a.x + 1)} ${n(a.y)}Q${n((a.x + b.x) / 2)} ${n(a.y + 2.5)} ${n(b.x - 1)} ${n(b.y)}" stroke="${tone.light}" stroke-width="1" fill="none" opacity="0.45"/>`;
+  }).join('');
+  const broken = snapped ? fill(polyPath(top), tone.light, 'opacity="0.85"') : '';
+  return sheet(fill(polyPath([...left, ...top, ...right]), tone.dark) + fill(polyPath([...left, top[0], ...ridge]), tone.main) + rings + broken, 2);
+}
+
+/** Standing rock: a spire's lit face in pale stalactite paper, so it reads against the earth. */
+const SPIRE_ROCK: RockTone = { dark: C.rockDark, main: C.stalactite, light: C.stalactiteLight };
+
+/** A low heap of dark rock the spires stand in, jagged all round. */
+const rockBed = (r: Rng, x: number, y: number, rx: number, ry: number) => sheet(fill(polyPath(jagged(r, x, y, rx, ry, 14, 0.18)), C.rockDeep));
+
+/** A stalagmite: rock spires rising from a heap of rock, rubble at their feet; neighbours fuse into one formation. */
+function stalagmite(variant: number) {
+  const r = pieceRng('stalagmite', variant);
+  const spires = [
+    [{ dx: 0, dy: 0, h: 46, w: 16 }],
+    [{ dx: -7, dy: -1, h: 40, w: 14 }, { dx: 10, dy: 3, h: 26, w: 11 }],
+    [{ dx: -12, dy: -2, h: 22, w: 10 }, { dx: 3, dy: 1, h: 36, w: 17, snapped: true }],
+    [{ dx: -9, dy: -2, h: 32, w: 13 }, { dx: 6, dy: 0, h: 48, w: 15 }, { dx: 15, dy: 4, h: 15, w: 8 }],
+  ][variant % 4];
+  const foot = AY + 8;
+  return (
+    contact(21, 7, 12) +
+    rockBed(r, AX, foot - 1, 19, 7) +
+    spires.map((s, i) => rockSpire(r, AX + s.dx, foot + s.dy, s.h, s.w, i % 2 ? OCHRE_ROCK : SPIRE_ROCK, 'snapped' in s)).join('') +
+    [-14, 13].map((dx, i) => crag(r, AX + dx + r.next() * 4, foot + 5 + i * 2, 3.5 + r.next() * 2.5, ROCK)).join('')
+  );
+}
+
+/** Where two stalagmites fuse into one formation: a ridge of rock across the seam, a squat spire rising out of it. */
+function stalagmiteJoin(dir: 'across' | 'down') {
+  const r = pieceRng('stalagmiteJoin', dir);
+  const foot = AY + 8;
+  const across = dir === 'across';
+  return (
+    rockBed(r, AX, foot - 1, across ? 22 : 11, across ? 7 : 24) +
+    rockSpire(r, AX + (across ? 0 : -2), foot + (across ? 0 : 2), across ? 24 : 20, across ? 14 : 11, SPIRE_ROCK) +
+    crag(r, AX + (across ? -6 : 5), foot + (across ? 5 : 10), 4 + r.next() * 2, OCHRE_ROCK)
+  );
+}
+
+/** Loose rock: a crumbly pile of crags with grit spilled round it; breaks after a few shots. */
+function looseRock(variant: number) {
+  const r = pieceRng('looseRock', variant);
+  const stones = Array.from({ length: 5 + (variant % 3) }, (_, i) => ({
+    x: AX + (r.next() - 0.5) * 30,
+    y: AY + 2 + (r.next() - 0.5) * 16 - (i === 0 ? 6 : 0),
+    rad: i === 0 ? 11 + r.next() * 3 : 5 + r.next() * 5,
+  })).sort((a, b) => a.y - b.y);
+  const grit = Array.from({ length: 6 }, () => {
+    const p = { x: AX + (r.next() - 0.5) * 42, y: AY + 6 + (r.next() - 0.5) * 18 };
+    return fill(cutPoly(r, ring(p.x, p.y, 1.2 + r.next() * 1.4, 1 + r.next(), 5, r.next() * 3), 0.4), r.next() < 0.5 ? C.rockLight : C.ochre);
+  }).join('');
+  return contact(20, 6, 12) + sheet(grit) + stones.map((s) => crag(r, s.x, s.y, s.rad, r.next() < 0.3 ? OCHRE_ROCK : ROCK)).join('');
+}
+
+/** A boulder: one heavy round rock, lit from up-left, cracked and flecked with lichen; the thing that rolls and crushes. */
+function boulder(variant: number) {
+  const r = (part: string) => pieceRng('boulder', variant, part);
+  const cy = AY - 5;
+  const cracks = [0, 1].map((i) => {
+    const cr = r(`crack${i}`);
+    let [x, y] = [AX - 6 + cr.next() * 14, cy - 12 + i * 10];
+    let d = `M${n(x)} ${n(y)}`;
+    for (let s = 0; s < 3; s++) d += `L${n((x += 3 + cr.next() * 3))} ${n((y += (cr.next() - 0.3) * 6))}`;
+    return `<path d="${d}" stroke="${C.rockDeep}" stroke-width="1.3" fill="none" opacity="0.85"/>`;
+  }).join('');
+  const lichen = [0, 1, 2].map((i) => ellipse(AX + [-10, 8, -2][i] + variant, cy + [4, -8, 11][i], 2.6 - i * 0.5, 1.8, C.ochre, 'opacity="0.75"')).join('');
+  return (
+    contact(22, 7, 14) +
+    sheet(
+      fill(blob(r('body'), AX, cy, 21, 19, 11, 0.07), C.rockDark) +
+        fill(blob(r('lit'), AX - 3, cy - 4, 16, 14, 10, 0.1), C.rock) +
+        fill(cutPoly(r('facet'), [{ x: AX - 13, y: cy - 6 }, { x: AX - 7, y: cy - 15 }, { x: AX + 2, y: cy - 16 }, { x: AX - 5, y: cy - 8 }], 0.8), C.rockLight, 'opacity="0.9"') +
+        cracks + lichen,
+      2,
+    )
+  );
+}
+
+/** A crystal cluster: hard, faceted, icy shards breaking out of a bed of rock; bounces shots. */
+function crystalCluster(variant: number) {
+  const r = pieceRng('crystalCluster', variant);
+  const foot = AY + 8;
+  const [big, small] = [[30, 3], [26, 2], [34, 3], [28, 4]][variant % 4];
+  return (
+    contact(19, 6, 12) +
+    ellipse(AX, foot - 4, 20, 10, C.crystal, 'opacity="0.12"') +
+    rockBed(r, AX, foot, 17, 7) +
+    sheet(shards(`cluster${variant}`, AX - 2 + (variant % 2) * 4, foot, big, small), 2) +
+    sheet(shards(`clusterFront${variant}`, AX + [11, -12, 10, -9][variant % 4], foot + 5, 13, 2), 2) +
+    crag(r, AX - 13 + (variant % 2) * 24, foot + 4, 4, ROCK)
+  );
+}
+
+/** A crystal spire: a tall column of rock studded with crystal, a cluster at its foot. */
+function crystalSpire(variant: number) {
+  const r = pieceRng('crystalSpire', variant);
+  const foot = AY + 8;
+  const h = 46 + (variant % 3) * 3;
+  const studs = [0.35, 0.6, 0.82].slice(0, 2 + (variant % 2)).map((k, i) => {
+    const s = i % 2 ? 1 : -1;
+    return shards(`spireStud${variant}${i}`, AX + s * (7 - k * 5), foot - h * k + 4, 11 - k * 4, 2);
+  });
+  return (
+    contact(20, 7, 12) +
+    rockBed(r, AX, foot - 1, 18, 7) +
+    rockSpire(r, AX, foot, h, 15, ROCK) +
+    sheet(studs.join(''), 2) +
+    sheet(shards(`spireFoot${variant}`, AX + (variant % 2 ? -11 : 11), foot + 4, 16, 3), 2)
+  );
+}
+
+/**
+ * A cave mushroom seen at 3/4: a pale stem and a violet cap tipped toward the camera, so its gills
+ * show under the rim. `frill` waves the rim (the hollow's shelf fungi); `spots` pale flecks on top.
+ */
+type Fungus = { cap: string; light: string };
+const GLOWING: Fungus = { cap: C.fungus, light: C.fungusLight };
+/** The hollow's plain shelf fungi: a duller violet than the glowshrooms, so the hazard stands out. */
+const DULL: Fungus = { cap: C.fungusShade, light: C.fungus };
+
+function mushroom(r: Rng, x: number, foot: number, stem: number, cap: number, frill = 0, spots = 3, tone: Fungus = GLOWING) {
+  const w = Math.max(2.5, cap * 0.22);
+  const capY = foot - stem;
+  const stemSvg = fill(cutPoly(r, [{ x: x - w * 1.15, y: foot }, { x: x - w, y: capY + 2 }, { x: x + w, y: capY + 2 }, { x: x + w * 1.2, y: foot }], 0.4), C.bone) +
+    fill(polyPath([{ x: x + w * 0.2, y: foot }, { x: x + w * 0.3, y: capY + 2 }, { x: x + w, y: capY + 2 }, { x: x + w * 1.2, y: foot }]), C.boneShade, 'opacity="0.8"');
+  // The gills: the cap's underside, a pale disc ribbed from its centre, peeking out below the dome.
+  const under = { x, y: capY + cap * 0.12 };
+  const gills = ellipse(under.x, under.y, cap * 0.92, cap * 0.3, C.fungusGill) +
+    Array.from({ length: 9 }, (_, i) => {
+      const a = Math.PI * (0.12 + (i / 8) * 0.76);
+      return `<path d="M${n(under.x)} ${n(under.y - cap * 0.05)}L${n(under.x + Math.cos(a) * cap * 0.86)} ${n(under.y + Math.sin(a) * cap * 0.27)}" stroke="${C.fungusShade}" stroke-width="0.8" opacity="0.8"/>`;
+    }).join('');
+  const arc = Array.from({ length: 9 }, (_, i) => {
+    const a = Math.PI + (i / 8) * Math.PI;
+    return { x: x + Math.cos(a) * cap, y: capY + Math.sin(a) * cap * 0.72 };
+  });
+  const rim = Array.from({ length: 7 }, (_, i) => ({ x: x + cap * (1 - (i + 1) / 4), y: capY + (frill ? (i % 2 ? frill : -frill * 0.3) : cap * 0.08) })).filter((p) => Math.abs(p.x - x) < cap);
+  const dome = fill(cutPoly(r, [...arc, ...rim], 0.4), tone.cap) +
+    fill(cutPoly(r, arc.slice(1, 5).concat([{ x: x - cap * 0.1, y: capY - cap * 0.25 }]), 0.4), tone.light, 'opacity="0.55"') +
+    Array.from({ length: spots }, () => ellipse(x + (r.next() - 0.5) * cap * 1.1, capY - cap * (0.2 + r.next() * 0.35), 1 + cap * 0.07, 0.8 + cap * 0.05, C.fungusGill, 'opacity="0.9"')).join('');
+  return sheet(stemSvg) + sheet(gills + dome, 2);
+}
+
+/** A glowshroom: a clump of violet fungi with their gills showing, in a faint glow; bursts into a stun cloud. */
+function glowshroom(variant: number) {
+  const r = pieceRng('glowshroom', variant);
+  const foot = AY + 10;
+  const caps = [
+    [{ dx: -2, dy: 0, stem: 16, cap: 12 }, { dx: 11, dy: 4, stem: 9, cap: 7 }],
+    [{ dx: -10, dy: 2, stem: 11, cap: 8 }, { dx: 4, dy: -1, stem: 18, cap: 12 }, { dx: 13, dy: 5, stem: 6, cap: 5 }],
+    [{ dx: 1, dy: 0, stem: 14, cap: 14 }, { dx: -12, dy: 5, stem: 7, cap: 6 }],
+    [{ dx: -7, dy: -1, stem: 17, cap: 11 }, { dx: 8, dy: 1, stem: 13, cap: 10 }, { dx: -1, dy: 6, stem: 5, cap: 5 }],
+  ][variant % 4];
+  return (
+    contact(16, 5, 12) +
+    ellipse(AX, AY - 2, 23, 16, C.fungusGlow, 'opacity="0.16"') +
+    ellipse(AX, AY - 4, 14, 10, C.fungusGlow, 'opacity="0.14"') +
+    caps.map((c) => mushroom(r, AX + c.dx, foot + c.dy, c.stem, c.cap)).join('')
+  );
+}
+
+/** A giant mushroom: a tall pale stalk under a broad frilled violet cap, shelf fungi stepping up its stem. */
+function giantMushroom(variant: number) {
+  const r = pieceRng('giantMushroom', variant);
+  const foot = AY + 10;
+  const stem = 32 + (variant % 3) * 3;
+  const shelf = (y: number, s: number, size: number) =>
+    sheet(fill(cutPoly(r, [{ x: AX + s * 4, y: y - size * 0.3 }, { x: AX + s * (4 + size), y: y - size * 0.1 }, { x: AX + s * (5 + size * 0.8), y: y + size * 0.3 }, { x: AX + s * 4, y: y + size * 0.25 }], 0.4), C.fungusLight) +
+      `<path d="M${n(AX + s * 5)} ${n(y + size * 0.15)}L${n(AX + s * (4 + size * 0.8))} ${n(y + size * 0.15)}" stroke="${C.fungusShade}" stroke-width="0.8"/>`);
+  return (
+    contact(20, 7, 12) +
+    mushroom(r, AX, foot, stem, 23, 2.2, 5) +
+    shelf(foot - 10, variant % 2 ? 1 : -1, 7) +
+    (variant > 1 ? shelf(foot - 19, variant % 2 ? -1 : 1, 5) : '') +
+    mushroom(r, AX + (variant % 2 ? -14 : 14), foot + 4, 6, 6, 0, 1)
+  );
+}
+
+/** A mushroom cap: a low clump of frilled violet shelf fungi; breaks after a few shots. */
+function mushroomCap(variant: number) {
+  const r = pieceRng('mushroomCap', variant);
+  const foot = AY + 10;
+  const caps = [
+    [{ dx: -8, dy: -2, stem: 6, cap: 11 }, { dx: 8, dy: 0, stem: 4, cap: 10 }, { dx: 0, dy: 5, stem: 3, cap: 8 }],
+    [{ dx: -2, dy: -1, stem: 8, cap: 13 }, { dx: 12, dy: 4, stem: 3, cap: 7 }],
+    [{ dx: 6, dy: -2, stem: 7, cap: 12 }, { dx: -9, dy: 2, stem: 4, cap: 9 }, { dx: 12, dy: 6, stem: 2, cap: 5 }],
+    [{ dx: -6, dy: -1, stem: 5, cap: 10 }, { dx: 7, dy: -3, stem: 7, cap: 9 }, { dx: -1, dy: 5, stem: 3, cap: 9 }],
+  ][variant % 4];
+  return contact(18, 6, 12) + rockBed(r, AX, foot - 2, 16, 6) + caps.map((c) => mushroom(r, AX + c.dx, foot + c.dy, c.stem, c.cap, 1.6, 1, DULL)).join('');
+}
+
+/** A cave thorn vine: dark creepers curling out from a knot, bristling with crimson spikes; it reaches into neighbouring vines. */
+function thornVine(variant: number) {
+  const r = pieceRng('thornVine', variant);
+  const spike = (p: Pt, a: number, len = 6) =>
+    fill(`M${n(p.x + Math.cos(a + 1.57) * 2)} ${n(p.y + Math.sin(a + 1.57) * 2)}L${n(p.x + Math.cos(a) * len)} ${n(p.y + Math.sin(a) * len)}L${n(p.x - Math.cos(a + 1.57) * 2)} ${n(p.y - Math.sin(a + 1.57) * 2)}Z`, C.thornSpike);
+  const vines = [0, 1, 2, 3].map((i) => {
+    const a = (i / 4) * Math.PI * 2 + variant * 0.8 + (r.next() - 0.5) * 0.4;
+    const end = { x: AX + Math.cos(a) * 23, y: AY + Math.sin(a) * 16 };
+    const mid = { x: (end.x + AX) / 2 + (r.next() - 0.5) * 14, y: (end.y + AY) / 2 + (r.next() - 0.5) * 10 };
+    // A curl at its tip, turning back on itself.
+    const curl = { x: end.x + Math.cos(a + 2) * 5, y: end.y + Math.sin(a + 2) * 5 - 2 };
+    const on = (t: number) => ({ x: (1 - t) ** 2 * AX + 2 * t * (1 - t) * mid.x + t * t * end.x, y: (1 - t) ** 2 * AY + 2 * t * (1 - t) * mid.y + t * t * end.y });
+    const spikes = [0.35, 0.65, 0.92].map((t) => spike(on(t), -Math.PI / 2 + (r.next() - 0.5) * 1.6));
+    return `<path d="M${AX} ${AY}Q${n(mid.x)} ${n(mid.y)} ${n(end.x)} ${n(end.y)}Q${n(end.x + Math.cos(a) * 4)} ${n(end.y + Math.sin(a) * 4)} ${n(curl.x)} ${n(curl.y)}" stroke="${C.vine}" stroke-width="4.5" fill="none" stroke-linecap="round"/>` +
+      `<path d="M${AX} ${AY - 1}Q${n(mid.x)} ${n(mid.y - 1)} ${n(end.x)} ${n(end.y - 1)}" stroke="${C.vineLight}" stroke-width="1.2" fill="none" opacity="0.7"/>` + spikes.join('');
+  });
+  const knot = fill(blob(r, AX, AY - 2, 11, 9, 9, 0.22), C.vine) + fill(blob(r, AX - 2, AY - 5, 6, 4, 7, 0.2), C.vineLight, 'opacity="0.8"') +
+    [0, 1, 2, 3, 4, 5].map((i) => {
+      const a = (i / 6) * Math.PI * 2 + variant;
+      return spike({ x: AX + Math.cos(a) * 8, y: AY - 2 + Math.sin(a) * 6 }, a - 0.5, 7);
+    }).join('');
+  return contact(19, 6, 10) + sheet(vines.join('')) + sheet(knot, 2);
+}
+
+/**
+ * A piece of chasm: a dark fall with a crumbly lip on every side that has no chasm beyond it and the
+ * far wall's rock face dropping away under the top lip. Where the chasm carries on the piece runs
+ * to the tile's edge, and every lip meets the tile's edge at a fixed inset, so pieces fit like a
+ * pond's. The rift's lip is torn red, glowing faintly where it breaks.
+ */
+function chasm(variant: number, mask: Mask, rift: boolean) {
+  const r = pieceRng(rift ? 'rift' : 'chasm', variant, mask);
+  const open = (bit: number) => !(mask & bit);
+  const STEPS = 8;
+  // Each open side's wobble, shared by every outline so lip and fall stay parallel; none at its ends.
+  const wobble = [0, 1, 2, 3].map(() => Array.from({ length: STEPS + 1 }, (_, k) => (k === 0 || k === STEPS ? 0 : (r.next() - 0.5) * 2)));
+  const SIDES = [
+    { bit: UP, from: { x: AX - H, y: AY - H }, along: { x: 1, y: 0 }, inward: { x: 0, y: 1 } },
+    { bit: RIGHT, from: { x: AX + H, y: AY - H }, along: { x: 0, y: 1 }, inward: { x: -1, y: 0 } },
+    { bit: DOWN, from: { x: AX + H, y: AY + H }, along: { x: -1, y: 0 }, inward: { x: 0, y: -1 } },
+    { bit: LEFT, from: { x: AX - H, y: AY + H }, along: { x: 0, y: -1 }, inward: { x: 1, y: 0 } },
+  ];
+  /** Each side's points, `inset` px in from the tile's edge where open (wobbling by `rough`), a pixel past it where the chasm carries on. */
+  const outline = (inset: number, rough: number) =>
+    SIDES.map((s, i) => {
+      const at = (bit: number) => (open(bit) ? inset : -1);
+      const [prev, next] = [SIDES[(i + 3) % 4].bit, SIDES[(i + 1) % 4].bit];
+      // Where two open sides meet the corner is cut off.
+      const [start, end] = [at(prev) + (open(prev) && open(s.bit) ? 7 : 0), TILE - at(next) - (open(next) && open(s.bit) ? 7 : 0)];
+      return Array.from({ length: STEPS + 1 }, (_, k) => {
+        const t = start + ((end - start) * k) / STEPS;
+        const d = at(s.bit) + (open(s.bit) ? wobble[i][k] * rough : 0);
+        return { x: s.from.x + s.along.x * t + s.inward.x * d, y: s.from.y + s.along.y * t + s.inward.y * d };
+      });
+    });
+  const shape = (inset: number, rough: number) => polyPath(outline(inset, rough).flat());
+  const [lip, lipLight] = rift ? [C.riftLip, C.riftLight] : [C.rock, C.rockLight];
+
+  // Crumbs of the lip: chips of rock along each open side.
+  const chips = SIDES.filter((s) => open(s.bit)).map((s) => Array.from({ length: 2 + Math.floor(r.next() * 2) }, () => {
+    const t = 8 + r.next() * (TILE - 16);
+    const d = 1 + r.next() * 3;
+    const p = { x: s.from.x + s.along.x * t + s.inward.x * d, y: s.from.y + s.along.y * t + s.inward.y * d };
+    return fill(cutPoly(r, ring(p.x, p.y, 1.8 + r.next() * 1.6, 1.4 + r.next() * 1.2, 5, r.next() * 3), 0.5), r.next() < 0.5 ? lipLight : lip);
+  }).join('')).join('');
+
+  // The far wall: rock strata under the top lip, dropping away into the dark.
+  let face = '';
+  if (open(UP)) {
+    const edge = outline(6, 1.4)[0];
+    const band = (from: number, to: number, color: string, extra = '') =>
+      fill(polyPath([...edge.map((p) => ({ x: p.x, y: p.y + from })), ...[...edge].reverse().map((p) => ({ x: p.x, y: p.y + to }))]), color, extra);
+    // Clipped to the fall, so it never pokes past a cut corner.
+    face = `<clipPath id="fall"><path d="${shape(6, 1.4)}"/></clipPath><g clip-path="url(#fall)">` +
+      band(0, 6, rift ? C.riftLip : C.strataLight) + band(5, 11, C.rockDark) + band(10, 16, C.rockDeep, 'opacity="0.8"') + '</g>';
+  }
+  // The rift's torn edge glows faintly along every open lip.
+  const glow = rift
+    ? outline(5.5, 1.4).map((side, i) => (open(SIDES[i].bit) ? `<path d="M${side.map((p) => `${n(p.x)} ${n(p.y)}`).join('L')}" stroke="${C.riftGlow}" stroke-width="1.3" fill="none" opacity="0.75"/>` : '')).join('')
+    : '';
+  // The fall darkens by steps away from its open lips.
+  const core = fill(shape(12, 2.5), '#000', 'opacity="0.3"') + fill(shape(19, 3), '#000', 'opacity="0.3"');
+  return sheet(fill(shape(1, 2.2), lip) + chips) + fill(shape(6, 1.4), C.chasm) + face + core + glow;
+}
+
+// ---------------------------------------------------------------------------------------------
 // Dressing
 // ---------------------------------------------------------------------------------------------
 
@@ -709,12 +1002,14 @@ const JOIN_ART: Readonly<Record<string, (dir: 'across' | 'down') => string>> = {
   oak: (d) => canopyJoin(OAK, d),
   willow: (d) => canopyJoin(WILLOW, d),
   'thorn bush': (d) => vineJoin(d),
+  stalagmite: (d) => stalagmiteJoin(d),
+  'thorn vine': (d) => vineJoin(d, { stem: C.vine, spike: C.thornSpike, key: 'caveVineJoin' }),
 };
 export const JOIN_LOOKS = Object.keys(JOIN_ART);
-/** Looks drawn as pieces that fit their neighbours (a pond's banks): each has a piece per neighbour mask. */
-export const MASKED_LOOKS = ['pond', 'bog'];
+/** Looks drawn as pieces that fit their neighbours (a pond's banks, a chasm's lip): each has a piece per neighbour mask. */
+export const MASKED_LOOKS = ['pond', 'bog', 'chasm', 'rift'];
 
-/** How each forest tile look is drawn, by its look name. Looks sub-themes override get their own. */
+/** How each tile look is drawn, by its look name (the forest's, then the caves'). Looks sub-themes override get their own. */
 type TileDraw = (variant: number, mask: Mask) => string;
 const TILE_ART: Readonly<Record<string, TileDraw>> = {
   tree: (v) => tree(v),
@@ -729,6 +1024,17 @@ const TILE_ART: Readonly<Record<string, TileDraw>> = {
   'rolling log': (v) => log(v),
   'mirror stone': (v) => mirrorStone(v),
   puffball: (v) => puffball(v),
+  stalagmite: (v) => stalagmite(v),
+  'loose rock': (v) => looseRock(v),
+  chasm: (v, m) => chasm(v, m, false),
+  'thorn vine': (v) => thornVine(v),
+  boulder: (v) => boulder(v),
+  'crystal cluster': (v) => crystalCluster(v),
+  glowshroom: (v) => glowshroom(v),
+  'crystal spire': (v) => crystalSpire(v),
+  'giant mushroom': (v) => giantMushroom(v),
+  'mushroom cap': (v) => mushroomCap(v),
+  rift: (v, m) => chasm(v, m, true),
 };
 
 /** Whether a tile look has paper art (anything else keeps its plain shape). */

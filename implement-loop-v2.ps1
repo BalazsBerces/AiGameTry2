@@ -1,5 +1,5 @@
 param(
-    [string]$Model = "opus",
+    [string]$Model = "claude-opus-5-5",
     [string]$Label = "ready-for-agent",
     [ValidateSet("default", "acceptEdits", "auto", "dontAsk", "bypassPermissions", "manual")]
     [string]$PermissionMode = "auto",

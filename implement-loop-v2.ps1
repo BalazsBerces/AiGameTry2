@@ -295,13 +295,6 @@ while ($true) {
         -ClaudeModel $Model `
         -Mode $PermissionMode
 
-    if ($exitCode -ne 0) {
-        Write-Host ""
-        Write-Host "Claude hibával állt le a #$($issue.number) ticketen." -ForegroundColor Red
-        Write-Host "A runner nem folytatja a következő tickettel."
-        exit $exitCode
-    }
-
     Assert-CleanWorkingTree
 
     $afterCommit = (& git rev-parse HEAD | Out-String).Trim()
@@ -309,8 +302,23 @@ while ($true) {
     if ($beforeCommit -eq $afterCommit) {
         Write-Host ""
         Write-Host "Nem keletkezett új commit a #$($issue.number) tickethez." -ForegroundColor Red
+        if ($exitCode -ne 0) {
+            Write-Host "Claude hibakóddal is leállt ($exitCode)." -ForegroundColor Red
+        }
         Write-Host "Biztonsági okból az issue nem lesz lezárva, és a runner megáll."
         exit 1
+    }
+
+    if ($exitCode -ne 0) {
+        Write-Host ""
+        Write-Host "Claude hibakóddal állt le ($exitCode) a #$($issue.number) ticketen, de új commit készült." -ForegroundColor Yellow
+        Write-Host "A runner úgy tekinti, hogy a munka elkészült, és folytatja." -ForegroundColor Yellow
+    }
+
+    & git push
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Az implementáció elkészült, de a #$($issue.number) tickethez tartozó commit pusholása sikertelen."
     }
 
     $shortHash = (& git rev-parse --short HEAD | Out-String).Trim()

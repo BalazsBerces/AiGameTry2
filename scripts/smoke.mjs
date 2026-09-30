@@ -1550,6 +1550,40 @@ if (scenario === 'hud') {
   console.log(ok ? 'minimap alphas ok (scrap 0.5, ink 1)' : 'MINIMAP ALPHAS WRONG (expect paper, scrap 0.5, ink 1)');
   if (!ok) process.exitCode = 1;
   await shot('hud-01');
+
+  // Passives with art show it in the HUD row; the rest keep their dot. Freeze is level 2, so ringed.
+  await page.evaluate(`${scene()}.world.player.passives = { freeze: 2, poison: 1, homing: 1 }`);
+  await page.waitForTimeout(200);
+  const icons = () => page.evaluate(`(() => { const h = window.game.scene.getScene('hud');
+    return [...h.passiveIcons].filter(([, i]) => i.visible).sort(([, a], [, b]) => a.x - b.x)
+      .map(([p, i]) => ({ p, key: i.texture.key, x: i.x, w: Math.round(i.displayWidth), h: Math.round(i.displayHeight) })); })()`);
+  const row = await icons();
+  console.log('passive icons', JSON.stringify(row));
+  // HUD row order is homing, poison, freeze: homing's dot at slot 0, the icons at slots 1 and 2.
+  const iconsOk = row.length === 2 && row[0].key === 'poison' && row[1].key === 'freeze' &&
+    row.every((i) => i.w === 20 && i.h === 20) && row[0].x === 21 + 24 && row[1].x === 21 + 48;
+  console.log(iconsOk ? 'passive icons ok (poison, freeze at 20px; homing a dot)' : 'PASSIVE ICONS WRONG');
+  // Ring and dot as drawn: homing a dot (no art), freeze ringed wide enough for its icon, poison not ringed.
+  const slots = await page.evaluate(`window.game.scene.getScene('hud').passiveSlots`);
+  console.log('passive slots', JSON.stringify(slots));
+  const by = Object.fromEntries(slots.map((s) => [s.passive, s]));
+  const slotsOk = by.homing?.art === undefined && by.freeze?.ring >= 10 && by.poison?.ring === undefined;
+  console.log(slotsOk ? 'dot and ring ok (homing dot, freeze ringed, poison not)' : 'DOT OR RING WRONG');
+  if (!slotsOk) process.exitCode = 1;
+  await shot('hud-02-passives');
+  if (!iconsOk) process.exitCode = 1;
+
+  // No HUD objects are made per frame, and every passive at level 2 still fits on one row.
+  const count = () => page.evaluate(`window.game.scene.getScene('hud').children.length`);
+  const before = await count();
+  await page.waitForTimeout(500);
+  const after = await count();
+  console.log(`hud objects ${before} -> ${after}`, before === after ? 'ok (flat)' : 'GROWING');
+  if (before !== after) process.exitCode = 1;
+  await page.evaluate(`${scene()}.world.player.passives = Object.fromEntries(${JSON.stringify(['homing', 'fireRate', 'sword', 'triple', 'pierce', 'ricochet', 'spectral', 'boomerang', 'poison', 'chain', 'freeze', 'orbital', 'dash'])}.map((p) => [p, 2])); ${scene()}.world.player.statUps = { damage: 2, rate: 1 }`);
+  await page.waitForTimeout(200);
+  console.log('all passives at level 2:', JSON.stringify(await icons()));
+  await shot('hud-03-all-passives');
 }
 
 console.log(errors.length ? `ERRORS:\n${errors.join('\n')}` : 'no console errors');

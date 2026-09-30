@@ -1,6 +1,5 @@
 import Phaser from 'phaser';
 import { currentFloorIndex, minimapRooms, roomLabel } from '../../core/map/world';
-import { PASSIVE_POOL } from '../../core/rooms/roomGenerator';
 import { WEAPON, type PassiveLevels } from '../../core/player/weaponModel';
 import { BossBarView } from '../ui/bossBarView';
 import { cheatTag } from '../../core/console/console';
@@ -9,6 +8,7 @@ import { CELL_PX_H, LABEL_STRIP_H } from '../geometry';
 import { HUD_KEYS } from '../../core/art/catalogue';
 import { SCRAP_SIZE } from '../../core/art/hud';
 import { ART_SCALE, bakedArt } from '../art/bake';
+import { PASSIVE_ROW, passiveRow, type PassiveSlot } from '../ui/passiveRow';
 
 /** The minimap's ink on its paper scrap: rooms seen, the room the player is in, and rooms only glimpsed. */
 const MAP_INK = { visited: 0x9a8a6a, current: 0x4a3a2a, outline: 0x6a5a44 };
@@ -19,10 +19,8 @@ const HEART = { size: 18, gap: 6, x: 14, y: 14 };
 const MAP = { w: 150, h: 84, margin: 10, cellW: 16, cellH: 10, gap: 2 };
 /** The paper scrap is see-through so the room under it shows; the ink on it stays opaque. */
 const MAP_SCRAP_ALPHA = 0.5;
-/** The row of owned passives under the keys and bombs. */
-const PASSIVES = { x: HEART.x + 7, y: HEART.y + HEART.size + 44, radius: 6, pitch: 20 };
 /** Chest stat-up totals, under the passives. */
-const STAT_UPS = { x: HEART.x, y: PASSIVES.y + 12 };
+const STAT_UPS = { x: HEART.x, y: PASSIVE_ROW.y + 12 };
 
 /** Overlay drawn in screen space on top of the game scene. */
 export class HudScene extends Phaser.Scene {
@@ -40,6 +38,10 @@ export class HudScene extends Phaser.Scene {
   private bossBar!: BossBarView;
   /** Paper hearts, one per heart the player can hold, made as they are needed. */
   private hearts: Phaser.GameObjects.Image[] = [];
+  /** Art icons of owned passives, one per passive with art, made the first time it is owned. */
+  passiveIcons = new Map<string, Phaser.GameObjects.Image>();
+  /** The passive row as last drawn (read by the smoke script). */
+  passiveSlots: PassiveSlot[] = [];
   /** The HUD is drawn in paper (its art is baked); otherwise in plain shapes. */
   private paper = false;
 
@@ -50,6 +52,7 @@ export class HudScene extends Phaser.Scene {
   create() {
     this.graphics = this.add.graphics();
     this.hearts = [];
+    this.passiveIcons = new Map();
     this.mapScrap = undefined;
     this.paper = !!bakedArt(HUD_KEYS.scrap);
     const x = this.scale.width - MAP.w - MAP.margin;
@@ -139,14 +142,29 @@ export class HudScene extends Phaser.Scene {
     }
   }
 
-  /** A dot per owned passive in its pickup's colour, below the keys and bombs; a white ring marks level 2. */
+  /**
+   * Each owned passive below the keys and bombs: its art if it has some, else a dot in its
+   * pickup's colour. A white ring marks level 2.
+   */
   private drawPassives(passives: PassiveLevels) {
     const g = this.graphics;
-    PASSIVE_POOL.filter((p) => passives[p]).forEach((p, i) => {
-      const x = PASSIVES.x + i * PASSIVES.pitch;
-      g.fillStyle(COLORS.passive[p]).fillCircle(x, PASSIVES.y, PASSIVES.radius);
-      if (passives[p] === 2) g.lineStyle(2, 0xffffff).strokeCircle(x, PASSIVES.y, PASSIVES.radius + 3);
-    });
+    const shown = new Set<string>();
+    this.passiveSlots = passiveRow(passives, this.textures);
+    for (const { passive, x, y, art, ring } of this.passiveSlots) {
+      if (art) {
+        let icon = this.passiveIcons.get(passive);
+        if (!icon) {
+          icon = this.add.image(x, y, art).setDisplaySize(PASSIVE_ROW.icon, PASSIVE_ROW.icon);
+          this.passiveIcons.set(passive, icon);
+        }
+        icon.setPosition(x, y).setVisible(true);
+        shown.add(passive);
+      } else {
+        g.fillStyle(COLORS.passive[passive]).fillCircle(x, y, PASSIVE_ROW.radius);
+      }
+      if (ring !== undefined) g.lineStyle(2, 0xffffff).strokeCircle(x, y, ring);
+    }
+    for (const [passive, icon] of this.passiveIcons) if (!shown.has(passive)) icon.setVisible(false);
   }
 
   private drawMinimap(world: GameScene['world']) {

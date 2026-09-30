@@ -1542,12 +1542,17 @@ if (scenario === 'rooms') {
 }
 
 if (scenario === 'hud') {
-  // The minimap's paper scrap is see-through; its ink is not.
+  // The minimap has nothing behind it: no scrap, no backing box under its window. Its rooms
+  // are opaque, and the floor label under it is stroked in dark ink.
   const map = await page.evaluate(`(() => { const h = window.game.scene.getScene('hud');
-    return { paper: h.paper, scrapAlpha: h.mapScrap?.alpha, inkAlpha: h.minimap.alpha }; })()`);
+    const m = h.minimap; const f = h.floorText; const x0 = h.scale.width - 160, y1 = 94;
+    const behind = h.children.list.slice(0, h.children.getIndex(m))
+      .filter((o) => (o.type === 'Image' || o.type === 'Rectangle') && o.visible && o.getBounds().right > x0 && o.getBounds().top < y1)
+      .map((o) => o.type + ':' + (o.frame?.name ?? ''));
+    return { scrap: 'mapScrap' in h, behind, inkAlpha: m.alpha, stroke: f.style.stroke, strokeThickness: f.style.strokeThickness }; })()`);
   console.log('minimap', JSON.stringify(map));
-  const ok = map.paper && map.scrapAlpha === 0.5 && map.inkAlpha === 1;
-  console.log(ok ? 'minimap alphas ok (scrap 0.5, ink 1)' : 'MINIMAP ALPHAS WRONG (expect paper, scrap 0.5, ink 1)');
+  const ok = !map.scrap && map.behind.length === 0 && map.inkAlpha === 1 && map.stroke === '#000000' && map.strokeThickness > 0;
+  console.log(ok ? 'minimap ok (nothing behind it, ink 1, floor label stroked)' : 'MINIMAP WRONG (expect nothing behind it, ink 1, floor label stroked)');
   if (!ok) process.exitCode = 1;
   await shot('hud-01');
 

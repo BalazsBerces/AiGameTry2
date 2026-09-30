@@ -6,29 +6,24 @@ import { cheatTag } from '../../core/console/console';
 import { COLORS } from '../config';
 import { CELL_PX_H, LABEL_STRIP_H } from '../geometry';
 import { HUD_KEYS } from '../../core/art/catalogue';
-import { SCRAP_SIZE } from '../../core/art/hud';
 import { ART_SCALE, bakedArt } from '../art/bake';
 import { PASSIVE_ROW, passiveRow, type PassiveSlot } from '../ui/passiveRow';
-
-/** The minimap's ink on its paper scrap: rooms seen, the room the player is in, and rooms only glimpsed. */
-const MAP_INK = { visited: 0x9a8a6a, current: 0x4a3a2a, outline: 0x6a5a44 };
 import type { GameScene } from './GameScene';
 
 const HEART = { size: 18, gap: 6, x: 14, y: 14 };
 /** Minimap window in the top-right corner, centred on the current room. */
 const MAP = { w: 150, h: 84, margin: 10, cellW: 16, cellH: 10, gap: 2 };
-/** The paper scrap is see-through so the room under it shows; the ink on it stays opaque. */
-const MAP_SCRAP_ALPHA = 0.5;
+/** Room edges and the item and boss marks, which sit straight on the game with nothing behind them. */
+const MAP_MARK = { outline: 2, edge: 1, symbol: 4.5, ring: 1.5 };
 /** Chest stat-up totals, under the passives. */
 const STAT_UPS = { x: HEART.x, y: PASSIVE_ROW.y + 12 };
 
 /** Overlay drawn in screen space on top of the game scene. */
 export class HudScene extends Phaser.Scene {
   private graphics!: Phaser.GameObjects.Graphics;
-  private minimap!: Phaser.GameObjects.Graphics;
-  /** The torn paper under the minimap, in paper mode only (read by the smoke script). */
-  mapScrap?: Phaser.GameObjects.Image;
-  private floorText!: Phaser.GameObjects.Text;
+  /** Read by the smoke script, with the floor label. */
+  minimap!: Phaser.GameObjects.Graphics;
+  floorText!: Phaser.GameObjects.Text;
   private keysText!: Phaser.GameObjects.Text;
   private bombsText!: Phaser.GameObjects.Text;
   private roomText!: Phaser.GameObjects.Text;
@@ -53,17 +48,9 @@ export class HudScene extends Phaser.Scene {
     this.graphics = this.add.graphics();
     this.hearts = [];
     this.passiveIcons = new Map();
-    this.mapScrap = undefined;
     this.paper = !!bakedArt(HUD_KEYS.scrap);
     const x = this.scale.width - MAP.w - MAP.margin;
-    if (this.paper) {
-      // The map on a torn scrap of paper, a little larger than its window.
-      this.mapScrap = this.hudImage(HUD_KEYS.scrap, x - (SCRAP_SIZE.w - MAP.w) / 2, MAP.margin - (SCRAP_SIZE.h - MAP.h) / 2)
-        .setOrigin(0)
-        .setAlpha(MAP_SCRAP_ALPHA);
-    } else {
-      this.add.rectangle(x, MAP.margin, MAP.w, MAP.h, COLORS.minimapBackground, 0.7).setOrigin(0);
-    }
+    // No backing: only the rooms and their marks are drawn over the game.
     this.minimap = this.add.graphics();
     const mask = this.make.graphics({}).fillRect(x, MAP.margin, MAP.w, MAP.h);
     this.minimap.setMask(mask.createGeometryMask());
@@ -84,7 +71,8 @@ export class HudScene extends Phaser.Scene {
     this.statUpsText = this.add.text(STAT_UPS.x, STAT_UPS.y, '', { fontFamily: 'monospace', fontSize: '12px', color: COLORS.text });
     this.floorText = this.add
       .text(x + MAP.w, MAP.margin + MAP.h + 4, '', { fontFamily: 'monospace', fontSize: '14px', color: COLORS.text })
-      .setOrigin(1, 0);
+      .setOrigin(1, 0)
+      .setStroke('#000000', 3);
     // The current room's layout, in the strip under the playfield, so bad ones can be named.
     this.roomText = this.add
       .text(this.scale.width / 2, CELL_PX_H + LABEL_STRIP_H / 2, '', { fontFamily: 'monospace', fontSize: '12px', color: COLORS.text })
@@ -169,6 +157,7 @@ export class HudScene extends Phaser.Scene {
 
   private drawMinimap(world: GameScene['world']) {
     const g = this.minimap.clear();
+    const ink = COLORS.minimap;
     const currentCells = world.rooms.get(world.currentRoomId)!.floorRoom.cells;
     const focus = {
       x: currentCells.reduce((s, c) => s + c.x, 0) / currentCells.length,
@@ -190,28 +179,31 @@ export class HudScene extends Phaser.Scene {
       });
       const { cellW: w, cellH: h, gap } = MAP;
       if (visited) {
-        g.fillStyle(this.paper ? (isCurrent ? MAP_INK.current : MAP_INK.visited) : isCurrent ? COLORS.minimapCurrent : COLORS.minimapVisited);
-        for (const c of cells) {
-          const { x, y } = origin(c);
-          const right = has(c.x + 1, c.y);
-          const down = has(c.x, c.y + 1);
-          g.fillRect(x, y, w + (right ? gap : 0), h);
-          if (down) g.fillRect(x, y, w, h + gap);
-          if (right && down && has(c.x + 1, c.y + 1)) g.fillRect(x + w, y + h, gap, gap);
-        }
+        g.fillStyle(isCurrent ? ink.current : ink.visited);
+        g.lineStyle(MAP_MARK.outline, ink.ink);
       } else {
-        g.lineStyle(1, this.paper ? MAP_INK.outline : COLORS.minimapVisited);
-        for (const c of cells) this.outlineCell(g, origin(c), c, has);
+        g.fillStyle(ink.glimpsed, ink.glimpsedAlpha);
+        g.lineStyle(MAP_MARK.edge, ink.edge);
       }
+      for (const c of cells) {
+        const { x, y } = origin(c);
+        const right = has(c.x + 1, c.y);
+        const down = has(c.x, c.y + 1);
+        g.fillRect(x, y, w + (right ? gap : 0), h);
+        if (down) g.fillRect(x, y + h, w, gap);
+        if (right && down && has(c.x + 1, c.y + 1)) g.fillRect(x + w, y + h, gap, gap);
+      }
+      for (const c of cells) this.outlineCell(g, origin(c), c, has);
 
-      const icon = kind === 'item' ? COLORS.minimapItem : kind === 'boss' ? COLORS.minimapBoss : undefined;
+      const icon = kind === 'item' ? ink.item : kind === 'boss' ? ink.boss : undefined;
       if (icon !== undefined) {
         const box = cells.map(origin);
         const x0 = Math.min(...box.map((b) => b.x));
         const y0 = Math.min(...box.map((b) => b.y));
         const x1 = Math.max(...box.map((b) => b.x)) + w;
         const y1 = Math.max(...box.map((b) => b.y)) + h;
-        g.fillStyle(icon).fillCircle((x0 + x1) / 2, (y0 + y1) / 2, 3);
+        g.fillStyle(icon).fillCircle((x0 + x1) / 2, (y0 + y1) / 2, MAP_MARK.symbol);
+        g.lineStyle(MAP_MARK.ring, ink.ink).strokeCircle((x0 + x1) / 2, (y0 + y1) / 2, MAP_MARK.symbol);
       }
     }
   }

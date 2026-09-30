@@ -178,11 +178,20 @@ export const COLORS = {
   } as Record<Passive, number>,
   heartEmpty: 0x3a1c20,
   text: '#e8d7b0',
-  minimapBackground: 0x000000,
-  minimapVisited: 0x8a8394,
-  minimapCurrent: 0xf0ecf5,
-  minimapItem: 0xf2c94c,
-  minimapBoss: 0xd8323c,
+  /**
+   * The minimap, in paper mode and plain shapes alike: bone rooms edged in dark ink straight
+   * over the game, glimpsed rooms a dark wash with a bone edge.
+   */
+  minimap: {
+    visited: 0xd8ccb0,
+    current: 0xf6f0e2,
+    ink: 0x14100c,
+    glimpsed: 0x14100c,
+    glimpsedAlpha: 0.55,
+    edge: 0xd8ccb0,
+    item: 0xf2c94c,
+    boss: 0xd8323c,
+  },
   goblin: 0xa8c236,
   goblinEdge: 0x4a3a1c,
   /** A hurt goblin keeping away from the player (placeholder). */

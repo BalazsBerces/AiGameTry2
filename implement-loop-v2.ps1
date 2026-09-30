@@ -55,7 +55,7 @@ function Get-OpenAgentTickets {
         "--repo", $Repo,
         "--state", "open",
         "--limit", "200",
-        "--json", "number,title,url"
+        "--json", "number,title,url,blockedBy"
     )
 
     if (-not [string]::IsNullOrWhiteSpace($TicketLabel)) {
@@ -75,37 +75,82 @@ function Get-OpenAgentTickets {
     return @($json | ConvertFrom-Json)
 }
 
-function Get-OpenBlockerCount {
+function Get-BlockerObjects {
+    param($BlockedBy)
+
+    if ($null -eq $BlockedBy) {
+        return @()
+    }
+
+    # Current gh shape:
+    # blockedBy = { nodes: [...], totalCount: N }
+    if ($BlockedBy.PSObject.Properties.Name -contains "nodes") {
+        $nodes = @($BlockedBy.nodes)
+
+        if ($BlockedBy.PSObject.Properties.Name -contains "totalCount") {
+            $totalCount = [int]$BlockedBy.totalCount
+
+            # GitHub CLI caps blockedBy nodes. Fail safely if anything is truncated.
+            if ($totalCount -gt $nodes.Count) {
+                throw "A blockedBy lista csonkolva érkezett ($($nodes.Count)/$totalCount). Biztonsági okból a runner nem folytatja."
+            }
+        }
+
+        return $nodes
+    }
+
+    # Compatibility with gh versions that may return a flat array.
+    return @($BlockedBy)
+}
+
+function Get-BlockerState {
     param(
         [string]$Repo,
-        [int]$IssueNumber
+        $Blocker
     )
 
-    # Nem PowerShellből próbáljuk kitalálni a blockedBy JSON pontos alakját.
-    # A gh saját jq feldolgozásával rekurzívan megkeressük a blockedBy alatt
-    # az összes olyan objektumot, amelynek van `state` mezője, majd
-    # megszámoljuk az OPEN állapotú blocker issue-kat.
-    #
-    # Ez működik akkor is, ha a gh a blockedBy-t közvetlen listaként,
-    # connection objektumként (nodes), vagy edges/node struktúrában adja vissza.
-    $jq = '[.blockedBy | .. | objects | select(has("state")) | .state | select(. == "OPEN")] | length'
-
-    $count = & gh issue view $IssueNumber `
-        --repo $Repo `
-        --json blockedBy `
-        --jq $jq
-
-    if ($LASTEXITCODE -ne 0) {
-        throw "Nem sikerült lekérni a #$IssueNumber issue blockedBy kapcsolatait."
+    if ($null -eq $Blocker) {
+        return $null
     }
 
-    $countText = ($count | Out-String).Trim()
-
-    if (-not [int]::TryParse($countText, [ref]$null)) {
-        throw "A blocker számlálás váratlan eredményt adott a #$IssueNumber issue-nál: '$countText'"
+    # Preferred: state is already included in blockedBy.nodes.
+    if ($Blocker.PSObject.Properties.Name -contains "state") {
+        $state = [string]$Blocker.state
+        if (-not [string]::IsNullOrWhiteSpace($state)) {
+            return $state.ToUpperInvariant()
+        }
     }
 
-    return [int]$countText
+    # Fallback: query the blocker directly without any jq expression.
+    if ($Blocker.PSObject.Properties.Name -contains "url") {
+        $url = [string]$Blocker.url
+
+        if (-not [string]::IsNullOrWhiteSpace($url)) {
+            $raw = & gh issue view $url --json state
+
+            if ($LASTEXITCODE -ne 0) {
+                throw "Nem sikerült lekérni a blocker állapotát: $url"
+            }
+
+            $obj = $raw | ConvertFrom-Json
+            return ([string]$obj.state).ToUpperInvariant()
+        }
+    }
+
+    if ($Blocker.PSObject.Properties.Name -contains "number") {
+        $number = [int]$Blocker.number
+
+        $raw = & gh issue view $number --repo $Repo --json state
+
+        if ($LASTEXITCODE -ne 0) {
+            throw "Nem sikerült lekérni a blocker állapotát: #$number"
+        }
+
+        $obj = $raw | ConvertFrom-Json
+        return ([string]$obj.state).ToUpperInvariant()
+    }
+
+    throw "Egy blocker objektumban sem state, sem url, sem number nem található."
 }
 
 function Test-IssueReady {
@@ -114,13 +159,21 @@ function Test-IssueReady {
         $Issue
     )
 
-    $openBlockers = Get-OpenBlockerCount `
-        -Repo $Repo `
-        -IssueNumber $Issue.number
+    $blockers = @(Get-BlockerObjects -BlockedBy $Issue.blockedBy)
 
-    if ($openBlockers -gt 0) {
-        Write-Host "Skip #$($Issue.number): $openBlockers nyitott blocker." -ForegroundColor DarkYellow
-        return $false
+    foreach ($blocker in $blockers) {
+        $state = Get-BlockerState -Repo $Repo -Blocker $blocker
+
+        if ($state -eq "OPEN") {
+            $blockerText = "ismeretlen blocker"
+
+            if ($blocker.PSObject.Properties.Name -contains "number") {
+                $blockerText = "#$($blocker.number)"
+            }
+
+            Write-Host "Skip #$($Issue.number): blokkolja $blockerText." -ForegroundColor DarkYellow
+            return $false
+        }
     }
 
     return $true
@@ -155,16 +208,17 @@ function Close-CompletedIssue {
         [string]$CommitHash
     )
 
-    $state = & gh issue view $IssueNumber `
+    $raw = & gh issue view $IssueNumber `
         --repo $Repo `
-        --json state `
-        --jq ".state"
+        --json state
 
     if ($LASTEXITCODE -ne 0) {
         throw "Nem sikerült ellenőrizni a #$IssueNumber issue állapotát."
     }
 
-    if (($state | Out-String).Trim().ToUpperInvariant() -eq "OPEN") {
+    $issueState = $raw | ConvertFrom-Json
+
+    if (([string]$issueState.state).ToUpperInvariant() -eq "OPEN") {
         & gh issue close $IssueNumber `
             --repo $Repo `
             --reason completed `
@@ -176,7 +230,7 @@ function Close-CompletedIssue {
     }
 }
 
-# ----- Előfeltételek -----
+# ----- Preconditions -----
 
 Assert-CommandAvailable "git"
 Assert-CommandAvailable "gh"

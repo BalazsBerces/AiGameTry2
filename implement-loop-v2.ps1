@@ -200,8 +200,9 @@ function Invoke-Implementation {
         --model $ClaudeModel `
         --permission-mode $Mode `
         --no-session-persistence `
-        $prompt
+        $prompt | Out-Host
 
+    # Claude's output goes to the host, so only the exit code is returned.
     return $LASTEXITCODE
 }
 
@@ -243,6 +244,10 @@ Assert-CommandAvailable "claude"
 $repo = Get-CurrentRepo
 $processed = 0
 
+# Issues closed during this run. GitHub's issue list lags a few seconds behind
+# a close, so without this the loop can pick the ticket it just finished.
+$completed = @{}
+
 Write-Host ""
 Write-Host "Repository:      $repo" -ForegroundColor Green
 Write-Host "Ticket label:    $Label"
@@ -261,7 +266,10 @@ while ($true) {
 
     Assert-CleanWorkingTree
 
-    $openTickets = @(Get-OpenAgentTickets -Repo $repo -TicketLabel $Label)
+    $openTickets = @(
+        Get-OpenAgentTickets -Repo $repo -TicketLabel $Label |
+            Where-Object { -not $completed.ContainsKey([int]$_.number) }
+    )
 
     if ($openTickets.Count -eq 0) {
         Write-Host ""
@@ -333,6 +341,7 @@ while ($true) {
         -IssueNumber $issue.number `
         -CommitHash $shortHash
 
+    $completed[[int]$issue.number] = $true
     $processed++
 
     Write-Host ""

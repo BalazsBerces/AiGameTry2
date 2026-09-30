@@ -1541,5 +1541,16 @@ if (scenario === 'rooms') {
   }
 }
 
+if (scenario === 'hud') {
+  // The minimap's paper scrap is see-through; its ink is not.
+  const map = await page.evaluate(`(() => { const h = window.game.scene.getScene('hud');
+    return { paper: h.paper, scrapAlpha: h.mapScrap?.alpha, inkAlpha: h.minimap.alpha }; })()`);
+  console.log('minimap', JSON.stringify(map));
+  const ok = map.paper && map.scrapAlpha === 0.5 && map.inkAlpha === 1;
+  console.log(ok ? 'minimap alphas ok (scrap 0.5, ink 1)' : 'MINIMAP ALPHAS WRONG (expect paper, scrap 0.5, ink 1)');
+  if (!ok) process.exitCode = 1;
+  await shot('hud-01');
+}
+
 console.log(errors.length ? `ERRORS:\n${errors.join('\n')}` : 'no console errors');
 await browser.close();

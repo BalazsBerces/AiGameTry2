@@ -17,6 +17,8 @@ import type { GameScene } from './GameScene';
 const HEART = { size: 18, gap: 6, x: 14, y: 14 };
 /** Minimap window in the top-right corner, centred on the current room. */
 const MAP = { w: 150, h: 84, margin: 10, cellW: 16, cellH: 10, gap: 2 };
+/** The paper scrap is see-through so the room under it shows; the ink on it stays opaque. */
+const MAP_SCRAP_ALPHA = 0.5;
 /** The row of owned passives under the keys and bombs. */
 const PASSIVES = { x: HEART.x + 7, y: HEART.y + HEART.size + 44, radius: 6, pitch: 20 };
 /** Chest stat-up totals, under the passives. */
@@ -26,6 +28,8 @@ const STAT_UPS = { x: HEART.x, y: PASSIVES.y + 12 };
 export class HudScene extends Phaser.Scene {
   private graphics!: Phaser.GameObjects.Graphics;
   private minimap!: Phaser.GameObjects.Graphics;
+  /** The torn paper under the minimap, in paper mode only (read by the smoke script). */
+  mapScrap?: Phaser.GameObjects.Image;
   private floorText!: Phaser.GameObjects.Text;
   private keysText!: Phaser.GameObjects.Text;
   private bombsText!: Phaser.GameObjects.Text;
@@ -46,11 +50,14 @@ export class HudScene extends Phaser.Scene {
   create() {
     this.graphics = this.add.graphics();
     this.hearts = [];
+    this.mapScrap = undefined;
     this.paper = !!bakedArt(HUD_KEYS.scrap);
     const x = this.scale.width - MAP.w - MAP.margin;
     if (this.paper) {
       // The map on a torn scrap of paper, a little larger than its window.
-      this.hudImage(HUD_KEYS.scrap, x - (SCRAP_SIZE.w - MAP.w) / 2, MAP.margin - (SCRAP_SIZE.h - MAP.h) / 2).setOrigin(0);
+      this.mapScrap = this.hudImage(HUD_KEYS.scrap, x - (SCRAP_SIZE.w - MAP.w) / 2, MAP.margin - (SCRAP_SIZE.h - MAP.h) / 2)
+        .setOrigin(0)
+        .setAlpha(MAP_SCRAP_ALPHA);
     } else {
       this.add.rectangle(x, MAP.margin, MAP.w, MAP.h, COLORS.minimapBackground, 0.7).setOrigin(0);
     }

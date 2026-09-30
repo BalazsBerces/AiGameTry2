@@ -1,5 +1,5 @@
 param(
-    [string]$Model = "sonnet",
+    [string]$Model = "opus",
     [string]$Label = "ready-for-agent",
     [ValidateSet("default", "acceptEdits", "auto", "dontAsk", "bypassPermissions", "manual")]
     [string]$PermissionMode = "auto",
@@ -9,7 +9,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-function Require-Command {
+function Assert-CommandAvailable {
     param([string]$Name)
 
     if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
@@ -50,19 +50,19 @@ function Get-OpenAgentTickets {
         [string]$TicketLabel
     )
 
-    $args = @(
+    $ghArgs = @(
         "issue", "list",
         "--repo", $Repo,
         "--state", "open",
         "--limit", "200",
-        "--json", "number,title,url,blockedBy"
+        "--json", "number,title,url"
     )
 
     if (-not [string]::IsNullOrWhiteSpace($TicketLabel)) {
-        $args += @("--label", $TicketLabel)
+        $ghArgs += @("--label", $TicketLabel)
     }
 
-    $json = & gh @args
+    $json = & gh @ghArgs
 
     if ($LASTEXITCODE -ne 0) {
         throw "Nem sikerült lekérni a GitHub issue-kat."
@@ -75,42 +75,52 @@ function Get-OpenAgentTickets {
     return @($json | ConvertFrom-Json)
 }
 
+function Get-OpenBlockerCount {
+    param(
+        [string]$Repo,
+        [int]$IssueNumber
+    )
+
+    # Nem PowerShellből próbáljuk kitalálni a blockedBy JSON pontos alakját.
+    # A gh saját jq feldolgozásával rekurzívan megkeressük a blockedBy alatt
+    # az összes olyan objektumot, amelynek van `state` mezője, majd
+    # megszámoljuk az OPEN állapotú blocker issue-kat.
+    #
+    # Ez működik akkor is, ha a gh a blockedBy-t közvetlen listaként,
+    # connection objektumként (nodes), vagy edges/node struktúrában adja vissza.
+    $jq = '[.blockedBy | .. | objects | select(has("state")) | .state | select(. == "OPEN")] | length'
+
+    $count = & gh issue view $IssueNumber `
+        --repo $Repo `
+        --json blockedBy `
+        --jq $jq
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Nem sikerült lekérni a #$IssueNumber issue blockedBy kapcsolatait."
+    }
+
+    $countText = ($count | Out-String).Trim()
+
+    if (-not [int]::TryParse($countText, [ref]$null)) {
+        throw "A blocker számlálás váratlan eredményt adott a #$IssueNumber issue-nál: '$countText'"
+    }
+
+    return [int]$countText
+}
+
 function Test-IssueReady {
-    param($Issue)
+    param(
+        [string]$Repo,
+        $Issue
+    )
 
-    $blockers = @($Issue.blockedBy)
+    $openBlockers = Get-OpenBlockerCount `
+        -Repo $Repo `
+        -IssueNumber $Issue.number
 
-    foreach ($blocker in $blockers) {
-        if ($null -eq $blocker) {
-            continue
-        }
-
-        # GitHub CLI verziótól függően a blockedBy elem
-        # nem feltétlenül tartalmaz state mezőt.
-        # Ezért a blocker aktuális állapotát külön kérjük le.
-        $blockerUrl = $null
-
-        if ($blocker.PSObject.Properties.Name -contains "url") {
-            $blockerUrl = $blocker.url
-        }
-
-        if ([string]::IsNullOrWhiteSpace($blockerUrl)) {
-            throw "Egy blockerhez nem kaptunk URL-t, ezért nem dönthető el biztonságosan, hogy az issue feloldott-e."
-        }
-
-        $blockerState = & gh issue view $blockerUrl `
-            --json state `
-            --jq ".state"
-
-        if ($LASTEXITCODE -ne 0) {
-            throw "Nem sikerült lekérni a blocker állapotát: $blockerUrl"
-        }
-
-        $blockerState = ($blockerState | Out-String).Trim().ToUpperInvariant()
-
-        if ($blockerState -eq "OPEN") {
-            return $false
-        }
+    if ($openBlockers -gt 0) {
+        Write-Host "Skip #$($Issue.number): $openBlockers nyitott blocker." -ForegroundColor DarkYellow
+        return $false
     }
 
     return $true
@@ -168,9 +178,9 @@ function Close-CompletedIssue {
 
 # ----- Előfeltételek -----
 
-Require-Command "git"
-Require-Command "gh"
-Require-Command "claude"
+Assert-CommandAvailable "git"
+Assert-CommandAvailable "gh"
+Assert-CommandAvailable "claude"
 
 $repo = Get-CurrentRepo
 $processed = 0
@@ -201,15 +211,17 @@ while ($true) {
         break
     }
 
-    $readyTickets = @(
-        $openTickets |
-            Where-Object { Test-IssueReady $_ } |
-            Sort-Object number
-    )
+    $readyTickets = @()
+
+    foreach ($candidate in ($openTickets | Sort-Object number)) {
+        if (Test-IssueReady -Repo $repo -Issue $candidate) {
+            $readyTickets += $candidate
+        }
+    }
 
     if ($readyTickets.Count -eq 0) {
         Write-Host ""
-        Write-Host "Maradtak nyitott ticketek, de mindegyiket nyitott blocker blokkolja." -ForegroundColor Yellow
+        Write-Host "Maradtak nyitott '$Label' ticketek, de mindegyiket nyitott blocker blokkolja." -ForegroundColor Yellow
         Write-Host "A runner leáll; ellenőrizd a GitHub dependency-ket."
         break
     }
@@ -236,7 +248,6 @@ while ($true) {
         exit $exitCode
     }
 
-    # Az implement skillnek commitolnia kell.
     Assert-CleanWorkingTree
 
     $afterCommit = (& git rev-parse HEAD | Out-String).Trim()

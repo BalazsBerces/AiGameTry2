@@ -72,7 +72,11 @@ function Get-OpenAgentTickets {
         return @()
     }
 
-    return @($json | ConvertFrom-Json)
+    # Windows PowerShell 5.1 emits a JSON array as a single object, so unroll it
+    # explicitly before sorting; otherwise the tickets stay in gh's newest-first order.
+    $parsed = ($json | Out-String) | ConvertFrom-Json
+
+    return @($parsed | ForEach-Object { $_ } | Sort-Object { [int]$_.number })
 }
 
 function Get-BlockerObjects {
@@ -267,7 +271,8 @@ while ($true) {
 
     $readyTickets = @()
 
-    foreach ($candidate in ($openTickets | Sort-Object number)) {
+    # $openTickets is already in ascending issue-number order.
+    foreach ($candidate in $openTickets) {
         if (Test-IssueReady -Repo $repo -Issue $candidate) {
             $readyTickets += $candidate
         }

@@ -2,7 +2,7 @@ import { CHARACTERS, type Action, type View } from '../core/art/characters';
 import { hudSvg, HEART_CANVAS, ICON_CANVAS, SHOT_CANVAS } from '../core/art/hud';
 import { PAPER } from '../core/art/palette';
 import { DOWN, LEFT, RIGHT, UP, type Mask } from '../core/art/autotile';
-import { DECOR_CANVAS, TILE, TILE_CANVAS, terrainSvg, type WallSide } from '../core/art/terrain';
+import { DECOR_CANVAS, TILE, TILE_CANVAS, WALL_STYLES, terrainSvg, type Shell, type WallSide, type WallStyle } from '../core/art/terrain';
 import { createRng } from '../core/rng';
 
 /**
@@ -80,16 +80,23 @@ interface Light {
 
 interface Scene {
   map: string[];
-  floor: 'normal' | 'boss';
+  floor: 'normal' | 'item' | 'boss';
   actors: Actor[];
   shots: { kind: 'player' | 'enemy'; x: number; y: number }[];
   seed: number;
+  /** The room shell it is drawn with (the forest's unless named) and its wall style. */
+  shell?: Shell;
+  wallStyle?: WallStyle;
+  /** The dressing scattered over its floor; the forest's unless named. */
+  decor?: string[];
 }
 
 const at = (gx: number, gy: number) => ({ x: (gx + 0.5) * TILE, y: (gy + 0.5) * TILE });
 
 function drawRoom(sheet: Sheet, scene: Scene, lit: boolean, id: string): string {
   const { map } = scene;
+  const shell = scene.shell ?? 'forest';
+  const wallStyle = scene.wallStyle ?? WALL_STYLES[shell][0];
   const rng = createRng(scene.seed);
   const cell = (x: number, y: number) => map[y]?.[x] ?? '#';
   const flat: string[] = [];
@@ -109,13 +116,13 @@ function drawRoom(sheet: Sheet, scene: Scene, lit: boolean, id: string): string 
           (gx === 0 || gx === row.length - 1) && (gy === 0 || gy === map.length - 1) ? 'corner'
           : gy === 0 ? 'top' : gy === map.length - 1 ? 'bottom' : gx === 0 ? 'left' : 'right';
         // Walls stand at the edge of the view: the top one first, the bottom one over everything.
-        standing.push({ y: gy === 0 ? -100 : gy === map.length - 1 ? 9999 : c.y, svg: tile(terrainSvg.wall(side, variant), c.x, c.y) });
+        standing.push({ y: gy === 0 ? -100 : gy === map.length - 1 ? 9999 : c.y, svg: tile(terrainSvg.wall(side, variant, wallStyle), c.x, c.y) });
         return;
       }
-      flat.push(tile(terrainSvg.floor(scene.floor, variant), c.x, c.y));
+      flat.push(tile(terrainSvg.floor(scene.floor, variant, shell), c.x, c.y));
       if (ch === 'D' || ch === 'G') {
         const side = gy === 0 ? 'top' : gy === map.length - 1 ? 'bottom' : gx === 0 ? 'left' : 'right';
-        standing.push({ y: gy === 0 ? -50 : c.y, svg: tile(terrainSvg.door(side, ch === 'G'), c.x, c.y) });
+        standing.push({ y: gy === 0 ? -50 : c.y, svg: tile(terrainSvg.door(side, ch === 'G', shell), c.x, c.y) });
         return;
       }
       const look = LOOK[ch];
@@ -134,7 +141,7 @@ function drawRoom(sheet: Sheet, scene: Scene, lit: boolean, id: string): string 
   );
 
   // Dressing: generous, on about a third of the open floor.
-  const kinds = scene.floor === 'boss' ? ['leaves', 'pebbles', 'grass'] : ['grass', 'leaves', 'pebbles', 'grass', 'leaves', 'thornLitter', 'lilypad'];
+  const kinds = scene.decor ?? (scene.floor === 'boss' ? ['leaves', 'pebbles', 'grass'] : ['grass', 'leaves', 'pebbles', 'grass', 'leaves', 'thornLitter', 'lilypad']);
   map.forEach((row, gy) =>
     [...row].forEach((ch, gx) => {
       if (ch !== '.' || rng.next() > 0.36) return;
@@ -183,7 +190,7 @@ function drawRoom(sheet: Sheet, scene: Scene, lit: boolean, id: string): string 
   const dark = lit
     ? `<rect width="${W}" height="${Hh}" fill="#04070a" opacity="0.62" mask="url(#${id}-dark)"/>${warmth}<rect width="${W}" height="${Hh}" fill="url(#${id}-vignette)"/>`
     : '';
-  return `<defs>${defs}</defs><rect width="${W}" height="${Hh}" fill="${PAPER.hedgeDark}"/>${flat.join('')}${standing.map((s) => s.svg).join('')}${dark}${shots}`;
+  return `<defs>${defs}</defs><rect width="${W}" height="${Hh}" fill="${shell === 'caves' ? PAPER.caves.rockDeep : PAPER.hedgeDark}"/>${flat.join('')}${standing.map((s) => s.svg).join('')}${dark}${shots}`;
 }
 
 function drawHud(sheet: Sheet, w: number): string {
@@ -222,7 +229,7 @@ function drawHud(sheet: Sheet, w: number): string {
 function roomSvg(sheet: Sheet, scene: Scene, lit: boolean, id: string, hud: boolean): string {
   const w = scene.map[0].length * TILE;
   const h = scene.map.length * TILE;
-  return `<svg class="room" viewBox="0 0 ${w} ${h}" role="img" aria-label="Papercut forest room">${drawRoom(sheet, scene, lit, id)}${hud ? drawHud(sheet, w) : ''}</svg>`;
+  return `<svg class="room" viewBox="0 0 ${w} ${h}" role="img" aria-label="Papercut ${scene.shell ?? 'forest'} room">${drawRoom(sheet, scene, lit, id)}${hud ? drawHud(sheet, w) : ''}</svg>`;
 }
 
 const FOREST: Scene = {
@@ -260,6 +267,33 @@ const BOSS: Scene = {
     { kind: 'player', x: 324, y: 250 },
   ],
 };
+
+const CAVE_MAP = [
+  '#######D#######',
+  '#.............#',
+  '#.............#',
+  '#.............#',
+  'D.............G',
+  '#.............#',
+  '#.............#',
+  '#.............#',
+  '###############',
+];
+
+/** The caves' room shell alone: its terrain, decor and cast come in later passes. */
+const CAVE: Scene = {
+  map: CAVE_MAP,
+  floor: 'normal',
+  seed: 23,
+  shell: 'caves',
+  wallStyle: 'strata',
+  decor: ['pebbles'],
+  actors: [{ kind: 'player', x: 330, y: 250, action: 'idle', frame: 0 }],
+  shots: [],
+};
+
+const CAVE_GROTTO: Scene = { ...CAVE, seed: 29, wallStyle: 'veined', map: CAVE_MAP.map((row) => row.replace('G', '#')) };
+const CAVE_BOSS: Scene = { ...CAVE, map: BOSS_MAP.map((row) => row.replace(/[Tbx]/g, '.')), floor: 'boss', seed: 31, actors: [{ kind: 'player', x: 344, y: 330, action: 'idle', frame: 0, view: 'up' }] };
 
 const img = (svg: string, w: number, h: number, scale: number, flip = false, alt = '') =>
   `<img src="${uri(svg)}" width="${w * scale}" height="${h * scale}" alt="${alt}"${flip ? ' style="transform:scaleX(-1)"' : ''}>`;
@@ -320,6 +354,65 @@ function pieceSheet(): string {
     `<section class="strip"><h3>HUD and shots</h3><div class="frames">${hud}</div></section>`;
 }
 
+/** Every piece of the caves' room shell: walls in both styles, doors, floors. */
+function caveShellSheet(): string {
+  const fig = (svg: string, label: string) => `<figure>${img(svg, TILE_CANVAS.w, TILE_CANVAS.h, 1.5, false, label)}<figcaption>${label}</figcaption></figure>`;
+  const sides: WallSide[] = ['top', 'bottom', 'left', 'right', 'corner'];
+  const variants = [0, 1, 2, 3];
+  const walls = WALL_STYLES.caves.map((style) => {
+    const figs = sides.flatMap((side) => variants.map((v) => fig(terrainSvg.wall(side, v, style), `${side} ${v + 1}`))).join('');
+    const name = style === 'strata' ? 'Rock-strata walls <span>the usual cave wall; the top wall shows its stacked face, stalactites on variants 2 and 4</span>' : 'Crystal-veined walls <span>rooms with 3 or more crystal tiles, all the way round</span>';
+    return `<section class="strip"><h3>${name}</h3><div class="frames">${figs}</div></section>`;
+  });
+  const doors = (['top', 'bottom', 'left', 'right'] as const)
+    .flatMap((side) => [false, true].map((locked) => fig(terrainSvg.door(side, locked, 'caves'), `${side}${locked ? ', locked' : ''}`)))
+    .join('');
+  const floors = (['normal', 'item', 'boss'] as const)
+    .flatMap((kind) => variants.map((v) => fig(terrainSvg.floor(kind, v, 'caves'), `${kind} ${v + 1}`)))
+    .join('');
+  // A 3×3 patch of each floor, variants mixed, to judge how it tiles.
+  const patch = (kind: 'normal' | 'item' | 'boss') => {
+    const cells = [0, 1, 2].flatMap((gy) => [0, 1, 2].map((gx) => {
+      const svg = terrainSvg.floor(kind, (gx * 7 + gy * 13) % 4, 'caves');
+      return `<image href="${uri(svg)}" width="${TILE_CANVAS.w}" height="${TILE_CANVAS.h}" x="${gx * TILE - (TILE_CANVAS.anchor.x - TILE / 2)}" y="${gy * TILE - (TILE_CANVAS.anchor.y - TILE / 2)}"/>`;
+    })).join('');
+    return `<figure><svg width="${TILE * 3 * 1.5}" height="${TILE * 3 * 1.5}" viewBox="0 0 ${TILE * 3} ${TILE * 3}" role="img" aria-label="${kind} floor, tiled">${cells}</svg><figcaption>${kind}, tiled</figcaption></figure>`;
+  };
+  return walls.join('') +
+    `<section class="strip"><h3>Mine-prop doorways <span>timber props and lintel; locked ones barred by a rusted iron grate</span></h3><div class="frames">${doors}</div></section>` +
+    `<section class="strip"><h3>Earth floors <span>normal: slabs and cracks · item: worn flagstone shrine · boss: tunnel gouges, bones and shards</span></h3><div class="frames">${floors}</div></section>` +
+    `<section class="strip"><h3>Floors tiled <span>variants mixed, no seams</span></h3><div class="frames">${patch('normal')}${patch('item')}${patch('boss')}</div></section>`;
+}
+
+function cavesSheet(): string {
+  const lit = new Sheet('c');
+  const caveLit = roomSvg(lit, CAVE, true, 'c', false);
+  const unlit = new Sheet('cu');
+  const caveUnlit = roomSvg(unlit, CAVE, false, 'cu', false);
+  const grotto = new Sheet('cg');
+  const grottoUnlit = roomSvg(grotto, CAVE_GROTTO, false, 'cg', false);
+  const boss = new Sheet('cb');
+  const bossUnlit = roomSvg(boss, CAVE_BOSS, false, 'cb', false);
+  const defs = (s: Sheet) => `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>${s.defs.join('')}</defs></svg>`;
+  return `
+<div class="caves">
+<header class="masthead">
+  <p class="eyebrow">Floor 2 · room shell for approval</p>
+  <h1>Papercut Caves</h1>
+  <p class="lede">Warm earth, cold light: umber and ochre rock paper, icy cyan-white crystal as the hard accent, violet fungus (and deep-teal slime) to come. This sheet covers the room shell only: walls, doors and floors. Terrain, decor and the cave cast follow once this is signed off.</p>
+</header>
+${defs(lit)}${defs(unlit)}${defs(grotto)}${defs(boss)}
+<figure class="stage">${caveLit}<figcaption>A sample cave room, lit as in the game: rock-strata walls, mine-prop doorways top and left, the right door barred while enemies live.</figcaption></figure>
+<div class="pair">
+  <figure class="stage small">${caveUnlit}<figcaption>The same room with the lights on.</figcaption></figure>
+  <figure class="stage small">${grottoUnlit}<figcaption>A crystal-heavy room: crystal-veined walls all the way round.</figcaption></figure>
+  <figure class="stage small">${bossUnlit}<figcaption>The worm's room: gouged tunnel trails, bones and shards.</figcaption></figure>
+</div>
+<h2>Room shell pieces</h2>
+${caveShellSheet()}
+</div>`;
+}
+
 export function buildMockup(): string {
   const forest = new Sheet('f');
   const forestLit = roomSvg(forest, FOREST, true, 'f', true);
@@ -345,7 +438,8 @@ ${defs(forest)}${defs(boss)}${defs(unlit)}
 ${frameStrips()}
 <h2>Pieces</h2>
 <p class="note">Joined pieces show how neighbouring trees, thorns and pond tiles grow into each other.</p>
-${pieceSheet()}`;
+${pieceSheet()}
+${cavesSheet()}`;
 }
 
 document.getElementById('page')!.innerHTML = buildMockup();

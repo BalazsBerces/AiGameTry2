@@ -1,4 +1,5 @@
 import type { BossType, EnemyType, Tile } from '../rooms/roomGenerator';
+import type { Shell } from '../art/terrain';
 
 export interface Palette {
   background: number;
@@ -31,6 +32,8 @@ export interface FloorTheme {
   palette: Palette;
   /** Walls, doors and floors are drawn in paper (core/art) rather than flat colour. */
   paper?: boolean;
+  /** Which paper walls, doors and floors its rooms are drawn with. */
+  shell?: Shell;
   /** Room tiles only: `wall` (an L room's missing cell) is drawn in the palette's wall colour. */
   looks: Record<Exclude<Tile, 'floor' | 'wall'>, TileLook>;
   /** The floor's boss is picked from these, once per run (see `bossForFloor`). */
@@ -48,6 +51,7 @@ const THEMES: readonly FloorTheme[] = [
   {
     name: 'Forest',
     paper: true,
+    shell: 'forest',
     palette: {
       background: 0x0b120b,
       floor: 0x34482c,
@@ -72,6 +76,7 @@ const THEMES: readonly FloorTheme[] = [
   },
   {
     name: 'Caves',
+    shell: 'caves',
     palette: {
       background: 0x0f0a06,
       floor: 0x4a3a2a,

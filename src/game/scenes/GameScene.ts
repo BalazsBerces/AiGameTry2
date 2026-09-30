@@ -1851,8 +1851,9 @@ export class GameScene extends Phaser.Scene {
       const c = tileCenter(room, w.x, w.y);
       const lock = this.add.rectangle(c.x, c.y, t, t, COLORS.lockedDoor);
       this.walls.add(lock);
-      const gate = themeForFloor(room.floorIndex).paper
-        ? this.paper.piece(doorKey(door.side, true), c.x, c.y, TILE_CANVAS, door.side === 'down' ? c.y + t : c.y + t / 2)
+      const theme = themeForFloor(room.floorIndex);
+      const gate = theme.paper
+        ? this.paper.piece(doorKey(theme.shell ?? 'forest', door.side, true), c.x, c.y, TILE_CANVAS, door.side === 'down' ? c.y + t : c.y + t / 2)
         : undefined;
       if (gate) this.paper.standIn(lock, gate);
       this.doorLocks.push(lock);
@@ -1920,6 +1921,7 @@ export class GameScene extends Phaser.Scene {
     const corridors = new Set(room.layout.doors.flatMap((d) => doorCorridor(room, d)).map((c) => `${c.x},${c.y}`));
     const theme = themeForFloor(room.floorIndex);
     const { palette } = theme;
+    const shell = theme.shell ?? 'forest';
     const looks = roomLooks(room.floorIndex, room.layout.theme ?? '');
     const variants = room.layout.variants;
     const variantAt = (tx: number, ty: number) => variants?.[ty]?.[tx] ?? Math.abs(tx * 7 + ty * 13) % TILE_VARIANTS;
@@ -1940,8 +1942,8 @@ export class GameScene extends Phaser.Scene {
           const door = room.layout.doors.find((d) => doorCorridor(room, d)[0].x === tx && doorCorridor(room, d)[0].y === ty);
           const art = theme.paper
             ? door
-              ? this.paper.piece(doorKey(door.side, false), c.x, c.y, TILE_CANVAS, door.side === 'down' ? c.y + t : c.y + t / 2)
-              : this.paper.piece(floorKey('normal', variantAt(tx, ty)), c.x, c.y, TILE_CANVAS)
+              ? this.paper.piece(doorKey(shell, door.side, false), c.x, c.y, TILE_CANVAS, door.side === 'down' ? c.y + t : c.y + t / 2)
+              : this.paper.piece(floorKey(shell, 'normal', variantAt(tx, ty)), c.x, c.y, TILE_CANVAS)
             : undefined;
           if (!art) this.add.rectangle(c.x, c.y, t, t, palette.door);
           continue;
@@ -2005,12 +2007,13 @@ export class GameScene extends Phaser.Scene {
   /** The floor in paper: a moss sheet per tile (the item and boss rooms' own), decor as paper cutouts. */
   private drawPaperFloor(room: WorldRoom) {
     const kind = FLOOR_KIND[room.floorRoom.kind];
+    const shell = themeForFloor(room.floorIndex).shell ?? 'forest';
     const variants = room.layout.variants;
     room.layout.tiles.forEach((row, ty) =>
       row.forEach((tile, tx) => {
         if (tile === 'wall') return;
         const c = tileCenter(room, tx, ty);
-        this.paper.piece(floorKey(kind, variants?.[ty]?.[tx] ?? 0), c.x, c.y, TILE_CANVAS);
+        this.paper.piece(floorKey(shell, kind,variants?.[ty]?.[tx] ?? 0), c.x, c.y, TILE_CANVAS);
       }),
     );
     for (const d of room.layout.decor ?? []) {
@@ -2022,7 +2025,7 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  /** A hedge in paper standing in for a wall block: the top wall shows its front face to the room. */
+  /** The floor's paper wall standing in for a wall block: the top wall shows its front face to the room. */
   private paperWall(room: WorldRoom, wall: Phaser.GameObjects.Rectangle, tx: number, ty: number, variant: number) {
     const { width, height } = room.layout;
     const inside = (x: number, y: number) => room.layout.tiles[y]?.[x] !== undefined && room.layout.tiles[y][x] !== 'wall';
@@ -2034,7 +2037,7 @@ export class GameScene extends Phaser.Scene {
       : tx >= width || inside(tx - 1, ty) ? 'right'
       : 'corner';
     const footY = side === 'bottom' ? wall.y + TUNING.tile : side === 'top' ? wall.y + TUNING.tile / 2 : wall.y + 14;
-    const art = this.paper.piece(wallKey(side, variant), wall.x, wall.y, TILE_CANVAS, footY);
+    const art = this.paper.piece(wallKey(themeForFloor(room.floorIndex).shell ?? 'forest', side, variant),wall.x, wall.y, TILE_CANVAS, footY);
     if (art) this.paper.standIn(wall, art);
   }
 

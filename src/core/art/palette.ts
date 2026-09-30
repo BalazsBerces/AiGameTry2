@@ -1,4 +1,4 @@
-/** The forest in paper: every colour the papercut art uses, by what it is. */
+/** The world in paper: every colour the papercut art uses, by what it is (the caves' in their own section). */
 export const PAPER = {
   ink: '#1c140f',
   shadow: '#060805',
@@ -109,4 +109,56 @@ export const PAPER = {
   bombLight: '#4a4a58',
   fuse: '#ff9a3c',
   champion: '#f2b632',
+
+  /**
+   * The caves: warm earth, cold light. Umber and ochre rock, icy crystal as the hard accent,
+   * violet fungus as the second hue. Slime is a deeper, softer teal, kept apart from crystal cyan.
+   */
+  caves: {
+    rock: '#4a3626',
+    rockLight: '#6e5236',
+    rockDark: '#2e2016',
+    rockDeep: '#1a110a',
+    ochre: '#7a5830',
+    strata: '#4e3a26',
+    strataLight: '#654a30',
+    strataDark: '#2a1d12',
+    stalactite: '#7e6044',
+    stalactiteLight: '#a2805a',
+
+    crystal: '#8fe6f0',
+    crystalLight: '#e8fcff',
+    crystalShade: '#4aa8b8',
+    crystalDeep: '#26606e',
+
+    fungus: '#7a3288',
+    fungusLight: '#b85aa8',
+    fungusShade: '#4e1e5a',
+    fungusGill: '#e08ec4',
+
+    slime: '#1a5250',
+    slimeLight: '#347e78',
+    slimeCore: '#cfe2da',
+
+    timber: '#5a3e22',
+    timberLight: '#7a5a34',
+    timberDark: '#35240f',
+    rust: '#7a3a1e',
+    rustLight: '#a8582c',
+    rustDark: '#46200e',
+    bone: '#d8ccb0',
+    boneShade: '#a89a7a',
+
+    earth: '#33271c',
+    earthPatch: '#3e3022',
+    earthDark: '#261c13',
+    slab: '#4e3f30',
+    slabLight: '#5e4c3a',
+    crack: '#150e08',
+    flagstone: '#5a4c3c',
+    flagstoneLight: '#6c5c4a',
+    bossEarth: '#2e1e16',
+    gouge: '#140c08',
+    gougeRim: '#4a3424',
+  },
 } as const;

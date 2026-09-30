@@ -47,6 +47,23 @@ describe('give', () => {
     expect(log).toEqual(['Triple shot level 1']);
   });
 
+  const listed = (command: string) => run(command, context()).log.map((l) => l.trim().split(/\s+/)[1]);
+
+  it('lists the passives under items', () => {
+    expect(listed('items')).toContain('triple');
+    expect(listed('items')).not.toContain('key');
+    expect(listed('items')).not.toContain('damageUp');
+  });
+
+  it('lists pickups, stat-ups and chests under drops, numbered on from the passives', () => {
+    expect(listed('drops')).toEqual(['heart', 'key', 'bomb', 'heartContainer', 'damageUp', 'rateUp', 'chest', 'lockedChest']);
+    const [heart] = run('drops', context()).log;
+    const world = createWorld(7);
+    world.player.health = 1;
+    run(`give ${heart.trim().split(/\s+/)[0]}`, context(world));
+    expect(world.player.health).toBe(3);
+  });
+
   it('gives an item by its number in the item list', () => {
     const world = createWorld(7);
     run(`give ${tripleNumber()}`, context(world));
@@ -61,7 +78,7 @@ describe('give', () => {
   });
 
   it('says so for an item that does not exist', () => {
-    expect(run('give laser', context()).log).toEqual(['no item called "laser" (try items)']);
+    expect(run('give laser', context()).log).toEqual(['no item called "laser" (try items or drops)']);
   });
 
   it('raises a passive to level 2 when given twice, or at once with a level', () => {

@@ -74,8 +74,9 @@ The game keeps running while it is open, but no key reaches the game. **Esc** al
 
 | Command | What it does |
 |---|---|
-| `items` | Numbered list of everything `give` and `drop` take: passives, pickups, stat-ups, chests. |
-| `give <item>` | By id (`triple`), display name (`triple shot`) or number. A passive comes at level 1, or goes up to 2 if you have it. |
+| `items` | Numbered list of the passives `give` and `drop` take. |
+| `drops` | Numbered list of the pickups, stat-ups (damage up, fire rate up) and chests. The numbers carry on from `items`, so `give <number>` works for both. |
+| `give <item>` | By id (`triple`), display name (`triple shot`) or its number in `items` / `drops`. A passive comes at level 1, or goes up to 2 if you have it. |
 | `give <passive> 2` | Straight to level 2. |
 | `give all [2]` | Every passive (at level 2 if asked). |
 | `give heart\|key\|bomb\|heartContainer\|damageUp\|rateUp [n]` | n of that pickup's effect, as if picked up. |

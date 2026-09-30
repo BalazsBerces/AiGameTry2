@@ -118,8 +118,14 @@ const itemName = (item: Item) => item.names?.[0] ?? item.id;
 function findItem(query: string): Match<Item> {
   const n = Number(query);
   if (Number.isInteger(n) && n >= 1 && n <= ITEMS.length) return { found: ITEMS[n - 1] };
-  return matchName(query, ITEMS, 'item', ' (try items)');
+  return matchName(query, ITEMS, 'item', ' (try items or drops)');
 }
+
+/** The items `which` picks, each with its number (which `give` and `drop` take): one numbering across `items` and `drops`. */
+const itemList = (which: (item: Item) => boolean) =>
+  ITEMS.flatMap((item, i) =>
+    which(item) ? [`${String(i + 1).padStart(3)} ${item.id}${item.names ? ` — ${item.names[0]}` : ''}${item.kind === 'chest' ? ' (drop only)' : ''}`] : [],
+  );
 
 /** A whole number, if the word is one. */
 const integer = (word: string | undefined) => (word !== undefined && /^-?\d+$/.test(word) ? Number(word) : undefined);
@@ -197,11 +203,13 @@ const COMMANDS: Command[] = [
   },
   {
     name: 'items',
-    usage: 'items — list everything give and drop take, by number',
-    run: (_args, _ctx, out) =>
-      ITEMS.forEach((item, i) =>
-        out.log.push(`${String(i + 1).padStart(3)} ${item.id}${item.names ? ` — ${item.names[0]}` : ''}${item.kind === 'chest' ? ' (drop only)' : ''}`),
-      ),
+    usage: 'items — list the passives give and drop take, by number',
+    run: (_args, _ctx, out) => out.log.push(...itemList((item) => item.kind === 'passive')),
+  },
+  {
+    name: 'drops',
+    usage: 'drops — list the pickups, stat-ups and chests give and drop take, by number',
+    run: (_args, _ctx, out) => out.log.push(...itemList((item) => item.kind !== 'passive')),
   },
   {
     name: 'give',

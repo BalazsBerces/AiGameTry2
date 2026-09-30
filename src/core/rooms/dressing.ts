@@ -2,6 +2,8 @@ import type { Cell } from '../map/floorGenerator';
 import type { Rng } from '../rng';
 import type { Tile } from './roomGenerator';
 import { roomThemeById } from './roomThemes';
+import { themeForFloor } from '../map/themes';
+import { WALL_STYLES, type WallStyle } from '../art/terrain';
 
 /** A bit of set dressing lying on a floor cell: never blocks feet or shots, it's only drawn. */
 export interface Decor {
@@ -37,6 +39,18 @@ export interface Dressing {
   /** variants[y][x]: which of `VARIANTS` looks the tile at x,y takes; stable for the seed. */
   variants: number[][];
   regions: Region[];
+  /** Which of its floor's wall styles the room's walls are drawn in; decided by its layout alone. */
+  wallStyle: WallStyle;
+}
+
+/** Crystal tiles it takes for a caves room's walls to be crystal-veined all the way round. */
+export const VEINED_AT = 3;
+
+/** A room's wall style: a caves room with enough crystal is veined, any other rock strata; other floors keep their own. */
+function wallStyleOf(tiles: Tile[][], theme: string): WallStyle {
+  const shell = themeForFloor(roomThemeById(theme)?.floor ?? 0).shell ?? 'forest';
+  if (shell !== 'caves') return WALL_STYLES[shell][0];
+  return tiles.flat().filter((t) => t === 'crystal').length >= VEINED_AT ? 'veined' : 'strata';
 }
 
 /** Every connected group of region tiles, found by flood fill. */
@@ -76,19 +90,20 @@ function shuffled<T>(items: readonly T[], rng: Rng): T[] {
 /**
  * A room's art-pass hooks, worked out from its finished tiles and never changing them: decor
  * scattered over its floor in its theme's kinds, a variant number for every tile, and its
- * connected pits and ponds grouped into regions. The same tiles, theme and seed always dress alike.
+ * connected pits and ponds grouped into regions, and its wall style. The same tiles, theme and seed always dress alike.
  */
 export function dressRoom({ tiles, theme, rng }: DressingRequest): Dressing {
   // Their own stream, so a change to how decor is laid never reshuffles the tiles' variants.
   const variantRng = rng.fork('variants');
   const variants = tiles.map((row) => row.map(() => variantRng.int(0, VARIANTS - 1)));
   const regions = findRegions(tiles);
+  const wallStyle = wallStyleOf(tiles, theme);
   const kinds = roomThemeById(theme)?.decor ?? [];
   const floor = tiles.flatMap((row, y) => row.flatMap((t, x) => (t === 'floor' ? [{ x, y }] : [])));
-  if (!kinds.length || !floor.length) return { decor: [], variants, regions };
+  if (!kinds.length || !floor.length) return { decor: [], variants, regions, wallStyle };
   const count = Math.min(floor.length, Math.max(DECOR.min, Math.round(floor.length * DECOR.density)));
   const decor = shuffled(floor, rng)
     .slice(0, count)
     .map((cell) => ({ cell, kind: rng.pick(kinds).id }));
-  return { decor, variants, regions };
+  return { decor, variants, regions, wallStyle };
 }

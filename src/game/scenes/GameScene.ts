@@ -83,6 +83,7 @@ import { createKnockback, type Knockback } from '../../core/enemies/knockback';
 import { updateGoblinPack } from '../../core/enemies/forestCast';
 import { createFalloff, createHitGate, type Falloff } from '../../core/player/multiHit';
 import { PaperLayer, type PaperActor } from '../art/paperLayer';
+import { footDepth } from '../../core/art/depth';
 import { AmbientLayer } from '../art/ambientLayer';
 import { HIT_STOP, createHitStop, type HitStop } from '../../core/juice/hitStop';
 import { createShake, type Shake } from '../../core/juice/shake';
@@ -228,6 +229,8 @@ const PICKUP_FRAME = { w: PICKUP_CANVAS, h: PICKUP_CANVAS, anchor: { x: PICKUP_C
 const FLOOR_KIND: Record<RoomKind, FloorKind> = { start: 'normal', normal: 'normal', item: 'item', boss: 'boss' };
 /** A standing terrain piece's foot line (a tree's trunk base) lies this far below its tile's centre. */
 const TERRAIN_FOOT = 14;
+/** Depth tie-break for plain shapes standing on paper floors: over paper on the same foot line (a side wall's rubble). */
+const PLAIN_SERIAL = 999_999;
 
 /**
  * A doorway's foot line. Cave rock spills sideways over its neighbours, so a cave doorway in the
@@ -690,6 +693,7 @@ export class GameScene extends Phaser.Scene {
     this.updateEnemies(time);
     this.updateCrushers(time);
     this.followPlayerAcrossRooms(time);
+    this.sortPlainEnemies();
     this.paper.update(time);
     this.scraps.update(delta);
     this.applyShake(time);
@@ -1843,6 +1847,23 @@ export class GameScene extends Phaser.Scene {
     world.debugGraphic.clear();
   }
 
+  /**
+   * On a paper floor, enemies drawn as plain shapes stand among the paper by their feet, so they
+   * never sink under the walls' rock. Bosses keep their own layering, and so does any part whose
+   * depth its enemy sets itself (a slime's jump).
+   */
+  private sortPlainEnemies() {
+    if (!themeForFloor(this.currentRoom.floorIndex).paper) return;
+    for (const enemy of this.enemies) {
+      if (enemy.hitGroup || BOSSES.has(this.enemyTypes.get(enemy)!)) continue;
+      for (const part of enemy.parts) {
+        if (part.depth !== 0 && part.depth !== part.getData('footSorted')) continue;
+        const depth = footDepth(part.y + part.displayHeight / 2, PLAIN_SERIAL);
+        part.setDepth(depth).setData('footSorted', depth);
+      }
+    }
+  }
+
   /** Gives an enemy with paper art its paper character, standing on its body and animated from what it does. */
   private dressEnemy(enemy: Enemy, type: EnemyType, champion: boolean) {
     const look = ENEMY_ART[type];
@@ -2047,12 +2068,17 @@ export class GameScene extends Phaser.Scene {
     );
     // Decor is nudged off its tile's centre by its cell, so a scatter of it doesn't sit on the grid;
     // further on floors whose ground shows no grid at all.
+    // Decor with no paper art yet keeps its placeholder mark, so the room is never left bare.
     const nudge = shell === 'caves' ? 9 : 5;
+    const kinds = roomThemeById(room.layout.theme ?? '')?.decor;
+    let marks: Phaser.GameObjects.Graphics | undefined;
     for (const d of room.layout.decor ?? []) {
       const c = tileCenter(room, d.cell.x, d.cell.y);
       const x = c.x + (((d.cell.x * 7 + d.cell.y * 3) % 5) - 2) * nudge;
       const y = c.y + (((d.cell.x * 3 + d.cell.y * 5) % 5) - 2) * nudge;
-      this.paper.piece(decorKey(d.kind, d.cell.x + d.cell.y), x, y, DECOR_CANVAS);
+      if (this.paper.piece(decorKey(d.kind, d.cell.x + d.cell.y), x, y, DECOR_CANVAS)) continue;
+      const kind = kinds?.find((k) => k.id === d.kind);
+      if (kind) drawDecorMark((marks ??= this.add.graphics()), c, d.cell, kind);
     }
   }
 
@@ -2069,7 +2095,8 @@ export class GameScene extends Phaser.Scene {
       : 'corner';
     const footY = side === 'bottom' ? wall.y + TUNING.tile : side === 'top' ? wall.y + TUNING.tile / 2 : wall.y + 14;
     const shell = themeForFloor(room.floorIndex).shell ?? 'forest';
-    const art = this.paper.piece(wallKey(shell, side, variant), wall.x, wall.y, wallCanvas(WALL_STYLES[shell][0]), footY);
+    const style = room.layout.wallStyle ?? WALL_STYLES[shell][0];
+    const art = this.paper.piece(wallKey(shell, side, variant, style), wall.x, wall.y, wallCanvas(style), footY);
     if (art) this.paper.standIn(wall, art);
   }
 
@@ -2077,6 +2104,8 @@ export class GameScene extends Phaser.Scene {
   private terrainPiece(room: WorldRoom, tx: number, ty: number, tile: Tile, look: TileLook, variant: number | undefined): Shape {
     const c = tileCenter(room, tx, ty);
     const shape = drawTile(this, c.x, c.y, variant === undefined ? look : { ...look, color: shade(look.color, variant) });
+    // A plain shape on a paper floor stands among the paper by its feet, so the walls' rock spilling into the room never buries it.
+    if (!look.art && themeForFloor(room.floorIndex).paper && tile !== 'hole') shape.setDepth(footDepth(c.y + TERRAIN_FOOT, PLAIN_SERIAL));
     if (!look.art) return shape;
     const flat = tile === 'hole';
     const key = tileKey(look.art, variant ?? 0, flat ? neighbourMask(room.layout.tiles, tx, ty) : 0);

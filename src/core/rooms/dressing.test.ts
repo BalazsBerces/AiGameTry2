@@ -3,9 +3,10 @@ import { createRng } from '../rng';
 import { dressRoom, VARIANTS } from './dressing';
 import { generateRoom, type Tile } from './roomGenerator';
 import { roomThemeById } from './roomThemes';
+import type { RoomShape } from '../map/floorGenerator';
 
 /** Real rooms to dress: a 1x1 idea and a composed big room per floor, each in one of its themes. */
-const ROOMS = [
+const ROOMS: { floor: number; theme: string; shape: RoomShape; archetype?: string }[] = [
   { floor: 0, theme: 'grove', shape: '1x1' as const, archetype: 'pillaredHall' },
   { floor: 0, theme: 'marsh', shape: '2x1' as const },
   { floor: 1, theme: 'hollow', shape: '1x2' as const },
@@ -85,5 +86,45 @@ describe('dressRoom regions', () => {
 
   it('has no regions in a room without holes', () => {
     expect(dressRoom({ tiles: picture(['....', '.#..']), theme: 'grove', rng: createRng(1) }).regions).toEqual([]);
+  });
+});
+
+describe('dressRoom wall style', () => {
+  const crystals = (tiles: Tile[][]) => tiles.flat().filter((t) => t === 'crystal').length;
+  const CAVES = [...ROOMS.filter((r) => r.floor === 1), { floor: 1, theme: 'grotto', shape: '2x1' as const }, { floor: 1, theme: 'rift', shape: '2x2' as const }];
+
+  it('veins a caves room with 3 or more crystal tiles, and gives the rest rock strata', () => {
+    const seen = new Set<string>();
+    for (const r of CAVES) {
+      for (let seed = 0; seed < 12; seed++) {
+        const tiles = tilesOf(r, seed);
+        const { wallStyle } = dressRoom({ tiles, theme: r.theme, rng: createRng(seed) });
+        expect(wallStyle, `${r.theme} ${seed}: ${crystals(tiles)} crystals`).toBe(crystals(tiles) >= 3 ? 'veined' : 'strata');
+        seen.add(wallStyle);
+      }
+    }
+    // Real rooms come in both.
+    expect([...seen].sort()).toEqual(['strata', 'veined']);
+  });
+
+  it('counts exactly: two crystals is strata, three is veined', () => {
+    const picture = (rows: string[]): Tile[][] => rows.map((row) => [...row].map((ch) => (ch === 'c' ? 'crystal' : 'floor')));
+    expect(dressRoom({ tiles: picture(['c...', '...c']), theme: 'grotto', rng: createRng(1) }).wallStyle).toBe('strata');
+    expect(dressRoom({ tiles: picture(['c...', '.c.c']), theme: 'grotto', rng: createRng(1) }).wallStyle).toBe('veined');
+  });
+
+  it('is the same for the same layout, whatever the seed it is dressed with', () => {
+    for (const r of CAVES) {
+      const tiles = tilesOf(r, 6);
+      const styles = new Set([1, 2, 3, 4].map((seed) => dressRoom({ tiles, theme: r.theme, rng: createRng(seed) }).wallStyle));
+      expect(styles.size, r.theme).toBe(1);
+    }
+  });
+
+  it('keeps forest rooms in their hedges, crystals or not', () => {
+    for (const r of ROOMS.filter((r) => r.floor === 0)) {
+      for (let seed = 0; seed < 5; seed++) expect(dressRoom({ tiles: tilesOf(r, seed), theme: r.theme, rng: createRng(seed) }).wallStyle).toBe('hedge');
+    }
+    expect(dressRoom({ tiles: [['crystal', 'crystal', 'crystal', 'crystal']], theme: 'grove', rng: createRng(1) }).wallStyle).toBe('hedge');
   });
 });

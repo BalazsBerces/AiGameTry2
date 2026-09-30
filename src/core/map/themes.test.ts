@@ -26,6 +26,10 @@ describe('floor themes', () => {
     }
   });
 
+  it('draws the forest and the caves in paper, each in its own room shell; the dungeon stays plain', () => {
+    expect([0, 1, 2].map((f) => [!!themeForFloor(f).paper, themeForFloor(f).shell])).toEqual([[true, 'forest'], [true, 'caves'], [false, undefined]]);
+  });
+
   it('keeps the last theme for floors past the end', () => {
     expect(themeForFloor(5).name).toBe('Dungeon');
   });

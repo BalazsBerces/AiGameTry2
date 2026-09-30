@@ -13,6 +13,7 @@ import { composeRoom, composes, type Spot } from './composer';
 import { addFiller } from './filler';
 import { openTraps } from './kiting';
 import { dressRoom, type Decor, type Region } from './dressing';
+import type { WallStyle } from '../art/terrain';
 import { roomThemesFor } from './roomThemes';
 
 export const ROOM_WIDTH = 13;
@@ -120,6 +121,8 @@ export interface RoomLayout {
   variants?: number[][];
   /** Connected pits, ponds and chasms as the room was built, for edging shorelines and rims. */
   regions?: Region[];
+  /** Which of its floor's wall styles its walls are drawn in (core/dressing); rooms without one take the floor's first. */
+  wallStyle?: WallStyle;
 }
 
 /** Stackable stat-ups a chest can hold instead of one of its items. */

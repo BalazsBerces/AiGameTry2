@@ -76,6 +76,7 @@ const THEMES: readonly FloorTheme[] = [
   },
   {
     name: 'Caves',
+    paper: true,
     shell: 'caves',
     palette: {
       background: 0x0f0a06,

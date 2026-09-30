@@ -118,8 +118,11 @@ export const TUNING = {
   glowCloud: { showMs: 450 },
   /** Small and frail; its flutter, telegraph and swoop (in tiles) live in core/bat. */
   bat: { hp: 1, width: 26, height: 12 },
-  /** Body size per tier; hit points, hop rhythm and splitting live in core/slime. The squash is its tell. */
-  slime: { size: { big: 32, medium: 23, small: 15 }, squash: { x: 1.3, y: 0.6 }, stretch: { x: 0.85, y: 1.2 } },
+  /**
+   * Body size per tier; hit points, hop rhythm and splitting live in core/slime. The squash is its tell.
+   * `jumpHeight`: how high (px) the body rises at the top of a jump, over its shadow (placeholder).
+   */
+  slime: { size: { big: 32, medium: 23, small: 15 }, squash: { x: 1.3, y: 0.6 }, stretch: { x: 0.85, y: 1.2 }, jumpHeight: 22 },
   /** How hard overlapping walkers are nudged apart: px/s per px of overlap, and the most any one gets (placeholder). */
   softPush: { stiffness: 8, cap: 120 },
   /** How hard a player's hit knocks an enemy back: px/s at the hit, easing out over `ms` (about a third of a tile in all). */

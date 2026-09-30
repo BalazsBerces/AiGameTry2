@@ -7,6 +7,7 @@ import type { Rng } from '../rng';
 import { themeForFloor } from '../map/themes';
 import { isWalkable } from '../map/tiles';
 import type { Crusher } from '../obstacles/crusher';
+import type { SlimeTier } from '../enemies/slime';
 import { candleCells } from '../bosses/candleWitch';
 import { composeRoom, composes, type Spot } from './composer';
 import { addFiller } from './filler';
@@ -190,6 +191,8 @@ export interface EnemySpawn {
   champion?: { drop: LootDrop };
   /** Hit points overriding the type's default: a floor's tougher variant (the dungeon's zombies). */
   hp?: number;
+  /** A slime's size (big if left out). */
+  slimeTier?: SlimeTier;
 }
 
 /** A pickup an enemy carries (a champion's extra one, a boss's drop); it lands wherever the enemy dies. */

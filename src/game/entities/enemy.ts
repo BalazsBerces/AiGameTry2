@@ -93,6 +93,11 @@ export interface Enemy extends Stunnable {
   /** Parts that don't hurt the player on touch (the Candle Witch's candles); every part hurts if left out. */
   harmless?(part: EnemySprite): boolean;
   /**
+   * Up in the air right now (a jumping slime): the part crosses rocks, pits and thorns, stopped
+   * only by room walls, and hits don't knock it back. On the ground if left out.
+   */
+  airborne?(part: EnemySprite): boolean;
+  /**
    * Goblins decide as a pack (core/forestCast `updateGoblinPack`): each frame the scene gathers
    * every goblin's `member()` and hands each its new state through `follow` before updating it.
    */

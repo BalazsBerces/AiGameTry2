@@ -91,6 +91,7 @@ import { SHOT_ART, TILE_VARIANTS, decorKey, doorKey, floorKey, joinKey, pickupKe
 import { PICKUP_CANVAS, SHOT_CANVAS, type PickupArt } from '../../core/art/hud';
 import { ART_SCALE } from '../art/bake';
 import { joinsBetween, neighbourMask } from '../../core/art/autotile';
+import { ARENA_ID, arenaRoom, parseArenaQuery, type ArenaRequest } from '../../core/rooms/testArena';
 
 type Keys = Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
 type PhysicsArc = Phaser.GameObjects.Arc & { body: Phaser.Physics.Arcade.Body };
@@ -134,7 +135,7 @@ const ENEMY_FACTORIES: Record<EnemyType, (scene: Phaser.Scene, spawn: EnemySpawn
   boar: (scene, s, at) => createBoar(scene, at(s.cell).x, at(s.cell).y, !!s.champion),
   ghost: (scene, s, at) => createGhost(scene, at(s.cell).x, at(s.cell).y, s.cell, !!s.champion),
   bat: (scene, s, at) => createBat(scene, at(s.cell).x, at(s.cell).y, !!s.champion),
-  slime: (scene, s, at) => createSlime(scene, at(s.cell).x, at(s.cell).y, { tier: 'big', champion: !!s.champion }),
+  slime: (scene, s, at) => createSlime(scene, at(s.cell).x, at(s.cell).y, { tier: s.slimeTier ?? 'big', champion: !!s.champion }),
 };
 
 type Shape = Phaser.GameObjects.Shape;
@@ -200,8 +201,6 @@ const PASSIVE_TEXTURES: Partial<Record<Passive, string>> = {
   freeze: 'freeze',
   poison: 'poison'
 };
-
-const TEST_PASSIVVE_TEXTURE = 'passive-test';
 
 /** Each pickup's paper art, and the colour it is tinted (passives and stat-ups by what they give). */
 const PICKUP_ART_OF: Record<WorldPickup['type'], (p: WorldPickup) => { art: PickupArt; tint?: number }> = {
@@ -283,6 +282,16 @@ function drawRegionRims(g: Phaser.GameObjects.Graphics, room: WorldRoom, color: 
       if (!inRegion.has(`${c.x + 1},${c.y}`)) g.lineBetween(r, u, r, d);
     }
   }
+}
+
+/** The enemy test arena's playtest tools (core/testArena): what the URL asked for and the R / G / F toggles. */
+interface ArenaTools {
+  request: ArenaRequest;
+  /** The player can't be hurt. */
+  god: boolean;
+  /** Enemies stand still and think nothing. */
+  frozen: boolean;
+  help: Phaser.GameObjects.Text;
 }
 
 interface TrackedCrusher {
@@ -367,6 +376,8 @@ export class GameScene extends Phaser.Scene {
   private enemyTypes = new Map<Enemy, EnemyType>();
   /** The canopy and vine joins touching each terrain cell (`roomId|x,y`), gone once the cell's tile is. */
   private joinArt = new Map<string, Phaser.GameObjects.Image[]>();
+  /** Set only in the enemy test arena. */
+  private arena?: ArenaTools;
 
   constructor() {
     super('game');
@@ -380,6 +391,10 @@ export class GameScene extends Phaser.Scene {
     // Playtesting: `?room=slimePit` (an archetype, layout or encounter id) starts at the door of
     // the first such room, on the given seed or the first seed that has one.
     const urlRoom = params.get('room') ?? undefined;
+    // Playtesting: `?zombie=3&bat` (see core/testArena) starts in the enemy test arena with just those.
+    const arenaRequest = parseArenaQuery(params.toString());
+    if (arenaRequest?.unknown.length) console.warn(`Test arena: no enemy called ${arenaRequest.unknown.join(', ')}`);
+    const inArena = !!arenaRequest?.spawns.length;
     firstBoot = false;
     const isUrlRoom = (r: WorldRoom) => [r.layout.archetype, r.layout.layout, r.layout.encounter].includes(urlRoom);
     const roomSeed = urlRoom && !Number.isFinite(urlSeed)
@@ -415,6 +430,12 @@ export class GameScene extends Phaser.Scene {
     this.scraps = new ScrapLayer(this, DEPTH.player + 0.95);
     this.enemyTypes = new Map();
     this.joinArt = new Map();
+    this.arena = undefined;
+    // The arena is a room of its own, on a map cell clear above every generated floor.
+    const arena = inArena
+      ? arenaRoom(arenaRequest!, { x: 0, y: Math.min(...[...this.world.rooms.values()].flatMap((r) => r.floorRoom.cells.map((c) => c.y))) - 3 })
+      : undefined;
+    if (arena) this.world.rooms.set(ARENA_ID, arena.room);
     for (const room of this.world.rooms.values()) {
       const before = this.children.list.length;
       this.drawRoom(room);
@@ -455,12 +476,20 @@ export class GameScene extends Phaser.Scene {
 
     this.enemyParts = this.physics.add.group();
     this.walkers = this.physics.add.group();
-    this.physics.add.collider(this.walkers, this.walls);
-    this.physics.add.collider(this.walkers, this.holes);
-    this.physics.add.collider(this.walkers, this.thorns, (part) => this.thornWalker(part as EnemySprite));
+    // A walker up in the air (a jumping slime) crosses terrain; only the room's own walls (no tile) stop it.
+    this.physics.add.collider(this.walkers, this.walls, undefined, (part, wall) =>
+      !(this.isAirborne(part as EnemySprite) && (wall as Phaser.GameObjects.GameObject).getData('tile')));
+    this.physics.add.collider(this.walkers, this.holes, undefined, (part) => !this.isAirborne(part as EnemySprite));
+    this.physics.add.collider(
+      this.walkers,
+      this.thorns,
+      (part) => this.thornWalker(part as EnemySprite),
+      (part) => !this.isAirborne(part as EnemySprite),
+    );
     // Rooted enemies (turrets and the like) stay solid; walkers only push each other softly (see updateEnemies).
     this.physics.add.collider(this.walkers, this.walkers, undefined, (a, b) =>
-      (a as EnemySprite).body.immovable || (b as EnemySprite).body.immovable);
+      ((a as EnemySprite).body.immovable || (b as EnemySprite).body.immovable) &&
+      !this.isAirborne(a as EnemySprite) && !this.isAirborne(b as EnemySprite));
     this.flyers = this.physics.add.group();
     this.physics.add.collider(this.flyers, this.walls);
     this.physics.add.overlap(this.shots, this.enemyParts, (shot, part) => this.hitEnemy(shot, part as EnemySprite));
@@ -515,6 +544,13 @@ export class GameScene extends Phaser.Scene {
     this.followInside(start);
     this.scene.launch('hud');
 
+    if (arena) {
+      const at = tileCenter(arena.room, arena.player.x, arena.player.y);
+      this.player.body.reset(at.x, at.y);
+      this.enterRoom(arena.room, this.now);
+      this.openArenaTools(arenaRequest!);
+      return;
+    }
     const boss = [...this.world.rooms.values()].find((r) => r.floorRoom.kind === 'boss' && r.floorIndex === (urlBoss ?? 0) - 1);
     const jumpTo = boss ?? (urlRoom ? [...this.world.rooms.values()].find(isUrlRoom) : undefined);
     if (jumpTo) {
@@ -523,6 +559,57 @@ export class GameScene extends Phaser.Scene {
       this.player.body.reset(at.x, at.y);
       this.enterRoom(jumpTo, this.now);
     }
+  }
+
+  /** The arena's hotkeys (R respawn, G god mode, F freeze) and the line of help listing them; only ever in the arena. */
+  private openArenaTools(request: ArenaRequest) {
+    const help = this.add
+      .text(8, CELL_PX_H - 8, '', { fontFamily: 'monospace', fontSize: '13px', color: '#f2e6c8' })
+      .setOrigin(0, 1)
+      .setScrollFactor(0)
+      .setStroke('#000000', 3)
+      .setDepth(DARK_DEPTH + 4);
+    this.arena = { request, god: false, frozen: false, help };
+    this.showArenaHelp();
+    const kb = this.input.keyboard!;
+    kb.addKey('R').on('down', () => this.respawnArena());
+    kb.addKey('G').on('down', () => {
+      if (!this.arena) return;
+      this.arena.god = !this.arena.god;
+      this.showArenaHelp();
+    });
+    kb.addKey('F').on('down', () => {
+      if (!this.arena) return;
+      this.arena.frozen = !this.arena.frozen;
+      this.showArenaHelp();
+    });
+  }
+
+  private showArenaHelp() {
+    if (!this.arena) return;
+    const { request, god, frozen } = this.arena;
+    const spawned = request.spawns.map((s) => `${s.count}x ${s.tier ? `${s.tier} ` : ''}${s.type}`).join(', ');
+    const onOff = (on: boolean) => (on ? 'ON' : 'off');
+    this.arena.help.setText(
+      `${spawned}${request.champion ? ' (champion)' : ''}   R respawn · G god ${onOff(god)} · F freeze ${onOff(frozen)}`,
+    );
+  }
+
+  /** R in the arena: every enemy, piece and enemy shot gone, and the URL's enemies back where they started. */
+  private respawnArena() {
+    if (!this.arena || this.runOver) return;
+    for (const enemy of this.enemies) {
+      for (const part of enemy.parts) part.destroy();
+      for (const shape of enemy.trim ?? []) shape.destroy();
+    }
+    for (const shot of this.enemyShots.getChildren().slice()) shot.destroy();
+    this.enemies = [];
+    this.lootCarriers.clear();
+    this.poisoned.clear();
+    this.bossBar = undefined;
+    this.world.cleared.delete(ARENA_ID);
+    this.spawnEnemies(this.currentRoom);
+    this.enemiesWakeAt = this.now + TUNING.enemyWakeMs;
   }
 
   update(realTime: number, delta: number) {
@@ -825,7 +912,7 @@ export class GameScene extends Phaser.Scene {
     const time = this.now;
     const alive = this.enemies.includes(enemy);
     const type = this.enemyTypes.get(enemy);
-    if (alive && part.active && !part.body.immovable && part.body.pushable && !(type && BOSSES.has(type))) {
+    if (alive && part.active && !part.body.immovable && part.body.pushable && !(type && BOSSES.has(type)) && !enemy.airborne?.(part)) {
       this.knockback.hit(part, time, heading);
     }
     // A many-part body carries one poison, whichever piece of it was struck and still standing.
@@ -985,7 +1072,8 @@ export class GameScene extends Phaser.Scene {
     this.updateStunMarks(time);
     this.tickPoison(time);
     if (this.enemies.length === 0) return;
-    if (time < this.enemiesWakeAt) {
+    // Held still before they wake, and while the arena's freeze (F) is on.
+    if (time < this.enemiesWakeAt || this.arena?.frozen) {
       for (const e of this.enemies) for (const p of e.parts) p.body.setVelocity(0, 0);
       return;
     }
@@ -1008,17 +1096,25 @@ export class GameScene extends Phaser.Scene {
     this.knockBack(time);
   }
 
-  /** Enemies the player just hit are knocked back on top of their own steering, stunned ones too (core/knockback). */
+  /**
+   * Enemies the player just hit are knocked back on top of their own steering, stunned ones too
+   * (core/knockback); not while up in the air, so a jump still comes down where it was aimed.
+   */
   private knockBack(time: number) {
     for (const obj of [...this.walkers.getChildren(), ...this.flyers.getChildren()]) {
       const part = obj as EnemySprite;
-      if (part.active) part.body.velocity.add(this.knockback.velocity(part, time));
+      if (part.active && !this.isAirborne(part)) part.body.velocity.add(this.knockback.velocity(part, time));
     }
+  }
+
+  /** Whether the part's enemy says it is up in the air right now (a jumping slime). */
+  private isAirborne(part: EnemySprite): boolean {
+    return !!this.enemies.find((e) => e.parts.includes(part))?.airborne?.(part);
   }
 
   /** Overlapping walkers are nudged apart on top of their own steering, so a crowd flows instead of jamming (core/softPush). */
   private pushWalkersApart() {
-    const movers = (this.walkers.getChildren() as EnemySprite[]).filter((p) => p.active && !p.body.immovable);
+    const movers = (this.walkers.getChildren() as EnemySprite[]).filter((p) => p.active && !p.body.immovable && !this.isAirborne(p));
     const pushes = softPush(movers.map((p) => ({ x: p.body.center.x, y: p.body.center.y, r: p.body.halfWidth })), TUNING.softPush);
     movers.forEach((p, i) => p.body.velocity.add(pushes[i]));
   }
@@ -1404,7 +1500,7 @@ export class GameScene extends Phaser.Scene {
 
   /** Takes `halves` half-hearts, unless the player is still flashing from the last hit. */
   private hurtPlayer(halves = 1) {
-    if (this.now < this.invincibleUntil) return;
+    if (this.now < this.invincibleUntil || this.arena?.god) return;
     this.invincibleUntil = this.now + TUNING.invincibleMs;
     this.playerArt?.hurt(this.now);
     shakeScreen(this, 'hurt');

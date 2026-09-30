@@ -431,10 +431,10 @@ export class GameScene extends Phaser.Scene {
     this.enemyTypes = new Map();
     this.joinArt = new Map();
     this.arena = undefined;
-    // The arena is a room of its own, on a map cell clear above every generated floor.
-    const arena = inArena
-      ? arenaRoom(arenaRequest!, { x: 0, y: Math.min(...[...this.world.rooms.values()].flatMap((r) => r.floorRoom.cells.map((c) => c.y))) - 3 })
-      : undefined;
+    // The arena is a room of its own, on a map cell clear below every generated floor (at positive
+    // y, where standing art sorts by its feet: core/art/depth).
+    const lowest = Math.max(0, ...[...this.world.rooms.values()].flatMap((r) => r.floorRoom.cells.map((c) => c.y)));
+    const arena = inArena ? arenaRoom(arenaRequest!, { x: 0, y: lowest + 3 }) : undefined;
     if (arena) this.world.rooms.set(ARENA_ID, arena.room);
     for (const room of this.world.rooms.values()) {
       const before = this.children.list.length;

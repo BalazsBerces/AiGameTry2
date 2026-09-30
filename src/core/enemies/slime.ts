@@ -25,7 +25,7 @@ export const SLIME = {
   tiers: {
     big: { hp: 3, restMs: 400, squashMs: 380, hopMs: 650, hopDistance: 3.3, landMs: 200 },
     medium: { hp: 2, restMs: 260, squashMs: 320, hopMs: 560, hopDistance: 3.6, landMs: 150 },
-    small: { hp: 1, restMs: 150, squashMs: 270, hopMs: 480, hopDistance: 3.9, landMs: 100 },
+    small: { hp: 1, restMs: 250, squashMs: 280, hopMs: 520, hopDistance: 3.1, landMs: 120 },
   } satisfies Record<SlimeTier, SlimeTierRules>,
   /** The shortest jump worth making: a landing spot nearer than this doesn't count. */
   minHop: 0.5,

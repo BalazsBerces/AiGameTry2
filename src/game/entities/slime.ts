@@ -1,6 +1,7 @@
 import type Phaser from 'phaser';
 import { createSlime as createSlimeState, SLIME, splitSlime, updateSlime, type Slime, type SlimeBody } from '../../core/enemies/slime';
 import { createRng } from '../../core/rng';
+import { footDepth, STANDING } from '../../core/art/depth';
 import { COLORS, TUNING } from '../config';
 import { championBoost, championColor, flash, markChampion, roundBody, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
 
@@ -33,6 +34,8 @@ export function createSlime(scene: Phaser.Scene, x: number, y: number, body: Sli
   /** How far (px) the drawn body is raised over its spot on the floor. */
   let lift = 0;
   const { squash, stretch, jumpHeight } = TUNING.slime;
+  /** Breaks depth ties with whatever stands on the same line, the same way every frame. */
+  const serial = Math.floor(Math.random() * 1_000_000);
 
   /** The room tile at a point in tiles; none outside the room (the scene's tile lookup clamps to it, so check it's really in that tile). */
   const tileUnder = (ctx: EnemyContext, p: { x: number; y: number }) => {
@@ -70,6 +73,8 @@ export function createSlime(scene: Phaser.Scene, x: number, y: number, body: Sli
       sprite.y = floor.y - lift;
       sprite.body.setOffset(groundOffset.x, groundOffset.y + lift / shape.y);
       shadow.setPosition(floor.x, floor.y + size / 2 - size * 0.1).setVisible(lift > 0);
+      // Sorted by its feet among everything standing; in the air, over all of it (the rocks it jumps).
+      sprite.setDepth(lift > 0 ? STANDING.to : footDepth(floor.y + size / 2, serial));
       if (was.mode === 'hop' && state.mode !== 'hop') {
         // Down exactly where it chose to land, free floor, whatever held it up in the air (a stun).
         sprite.body.reset(was.to.x * tile, was.to.y * tile);

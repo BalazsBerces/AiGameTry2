@@ -333,7 +333,7 @@ const INTO: Record<WallSide, { x: number; y: number }> = { top: { x: 0, y: 1 }, 
 /**
  * A cave wall: free-form crags heaped on a bed of dark rock that spills far past the tile, rubble
  * tumbling out into the room, and the odd spire. The top wall shows its front face, a ragged cliff
- * of rock strata. `veined` rock has a crystal seam running the length of the wall, with clusters
+ * of rock strata with stalactites hanging from its lip. `veined` rock has a crystal seam running the length of the wall, with clusters
  * breaking out of it. The rock of every piece is laid out afresh, so no two look alike.
  */
 function rockWall(side: WallSide, variant: number, veined: boolean) {
@@ -348,6 +348,7 @@ function rockWall(side: WallSide, variant: number, veined: boolean) {
   const parts: { y: number; svg: string }[] = [];
 
   let face = '';
+  let drips = '';
   if (top) {
     // The face spans just its tile. Every layer meets the tile's edges at a fixed height and only
     // wanders in between, so the strata run on unbroken from one wall piece to the next.
@@ -375,6 +376,15 @@ function rockWall(side: WallSide, variant: number, veined: boolean) {
         d += `L${n(x)} ${n(Math.min(y, WY + H - 1))}`;
       }
       return `<path d="${d}" stroke="${C.rockDeep}" stroke-width="1.3" fill="none" opacity="0.85"/>`;
+    }).join('');
+    // Stalactites hang from the cliff's lip over its face, kept inside the tile so no neighbour cuts them off.
+    drips = Array.from({ length: [1, 3, 0, 2][variant % 4] }, () => {
+      const x = WX - 20 + r.next() * 40;
+      const len = 12 + r.next() * 16;
+      const w = 3.5 + r.next() * 2.5;
+      const tip = { x: x + (r.next() - 0.5) * 3, y: lip - 1 + len };
+      return fill(polyPath([{ x: x - w, y: lip - 2 }, { x: x + w, y: lip - 2 }, { x: x + w * 0.35, y: lip + len * 0.55 }, tip]), C.stalactite) +
+        fill(polyPath([{ x: x - w * 0.7, y: lip - 2 }, { x: x - w * 0.1, y: lip - 2 }, { x: tip.x, y: tip.y - 2 }]), C.stalactiteLight);
     }).join('');
     face = [...bands].reverse().join('') + fractures;
     // Boulders fallen from the cliff, lying at its foot.
@@ -445,7 +455,7 @@ function rockWall(side: WallSide, variant: number, veined: boolean) {
     }
   }
   return top
-    ? face + seamSvg + clusters + bed + parts.map((p) => p.svg).join('')
+    ? face + seamSvg + clusters + (drips ? sheet(drips, 2) : '') + bed + parts.map((p) => p.svg).join('')
     : bed + seamSvg + parts.map((p) => p.svg).join('') + clusters;
 }
 

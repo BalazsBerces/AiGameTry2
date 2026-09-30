@@ -273,17 +273,6 @@ function shards(key: string, x: number, y: number, size: number, count: number) 
   }).join('');
 }
 
-/** A jagged crystal vein across rock: a dark seam with the icy crystal showing along it. */
-function vein(r: ReturnType<typeof pieceRng>, from: { x: number; y: number }, to: { x: number; y: number }) {
-  const steps = 4;
-  const pts = Array.from({ length: steps + 1 }, (_, i) => ({
-    x: from.x + ((to.x - from.x) * i) / steps + (i % steps ? (r.next() - 0.5) * 7 : 0),
-    y: from.y + ((to.y - from.y) * i) / steps + (i % steps ? (r.next() - 0.5) * 7 : 0),
-  }));
-  const d = `M${pts.map((p) => `${n(p.x)} ${n(p.y)}`).join('L')}`;
-  return `<path d="${d}" stroke="${C.crystalDeep}" stroke-width="2.8" fill="none" stroke-linejoin="bevel"/>` +
-    `<path d="${d}" stroke="${C.crystal}" stroke-width="1.1" fill="none" stroke-linejoin="bevel"/>`;
-}
 
 /**
  * A cave wall piece's canvas: much bigger than its tile, so the rock spills into its neighbours
@@ -344,8 +333,8 @@ const INTO: Record<WallSide, { x: number; y: number }> = { top: { x: 0, y: 1 }, 
 /**
  * A cave wall: free-form crags heaped on a bed of dark rock that spills far past the tile, rubble
  * tumbling out into the room, and the odd spire. The top wall shows its front face, a ragged cliff
- * of rock strata with stalactites hanging from its lip. `veined` rock has crystal seams through it
- * and shards bursting out. The rock of every piece is laid out afresh, so no two look alike.
+ * of rock strata. `veined` rock has a crystal seam running the length of the wall, with clusters
+ * breaking out of it. The rock of every piece is laid out afresh, so no two look alike.
  */
 function rockWall(side: WallSide, variant: number, veined: boolean) {
   const r = pieceRng('rockWall', side, variant);
@@ -360,14 +349,18 @@ function rockWall(side: WallSide, variant: number, veined: boolean) {
 
   let face = '';
   if (top) {
-    const [x0, x1] = [WX - 46, WX + 46];
+    // The face spans just its tile. Every layer meets the tile's edges at a fixed height and only
+    // wanders in between, so the strata run on unbroken from one wall piece to the next.
+    const [x0, x1] = [WX - H - 2, WX + H + 2];
     const lip = WY - 6;
+    const wander = (x: number, amount: number) => (Math.abs(x - WX) < H - 4 ? (r.next() - 0.5) * amount : 0);
+    const across = (count: number) => Array.from({ length: count }, (_, k) => x0 + (k * (x1 - x0)) / (count - 1));
     // The cliff's foot, ragged, nudging into the room here and there.
-    const foot = Array.from({ length: 12 }, (_, k) => ({ x: x1 - (k * (x1 - x0)) / 11, y: WY + H - 1 + r.next() * 5 }));
+    const foot = across(10).reverse().map((x) => ({ x, y: WY + H + Math.max(0, wander(x, 8)) }));
     const tops = [lip, WY + 2, WY + 8, WY + 13, WY + 18];
     const tones = [C.strataDark, C.strataLight, C.strata, C.ochre, C.strataLight];
     const bands = tops.map((y, i) => {
-      const edge = Array.from({ length: 13 }, (_, k) => ({ x: x0 + (k * (x1 - x0)) / 12, y: y + (r.next() - 0.5) * (i ? 5 : 3) }));
+      const edge = across(11).map((x) => ({ x, y: y + wander(x, i ? 5 : 3) }));
       const under = i + 1 < tops.length ? [{ x: x1, y: tops[i + 1] + 3 }, { x: x0, y: tops[i + 1] + 3 }] : foot;
       return sheet(fill(polyPath([...edge, ...under]), tones[i]));
     });
@@ -383,18 +376,7 @@ function rockWall(side: WallSide, variant: number, veined: boolean) {
       }
       return `<path d="${d}" stroke="${C.rockDeep}" stroke-width="1.3" fill="none" opacity="0.85"/>`;
     }).join('');
-    const drips = Array.from({ length: [1, 3, 0, 2][variant % 4] }, () => {
-      const x = WX - 30 + r.next() * 60;
-      const len = 12 + r.next() * 16;
-      const w = 3.5 + r.next() * 2.5;
-      const tip = { x: x + (r.next() - 0.5) * 3, y: lip - 1 + len };
-      return fill(polyPath([{ x: x - w, y: lip - 2 }, { x: x + w, y: lip - 2 }, { x: x + w * 0.35, y: lip + len * 0.55 }, tip]), C.stalactite) +
-        fill(polyPath([{ x: x - w * 0.7, y: lip - 2 }, { x: x - w * 0.1, y: lip - 2 }, { x: tip.x, y: tip.y - 2 }]), C.stalactiteLight);
-    }).join('');
-    const faceCrystal = veined
-      ? sheet(vein(cr, { x: x0 + 8 + cr.next() * 20, y: WY + H - 4 }, { x: x1 - 8 - cr.next() * 20, y: lip + 4 }) + shards(`face${variant}`, WX - 20 + cr.next() * 40, WY + H - 1, 9 + cr.next() * 5, 2 + Math.floor(cr.next() * 3)))
-      : '';
-    face = [...bands].reverse().join('') + fractures + faceCrystal + (drips ? sheet(drips, 2) : '');
+    face = [...bands].reverse().join('') + fractures;
     // Boulders fallen from the cliff, lying at its foot.
     for (let i = 0, count = Math.floor(r.next() * 3); i < count; i++) {
       const rad = 4 + r.next() * 5;
@@ -414,7 +396,8 @@ function rockWall(side: WallSide, variant: number, veined: boolean) {
     const rad = i < 2 ? 14 + r.next() * 9 : 6 + r.next() * 9;
     const x = bedC.x + (r.next() - 0.5) * bedR.x * 1.4;
     let y = bedC.y + (r.next() - 0.5) * bedR.y * 1.3;
-    if (top) y = Math.min(y, WY - 6 - rad * 0.5);
+    // On the top wall they stay above the cliff's lip, never hanging over a neighbour's face.
+    if (top) y = Math.min(y, WY - 7 - rad);
     y = Math.max(y, noHigher + rad * 1.1);
     const roll = r.next();
     parts.push({ y, svg: crag(r, x, y, rad, roll < 0.2 ? OCHRE_ROCK : roll < 0.45 ? DEEP_ROCK : ROCK) });
@@ -434,23 +417,79 @@ function rockWall(side: WallSide, variant: number, veined: boolean) {
       parts.push({ y, svg: crag(r, x, y, 3 + r.next() * 4, r.next() < 0.3 ? OCHRE_ROCK : ROCK) });
     }
   }
-  // Crystal: seams across the rock and shards bursting out of it.
-  if (veined) {
-    for (let i = 0, seams = 1 + Math.floor(cr.next() * 2); i < seams; i++) {
-      const a = cr.next() * Math.PI;
-      const len = 18 + cr.next() * 16;
-      const c = { x: bedC.x + (cr.next() - 0.5) * bedR.x, y: bedC.y + (cr.next() - 0.5) * bedR.y * 0.8 };
-      parts.push({ y: c.y + 20, svg: sheet(vein(cr, { x: c.x - Math.cos(a) * len, y: Math.max(c.y - Math.sin(a) * len * 0.6, noHigher + 2) }, { x: c.x + Math.cos(a) * len, y: c.y + Math.sin(a) * len * 0.6 })) });
-    }
-    for (let i = 0, clusters = 1 + Math.floor(cr.next() * 2); i < clusters; i++) {
-      const size = 9 + cr.next() * 9;
-      const x = bedC.x + (cr.next() - 0.5) * bedR.x * 1.2;
-      const y = Math.max(bedC.y + (cr.next() - 0.3) * bedR.y * 0.9, noHigher + size + 2);
-      parts.push({ y: y + 1, svg: sheet(shards(`cluster${side}${variant}${i}`, x, top ? Math.min(y, WY - 6) : y, size, 2 + Math.floor(cr.next() * 3)), 2) });
+  parts.sort((a, b) => a.y - b.y);
+
+  // Crystal: one seam running the length of the wall, through the bedrock under the loose crags
+  // (on the top wall, along a layer of its face). It crosses every tile edge at the same point, so
+  // neighbouring pieces join into one unbroken vein; now and then a cluster breaks out of it.
+  let seamSvg = '';
+  let clusters = '';
+  if (veined && side !== 'corner') {
+    const s = SEAMS[side];
+    // It reaches as far as the piece's rock does: past the tile sideways, but a side wall's never up into the tile above.
+    const reach = top ? [H + 2, H + 2] : side === 'bottom' ? [40, 40] : [H + 3, 40];
+    const pts = seamPoints(cr, s.axis, s.at, reach[0], reach[1], top ? 5 : 8);
+    // Now and then a thinner vein forks off, away from the room (on the face, up or down it).
+    const forks = Array.from({ length: cr.next() < 0.55 ? 1 + Math.floor(cr.next() * 2) : 0 }, () => {
+      const from = pts[3 + Math.floor(cr.next() * 5)];
+      const away = top ? { x: (cr.next() - 0.5) * 1.4, y: cr.next() < 0.5 ? -0.6 : 0.6 } : { x: -into.x + into.y * (cr.next() - 0.5) * 1.6, y: -into.y + Math.abs(into.x) * cr.next() * 0.8 }; // side walls' fork downward, never into the tile above
+      const len = Math.hypot(away.x, away.y);
+      const dir = { x: away.x / len, y: away.y / len };
+      return seamBranch(cr, from, dir, top ? 6 + cr.next() * 5 : 10 + cr.next() * 12);
+    }).join('');
+    seamSvg = sheet(forks + crystalSeam(pts));
+    const burst = [0, 12 + cr.next() * 5, 0, 7 + cr.next() * 3][variant % 4];
+    if (burst) {
+      const p = pts[3 + Math.floor(cr.next() * 5)];
+      clusters = sheet(shards(`seam${side}${variant}`, p.x, p.y + 2, burst, 2 + Math.floor(cr.next() * 2)), 2);
     }
   }
-  parts.sort((a, b) => a.y - b.y);
-  return face + bed + parts.map((p) => p.svg).join('');
+  return top
+    ? face + seamSvg + clusters + bed + parts.map((p) => p.svg).join('')
+    : bed + seamSvg + parts.map((p) => p.svg).join('') + clusters;
+}
+
+/** Where each wall's crystal seam runs: along the wall, set back from the room (on the top wall, along its face). */
+const SEAMS: Record<Exclude<WallSide, 'corner'>, { axis: 'x' | 'y'; at: number }> = {
+  top: { axis: 'x', at: WY + 10.5 },
+  bottom: { axis: 'x', at: WY + 6 },
+  left: { axis: 'y', at: WX - 6 },
+  right: { axis: 'y', at: WX + 6 },
+};
+
+/**
+ * A seam's points along `axis`, from `before` px before the tile's centre to `after` px past it:
+ * straight where it nears and crosses the tile's edges, wandering only in the middle.
+ */
+function seamPoints(r: Rng, axis: 'x' | 'y', at: number, before: number, after: number, wander: number): Pt[] {
+  const c = axis === 'x' ? WX : WY;
+  // Pinned at the tile's edges, free in the middle; one piece barely strays, the next swings wide.
+  const swing = (0.25 + r.next()) * wander;
+  return [-before, -H, -18, -12, -6, 0, 6, 12, 18, H, after].map((t) => {
+    const room = Math.max(0, 1 - Math.abs(t) / 20);
+    const off = (r.next() - 0.5) * 2 * swing * Math.sqrt(room);
+    return axis === 'x' ? { x: c + t, y: at + off } : { x: at + off, y: c + t };
+  });
+}
+
+const seamPath = (pts: Pt[]) => `M${pts.map((p) => `${n(p.x)} ${n(p.y)}`).join('L')}`;
+
+/** A crystal seam: a dark crack filled with icy crystal, glinting here and there. `width` 1 is the main seam, less a branch. */
+function crystalSeam(pts: Pt[], width = 1) {
+  const d = seamPath(pts);
+  return `<path d="${d}" stroke="${C.crystalDeep}" stroke-width="${n(4 * width)}" fill="none" stroke-linejoin="bevel" stroke-linecap="round"/>` +
+    `<path d="${d}" stroke="${C.crystal}" stroke-width="${n(1.8 * width)}" fill="none" stroke-linejoin="bevel" stroke-linecap="round"/>` +
+    `<path d="${d}" stroke="${C.crystalLight}" stroke-width="${n(0.9 * width)}" fill="none" stroke-dasharray="3 9 2 13" stroke-linejoin="bevel"/>`;
+}
+
+/** A thinner vein forking off the seam at `from`, heading off into the rock along `dir` and tapering out. */
+function seamBranch(r: Rng, from: Pt, dir: Pt, len: number) {
+  const side = { x: -dir.y, y: dir.x };
+  const pts = [0, 0.35, 0.7, 1].map((k, i) => {
+    const bend = i ? (r.next() - 0.5) * 6 : 0;
+    return { x: from.x + dir.x * len * k + side.x * bend, y: from.y + dir.y * len * k + side.y * bend };
+  });
+  return crystalSeam(pts, 0.55);
 }
 
 /** A cave doorway: an opening in the rock framed by timber mine props and a lintel. `locked` bars it with a rusted iron grate. */

@@ -129,23 +129,6 @@ export const TUNING = {
   knockback: { speed: 267, ms: 120 },
 };
 
-/** How passives are named on screen (the HUD and the boss-kill upgrade message). */
-export const PASSIVE_NAMES: Record<Passive, string> = {
-  homing: 'Homing',
-  fireRate: 'Fire rate',
-  sword: 'Sword',
-  triple: 'Triple shot',
-  pierce: 'Piercing',
-  ricochet: 'Ricochet',
-  spectral: 'Spectral',
-  boomerang: 'Boomerang',
-  poison: 'Poison',
-  chain: 'Chain lightning',
-  freeze: 'Freeze',
-  orbital: 'Orbital',
-  dash: 'Dash',
-};
-
 /** Floor, wall, door and terrain colours come from each floor's theme (core/themes). */
 export const COLORS = {
   player: 0xe8d7b0,

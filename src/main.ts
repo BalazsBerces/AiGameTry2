@@ -4,6 +4,7 @@ import { EndScene } from './game/scenes/EndScene';
 import { GameScene } from './game/scenes/GameScene';
 import { HudScene } from './game/scenes/HudScene';
 import { CELL_PX_H, CELL_PX_W, LABEL_STRIP_H } from './game/geometry';
+import { mountDevConsole } from './game/ui/devConsole';
 
 const game = new Phaser.Game({
   type: Phaser.AUTO,
@@ -15,6 +16,9 @@ const game = new Phaser.Game({
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
   scene: [BootScene, GameScene, HudScene, EndScene],
 });
+
+// The dev console (the key under Esc), in every build.
+mountDevConsole(game);
 
 // Handle for the smoke-test driver (scripts/smoke.mjs); dev builds only.
 if (import.meta.env.DEV) (window as unknown as { game: Phaser.Game }).game = game;

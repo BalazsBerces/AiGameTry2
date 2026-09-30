@@ -3,6 +3,7 @@ import { currentFloorIndex, minimapRooms, roomLabel } from '../../core/map/world
 import { PASSIVE_POOL } from '../../core/rooms/roomGenerator';
 import { WEAPON, type PassiveLevels } from '../../core/player/weaponModel';
 import { BossBarView } from '../ui/bossBarView';
+import { cheatTag } from '../../core/console/console';
 import { COLORS } from '../config';
 import { CELL_PX_H, LABEL_STRIP_H } from '../geometry';
 import { HUD_KEYS } from '../../core/art/catalogue';
@@ -30,6 +31,8 @@ export class HudScene extends Phaser.Scene {
   private bombsText!: Phaser.GameObjects.Text;
   private roomText!: Phaser.GameObjects.Text;
   private statUpsText!: Phaser.GameObjects.Text;
+  /** Which playtest cheats are on (core/console), so a cheated run is never silent. */
+  private cheatText!: Phaser.GameObjects.Text;
   private bossBar!: BossBarView;
   /** Paper hearts, one per heart the player can hold, made as they are needed. */
   private hearts: Phaser.GameObjects.Image[] = [];
@@ -76,6 +79,10 @@ export class HudScene extends Phaser.Scene {
     this.roomText = this.add
       .text(this.scale.width / 2, CELL_PX_H + LABEL_STRIP_H / 2, '', { fontFamily: 'monospace', fontSize: '12px', color: COLORS.text })
       .setOrigin(0.5);
+    this.cheatText = this.add
+      .text(this.scale.width / 2, MAP.margin, '', { fontFamily: 'monospace', fontSize: '13px', color: '#ff6b5a' })
+      .setOrigin(0.5, 0)
+      .setStroke('#000000', 3);
     // The worm boss's bar takes the same strip while it shows.
     this.bossBar = new BossBarView(this, this.scale.width / 2, CELL_PX_H + LABEL_STRIP_H / 2);
   }
@@ -91,6 +98,7 @@ export class HudScene extends Phaser.Scene {
     this.roomText.setText(roomLabel(world.rooms.get(world.currentRoomId)!));
     this.keysText.setText(`x ${world.player.keys}`);
     this.bombsText.setText(`x ${world.player.bombs}`);
+    this.cheatText.setText(cheatTag(world.cheats));
     const { damage, rate } = world.player.statUps;
     // Hidden until the first stat-up.
     this.statUpsText.setText(damage || rate ? `DMG +${(damage * WEAPON.damageUpStep).toFixed(1)}  RATE ×${rate}` : '');

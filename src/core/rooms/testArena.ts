@@ -33,6 +33,9 @@ const ENEMY_NAMES: Record<EnemyType, true> = {
 
 const isEnemyType = (name: string): name is EnemyType => Object.hasOwn(ENEMY_NAMES, name);
 
+/** Every enemy by the name the arena, the URL and the dev console's `spawn` know it by. */
+export const ENEMY_TYPES = Object.keys(ENEMY_NAMES) as EnemyType[];
+
 export interface ArenaSpawn {
   type: EnemyType;
   count: number;
@@ -42,7 +45,7 @@ export interface ArenaSpawn {
 
 /** Params that belong to other playtest shortcuts (`?seed`, `?boss`, `?room=`), never enemy names. */
 const RESERVED = new Set(['seed', 'boss', 'room']);
-const TIERS: readonly SlimeTier[] = ['big', 'medium', 'small'];
+export const SLIME_TIERS: readonly SlimeTier[] = ['big', 'medium', 'small'];
 
 export interface ArenaRequest {
   spawns: ArenaSpawn[];
@@ -60,7 +63,7 @@ function countOf(value: string): number {
 /** A slime's `size`, `size:N` or `N` (big if no size is given). */
 function slimeSpawn(value: string): ArenaSpawn {
   const [first, second] = value.split(':');
-  const tier = TIERS.find((t) => t === first);
+  const tier = SLIME_TIERS.find((t) => t === first);
   return { type: 'slime', count: countOf(tier ? (second ?? '') : first), tier: tier ?? 'big' };
 }
 
@@ -100,40 +103,63 @@ const ARENA_MAP = [
 const ARENA_TILES: Record<string, Tile> = { '.': 'floor', P: 'floor', O: 'obstacle', R: 'rock', H: 'hole', T: 'thorn' };
 /** Enemies start at or right of this column. */
 const ENEMY_SIDE_X = 8;
-/** Where a boss that stands in one spot starts (the Treant needs open ground all round it). */
-const BOSS_CELL = { x: 11, y: 3 };
 
 const key = (c: Cell) => `${c.x},${c.y}`;
 
 /**
- * The arena as a room of its own at map cell `at`, outside the generated floors (doorless, in
+ * The arena, as a room of its own at map cell `at`, outside the generated floors (doorless, in
  * the first floor's look), with the request's enemies on free floor across from the player,
  * spread so they don't stack. Enemies that don't fit are left out.
  */
 export function arenaRoom(request: ArenaRequest, at: Cell): { room: WorldRoom; player: Cell } {
   const tiles = ARENA_MAP.map((row) => [...row].map((ch) => ARENA_TILES[ch]));
   const player = { x: ARENA_MAP[3].indexOf('P'), y: 3 };
+  const { spawns } = placeSpawns(request, { tiles, player, allowed: (c) => c.x >= ENEMY_SIDE_X });
   return {
     room: {
       floorIndex: 0,
       floorRoom: { id: ARENA_ID, kind: 'normal', cell: at, cells: [at], shape: '1x1' },
-      layout: { id: ARENA_ID, width: ROOM_WIDTH, height: ROOM_HEIGHT, tiles, doors: [], enemies: placeEnemies(request, tiles), pickups: [] },
+      layout: { id: ARENA_ID, width: ROOM_WIDTH, height: ROOM_HEIGHT, tiles, doors: [], enemies: spawns, pickups: [] },
       neighbors: [],
     },
     player,
   };
 }
 
-function placeEnemies(request: ArenaRequest, tiles: Tile[][]): EnemySpawn[] {
+/** Enemies start at least this many tiles from the player. */
+export const SPAWN_DISTANCE = 3;
+
+/** Where enemies may be placed: a room's tiles, the player's tile, and any further limit on the cells. */
+export interface SpawnGround {
+  tiles: Tile[][];
+  player: Cell;
+  allowed?: (c: Cell) => boolean;
+}
+
+/**
+ * The request's enemies placed on free floor at least `SPAWN_DISTANCE` from the player (the
+ * test arena's and the dev console's `spawn`): singles spread apart, worms coiled over free
+ * cells from the far side in, and bosses that stand in one spot given a clearing round them.
+ * `missed` counts what didn't fit.
+ */
+export function placeSpawns(request: Pick<ArenaRequest, 'spawns' | 'champion'>, ground: SpawnGround): { spawns: EnemySpawn[]; missed: ArenaSpawn[] } {
+  const { tiles, player, allowed = () => true } = ground;
+  const height = tiles.length;
+  const width = tiles[0]?.length ?? 0;
   const taken = new Set<string>();
-  const free = (c: Cell) => tiles[c.y]?.[c.x] === 'floor' && !taken.has(key(c));
+  const open = (c: Cell) =>
+    tiles[c.y]?.[c.x] === 'floor' && allowed(c) && Math.hypot(c.x - player.x, c.y - player.y) >= SPAWN_DISTANCE;
+  const free = (c: Cell) => open(c) && !taken.has(key(c));
   const take = (...cells: Cell[]) => cells.forEach((c) => taken.add(key(c)));
-  const champion = request.champion ? { champion: { drop: { type: 'heart' as const } } } : {};
-  const enemySide: Cell[] = [];
-  for (let y = 0; y < ROOM_HEIGHT; y++) for (let x = ENEMY_SIDE_X; x < ROOM_WIDTH; x++) if (tiles[y][x] === 'floor') enemySide.push({ x, y });
-  // Worms coil up and down the columns from the far wall in, each cell next to the one before.
-  const coil = [...Array(ROOM_WIDTH - ENEMY_SIDE_X).keys()].flatMap((i) => {
-    const column = [...Array(ROOM_HEIGHT).keys()].map((y) => ({ x: ROOM_WIDTH - 1 - i, y }));
+  // A drop of its own for each champion: the scene tells loot carriers apart by their drop.
+  const champion = () => (request.champion ? { champion: { drop: { type: 'heart' as const } } } : {});
+  const standable: Cell[] = [];
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) if (open({ x, y })) standable.push({ x, y });
+  // Worms coil up and down the columns from the wall far from the player in, each cell next to the one before.
+  const fromLeft = [...Array(width).keys()];
+  const columns = player.x < width / 2 ? fromLeft.reverse() : fromLeft;
+  const coil = columns.flatMap((x, i) => {
+    const column = [...Array(height).keys()].map((y) => ({ x, y }));
     return i % 2 ? column.reverse() : column;
   });
   const coiled = (length: number): Cell[] | undefined => {
@@ -143,46 +169,54 @@ function placeEnemies(request: ArenaRequest, tiles: Tile[][]): EnemySpawn[] {
     }
     return undefined;
   };
-  // Singles take every other cell first, nearest the middle of their side, so a crowd starts apart.
-  const middle = { x: (ENEMY_SIDE_X + ROOM_WIDTH - 1) / 2, y: (ROOM_HEIGHT - 1) / 2 };
-  const spread = [...enemySide].sort(
-    (a, b) =>
-      Number(a.x % 2 || a.y % 2) - Number(b.x % 2 || b.y % 2) ||
-      Math.hypot(a.x - middle.x, a.y - middle.y) - Math.hypot(b.x - middle.x, b.y - middle.y),
-  );
+  // Singles take every other cell first, nearest the middle of the ground they may stand on, so a crowd starts apart.
+  const middle = {
+    x: standable.reduce((sum, c) => sum + c.x, 0) / (standable.length || 1),
+    y: standable.reduce((sum, c) => sum + c.y, 0) / (standable.length || 1),
+  };
+  const fromMiddle = (c: Cell) => Math.hypot(c.x - middle.x, c.y - middle.y);
+  const spread = [...standable].sort((a, b) => Number(a.x % 2 || a.y % 2) - Number(b.x % 2 || b.y % 2) || fromMiddle(a) - fromMiddle(b));
   const single = () => spread.find(free);
+  const clearingAround = (c: Cell) => [-1, 0, 1].flatMap((dx) => [-1, 0, 1].map((dy) => ({ x: c.x + dx, y: c.y + dy })));
+  const clearing = () => [...standable].sort((a, b) => fromMiddle(a) - fromMiddle(b)).find((c) => clearingAround(c).every(free));
 
   const spawns: EnemySpawn[] = [];
+  const missed: ArenaSpawn[] = [];
   // Many-cell and fixed-spot enemies first, while there is room for them.
   const order = (s: ArenaSpawn) => (s.type === 'wormBoss' || s.type === 'treantBoss' ? 0 : s.type === 'worm' ? 1 : 2);
   for (const s of [...request.spawns].sort((a, b) => order(a) - order(b))) {
-    for (let n = 0; n < s.count; n++) {
+    let placed = 0;
+    for (; placed < s.count; placed++) {
       if (s.type === 'wormBoss' || s.type === 'worm') {
         const body = coiled(s.type === 'wormBoss' ? WORM_BOSS_LENGTH : WORM_LENGTH);
         if (!body) break;
         take(...body);
-        spawns.push({ type: s.type, cell: body[0], tail: body.slice(1), ...(s.type === 'worm' ? champion : {}) });
+        spawns.push({ type: s.type, cell: body[0], tail: body.slice(1), ...(s.type === 'worm' ? champion() : {}) });
         continue;
       }
       if (s.type === 'candleWitch') {
-        const cell = { x: Math.floor((ROOM_WIDTH - 1) / 2), y: Math.floor((ROOM_HEIGHT - 1) / 2) };
-        spawns.push({ type: s.type, cell, anchors: candleCells(ROOM_WIDTH, ROOM_HEIGHT) });
+        // She starts in the middle of the room, between her candles, if it's free.
+        const middleCell = { x: Math.floor((width - 1) / 2), y: Math.floor((height - 1) / 2) };
+        const cell = free(middleCell) ? middleCell : single();
+        if (!cell) break;
         take(cell);
+        spawns.push({ type: s.type, cell, anchors: candleCells(width, height) });
         continue;
       }
       if (s.type === 'treantBoss' || s.type === 'ironMaiden') {
-        const clearing = [-1, 0, 1].flatMap((dx) => [-1, 0, 1].map((dy) => ({ x: BOSS_CELL.x + dx, y: BOSS_CELL.y + dy })));
-        const cell = clearing.every(free) ? BOSS_CELL : single();
+        const centre = clearing();
+        const cell = centre ?? single();
         if (!cell) break;
-        take(...(cell === BOSS_CELL ? clearing : [cell]));
+        take(...(centre ? clearingAround(centre) : [cell]));
         spawns.push({ type: s.type, cell });
         continue;
       }
       const cell = single();
       if (!cell) break;
       take(cell);
-      spawns.push({ type: s.type, cell, ...champion, ...(s.tier ? { slimeTier: s.tier } : {}) });
+      spawns.push({ type: s.type, cell, ...champion(), ...(s.tier ? { slimeTier: s.tier } : {}) });
     }
+    if (placed < s.count) missed.push({ ...s, count: s.count - placed });
   }
-  return spawns;
+  return { spawns, missed };
 }

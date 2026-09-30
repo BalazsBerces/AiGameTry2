@@ -11,7 +11,7 @@ import {
   type FloorRoom,
   type RoomDoor,
 } from './floorGenerator';
-import { generateRoom, type ChestItem, type EnemyType, type LootDrop, type PickupType, type RoomLayout } from '../rooms/roomGenerator';
+import { generateRoom, type ChestItem, type EnemyType, type LootDrop, type PickupType, type RoomLayout, type StatUpType } from '../rooms/roomGenerator';
 import { bombDestructible, hitsToBreak, isWalkable } from './tiles';
 import { floodFill } from './grid';
 import type { Passive, PassiveLevels, StatUps } from '../player/weaponModel';
@@ -63,6 +63,21 @@ export interface World {
   nextPickupId: number;
   /** Player hits taken so far by rocks still standing, keyed `roomId|x,y`. */
   tileHits: Map<string, number>;
+  /** Playtest switches (the dev console, the test arena's keys); off in every new run. */
+  cheats: Cheats;
+  /** Rooms whose doors never lock, fight or not (the dev console's `open`). */
+  unlocked: Set<string>;
+}
+
+export interface Cheats {
+  /** Hits land, but health never drops. */
+  god: boolean;
+  /** The player walks through terrain, holes and thorns (never the room's walls or locked doors). */
+  noclip: boolean;
+  /** Enemies stand still and think nothing. */
+  freeze: boolean;
+  /** The player's hits kill whatever they hit. */
+  onehit: boolean;
 }
 
 export const STARTING_HEARTS = 3;
@@ -128,6 +143,45 @@ function buildFloor(world: World, rng: Rng, floor: FloorLayout) {
 
 export type PickupResult = 'none' | 'healed' | 'key' | 'bomb' | 'opened' | 'passive' | 'damageUp' | 'rateUp' | 'heartContainer';
 
+/** Pickups whose whole effect is on the player, used up as they are taken. */
+export type ConsumableType = 'heart' | 'key' | 'bomb' | 'heartContainer' | StatUpType;
+
+/** A consumable's effect on the player; false if it has none (a heart at full health). */
+export function applyConsumable(player: PlayerState, type: ConsumableType): boolean {
+  switch (type) {
+    case 'heart':
+      if (player.health >= player.maxHealth) return false;
+      player.health = Math.min(player.maxHealth, player.health + HEART_HEAL);
+      return true;
+    case 'heartContainer':
+      // One more heart, and it comes filled; full health or not.
+      player.maxHealth += HEART_HEAL;
+      player.health += HEART_HEAL;
+      return true;
+    case 'key':
+      player.keys++;
+      return true;
+    case 'bomb':
+      player.bombs++;
+      return true;
+    case 'damageUp':
+      player.statUps.damage++;
+      return true;
+    case 'rateUp':
+      player.statUps.rate++;
+      return true;
+  }
+}
+
+const CONSUMED: Record<ConsumableType, PickupResult> = {
+  heart: 'healed',
+  heartContainer: 'heartContainer',
+  key: 'key',
+  bomb: 'bomb',
+  damageUp: 'damageUp',
+  rateUp: 'rateUp',
+};
+
 /** The player touched a pickup. Applies its effect and updates the room's pickups. */
 export function touchPickup(world: World, roomId: string, pickupId: number): PickupResult {
   const list = world.pickups.get(roomId) ?? [];
@@ -137,32 +191,14 @@ export function touchPickup(world: World, roomId: string, pickupId: number): Pic
   const remove = () => world.pickups.set(roomId, (world.pickups.get(roomId) ?? []).filter((p) => p !== pickup));
   switch (pickup.type) {
     case 'heart':
-      if (player.health >= player.maxHealth) return 'none';
-      player.health = Math.min(player.maxHealth, player.health + HEART_HEAL);
-      remove();
-      return 'healed';
     case 'heartContainer':
-      // One more heart, and it comes filled; full health or not.
-      player.maxHealth += HEART_HEAL;
-      player.health += HEART_HEAL;
-      remove();
-      return 'heartContainer';
     case 'key':
-      player.keys++;
-      remove();
-      return 'key';
     case 'bomb':
-      player.bombs++;
-      remove();
-      return 'bomb';
     case 'damageUp':
-      player.statUps.damage++;
-      remove();
-      return 'damageUp';
     case 'rateUp':
-      player.statUps.rate++;
+      if (!applyConsumable(player, pickup.type)) return 'none';
       remove();
-      return 'rateUp';
+      return CONSUMED[pickup.type];
     case 'lockedChest':
       if (player.keys === 0) return 'none';
       player.keys--;
@@ -416,6 +452,8 @@ export function createWorld(seed: number): World {
     pickups: new Map(),
     nextPickupId: 1,
     tileHits: new Map(),
+    cheats: { god: false, noclip: false, freeze: false, onehit: false },
+    unlocked: new Set(),
   };
   for (const floor of floors) buildFloor(world, rng.fork(`floor ${floor.floorIndex}`), floor);
   for (const [id, room] of world.rooms) if (room.layout.enemies.length === 0) world.cleared.add(id);

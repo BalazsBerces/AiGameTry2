@@ -22,6 +22,23 @@ export type Passive =
   | 'orbital'
   | 'dash';
 
+/** How passives are named on screen (the HUD and the boss-kill upgrade message). */
+export const PASSIVE_NAMES: Record<Passive, string> = {
+  homing: 'Homing',
+  fireRate: 'Fire rate',
+  sword: 'Sword',
+  triple: 'Triple shot',
+  pierce: 'Piercing',
+  ricochet: 'Ricochet',
+  spectral: 'Spectral',
+  boomerang: 'Boomerang',
+  poison: 'Poison',
+  chain: 'Chain lightning',
+  freeze: 'Freeze',
+  orbital: 'Orbital',
+  dash: 'Dash',
+};
+
 /** Passives that shape a projectile's flight: with the sword, any of them makes it throw a blade wave. */
 const SHOT_MODIFIERS: readonly Passive[] = ['homing', 'triple', 'pierce', 'ricochet', 'spectral', 'boomerang'];
 

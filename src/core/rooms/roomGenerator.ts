@@ -599,7 +599,7 @@ function rollPickup(cell: Cell, rng: Rng): PickupSpawn {
   return { type, cell, contents: rollChestContents(type, rng) };
 }
 
-function rollChestContents(type: 'chest' | 'lockedChest', rng: Rng): ChestItem[] {
+export function rollChestContents(type: 'chest' | 'lockedChest', rng: Rng): ChestItem[] {
   // Which passive is decided when the chest is opened (core/world), against what the player owns by then.
   if (type === 'lockedChest' && rng.next() < PICKUPS.lockedChestPassiveChance) return [{ type: 'passive' }];
   const range = type === 'chest' ? PICKUPS.chestContents : PICKUPS.lockedChestContents;

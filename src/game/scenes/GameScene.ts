@@ -9,6 +9,7 @@ import { crusherWakes, settleCrusher, slideCrusher, type Crusher } from '../../c
 import {
   launchVelocity,
   resolveWeapon,
+  PASSIVE_NAMES,
   type Passive,
   type Weapon,
 } from '../../core/player/weaponModel';
@@ -46,7 +47,7 @@ import {
   type WorldPickup,
   type WorldRoom,
 } from '../../core/map/world';
-import { COLORS, PASSIVE_NAMES, TUNING } from '../config';
+import { COLORS, TUNING } from '../config';
 import type { Enemy, EnemyContext, EnemySprite } from '../entities/enemy';
 import { createIronMaidenBoss } from '../entities/bosses/ironMaiden';
 import { createCandleWitch, DARK_DEPTH } from '../entities/bosses/candleWitch';
@@ -92,11 +93,17 @@ import { PICKUP_CANVAS, SHOT_CANVAS, type PickupArt } from '../../core/art/hud';
 import { ART_SCALE } from '../art/bake';
 import { joinsBetween, neighbourMask } from '../../core/art/autotile';
 import { ARENA_ID, arenaRoom, parseArenaQuery, type ArenaRequest } from '../../core/rooms/testArena';
+import { seedWithRoom, urlStartRoom } from '../../core/map/travel';
+import { run as runCommand, type ConsoleAction } from '../../core/console/console';
 
 type Keys = Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
 type PhysicsArc = Phaser.GameObjects.Arc & { body: Phaser.Physics.Arcade.Body };
 
 const DEPTH = { player: 10 };
+/** Damage that kills anything in one blow (the onehit cheat, the console's `kill`). */
+const KILL_DAMAGE = 1e4;
+/** How many times `killOutright` hits again what an enemy split into. */
+const KILL_ROUNDS = 30;
 /** The player's feet are this far below the centre of its round body. */
 const PLAYER_FOOT = 9;
 
@@ -284,13 +291,9 @@ function drawRegionRims(g: Phaser.GameObjects.Graphics, room: WorldRoom, color: 
   }
 }
 
-/** The enemy test arena's playtest tools (core/testArena): what the URL asked for and the R / G / F toggles. */
+/** The enemy test arena's playtest tools (core/testArena): what was asked for and the line of help for its keys. */
 interface ArenaTools {
   request: ArenaRequest;
-  /** The player can't be hurt. */
-  god: boolean;
-  /** Enemies stand still and think nothing. */
-  frozen: boolean;
   help: Phaser.GameObjects.Text;
 }
 
@@ -378,31 +381,50 @@ export class GameScene extends Phaser.Scene {
   private joinArt = new Map<string, Phaser.GameObjects.Image[]>();
   /** Set only in the enemy test arena. */
   private arena?: ArenaTools;
+  /** Real time scaled by `speed`: what the game clock (`now`) counts from. */
+  private clock = 0;
+  /** The dev console's game speed (1 is normal). */
+  private speed = 1;
+  /**
+   * Enemies the dev console brought in, and whatever they split into or summon: outside the
+   * room's own fight, they never hold its doors shut and their deaths give no room rewards.
+   */
+  private spawned = new Set<Enemy>();
+  /** Set while a spawned enemy thinks, so what it summons counts as spawned too. */
+  private updatingSpawned = false;
+  /** Where the player last aimed, for the console's `drop`. */
+  private aimedAt: Direction = 'right';
 
   constructor() {
     super('game');
   }
 
-  create(data: { seed?: number }) {
+  /**
+   * A new run: on `seed` (random if left out), at the door of a room built from `room`, or in the
+   * test arena with `arena`'s enemies. The first run also takes the URL's playtest shortcuts.
+   */
+  create(data: { seed?: number; room?: string; arena?: ArenaRequest }) {
     const params = new URLSearchParams(firstBoot ? location.search : '');
     const urlSeed = Number(params.get('seed') ?? NaN);
     // Playtesting: `?boss` (or `?boss=2`, `?boss=3`) starts at that floor's boss room door.
     const urlBoss = params.has('boss') ? Number(params.get('boss') || 1) : undefined;
     // Playtesting: `?room=slimePit` (an archetype, layout or encounter id) starts at the door of
     // the first such room, on the given seed or the first seed that has one.
-    const urlRoom = params.get('room') ?? undefined;
+    const urlRoom = data.room ?? params.get('room') ?? undefined;
     // Playtesting: `?zombie=3&bat` (see core/testArena) starts in the enemy test arena with just those.
-    const arenaRequest = parseArenaQuery(params.toString());
-    if (arenaRequest?.unknown.length) console.warn(`Test arena: no enemy called ${arenaRequest.unknown.join(', ')}`);
+    const urlArena = parseArenaQuery(params.toString());
+    if (urlArena?.unknown.length) console.warn(`Test arena: no enemy called ${urlArena.unknown.join(', ')}`);
+    const arenaRequest = data.arena ?? urlArena;
     const inArena = !!arenaRequest?.spawns.length;
     firstBoot = false;
-    const isUrlRoom = (r: WorldRoom) => [r.layout.archetype, r.layout.layout, r.layout.encounter].includes(urlRoom);
-    const roomSeed = urlRoom && !Number.isFinite(urlSeed)
-      ? Array.from({ length: 300 }, (_, s) => s).find((s) => [...createWorld(s).rooms.values()].some(isUrlRoom))
-      : undefined;
+    const roomSeed = urlRoom && data.seed === undefined && !Number.isFinite(urlSeed) ? seedWithRoom(urlRoom) : undefined;
     const seed = data.seed ?? roomSeed ?? (Number.isFinite(urlSeed) ? urlSeed : Math.floor(Math.random() * 2 ** 31));
     this.world = createWorld(seed);
     this.hitStop = createHitStop();
+    this.clock = this.time.now;
+    this.setSpeed(1);
+    this.spawned = new Set();
+    this.aimedAt = 'right';
     this.frozen = false;
     this.shake = createShake();
     this.knockback = createKnockback(TUNING.knockback);
@@ -451,9 +473,11 @@ export class GameScene extends Phaser.Scene {
     this.playerArt = this.paper.actor(this.player, 'player', { footOffset: PLAYER_FOOT });
     // A round body too, so the ball slides round corners instead of snagging on them.
     this.player.body.setCircle(TUNING.playerSize / 2);
-    this.physics.add.collider(this.player, this.walls);
-    this.physics.add.collider(this.player, this.holes);
-    this.physics.add.collider(this.player, this.thorns, () => this.hurtPlayer(TUNING.thorn.playerDamage));
+    // Noclip (a playtest cheat) walks through terrain, holes and thorns; room walls and door locks have no tile and still stop it.
+    const noclip = () => this.world.cheats.noclip;
+    this.physics.add.collider(this.player, this.walls, undefined, (_p, wall) => !(noclip() && (wall as Phaser.GameObjects.GameObject).getData('tile')));
+    this.physics.add.collider(this.player, this.holes, undefined, () => !noclip());
+    this.physics.add.collider(this.player, this.thorns, () => this.hurtPlayer(TUNING.thorn.playerDamage), () => !noclip());
 
     const kb = this.input.keyboard!;
     this.move = kb.addKeys({ up: 'W', down: 'S', left: 'A', right: 'D' }) as Keys;
@@ -551,8 +575,7 @@ export class GameScene extends Phaser.Scene {
       this.openArenaTools(arenaRequest!);
       return;
     }
-    const boss = [...this.world.rooms.values()].find((r) => r.floorRoom.kind === 'boss' && r.floorIndex === (urlBoss ?? 0) - 1);
-    const jumpTo = boss ?? (urlRoom ? [...this.world.rooms.values()].find(isUrlRoom) : undefined);
+    const jumpTo = urlStartRoom(this.world, { boss: urlBoss, room: urlRoom });
     if (jumpTo) {
       const door = jumpTo.layout.doors[0];
       const at = tileCenter(jumpTo, door.cell.x, door.cell.y);
@@ -569,25 +592,24 @@ export class GameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setStroke('#000000', 3)
       .setDepth(DARK_DEPTH + 4);
-    this.arena = { request, god: false, frozen: false, help };
+    this.arena = { request, help };
     this.showArenaHelp();
     const kb = this.input.keyboard!;
     kb.addKey('R').on('down', () => this.respawnArena());
-    kb.addKey('G').on('down', () => {
-      if (!this.arena) return;
-      this.arena.god = !this.arena.god;
-      this.showArenaHelp();
-    });
-    kb.addKey('F').on('down', () => {
-      if (!this.arena) return;
-      this.arena.frozen = !this.arena.frozen;
-      this.showArenaHelp();
-    });
+    // The same switches as the dev console's `god` and `freeze`.
+    for (const [key, cheat] of [['G', 'god'], ['F', 'freeze']] as const) {
+      kb.addKey(key).on('down', () => {
+        if (!this.arena) return;
+        this.world.cheats[cheat] = !this.world.cheats[cheat];
+        this.showArenaHelp();
+      });
+    }
   }
 
   private showArenaHelp() {
     if (!this.arena) return;
-    const { request, god, frozen } = this.arena;
+    const { request } = this.arena;
+    const { god, freeze: frozen } = this.world.cheats;
     const spawned = request.spawns.map((s) => `${s.count}x ${s.tier ? `${s.tier} ` : ''}${s.type}`).join(', ');
     const onOff = (on: boolean) => (on ? 'ON' : 'off');
     this.arena.help.setText(
@@ -598,22 +620,37 @@ export class GameScene extends Phaser.Scene {
   /** R in the arena: every enemy, piece and enemy shot gone, and the URL's enemies back where they started. */
   private respawnArena() {
     if (!this.arena || this.runOver) return;
+    this.removeEnemies();
+    this.world.cleared.delete(ARENA_ID);
+    this.spawnEnemies(this.currentRoom);
+    this.enemiesWakeAt = this.now + TUNING.enemyWakeMs;
+  }
+
+  /** Every enemy, piece and enemy shot gone, without a death (no scraps, loot or clearing), and any door locks lifted. */
+  private removeEnemies() {
     for (const enemy of this.enemies) {
       for (const part of enemy.parts) part.destroy();
       for (const shape of enemy.trim ?? []) shape.destroy();
     }
     for (const shot of this.enemyShots.getChildren().slice()) shot.destroy();
     this.enemies = [];
+    this.spawned.clear();
     this.lootCarriers.clear();
     this.poisoned.clear();
     this.bossBar = undefined;
-    this.world.cleared.delete(ARENA_ID);
-    this.spawnEnemies(this.currentRoom);
-    this.enemiesWakeAt = this.now + TUNING.enemyWakeMs;
+    this.unlockDoors();
   }
 
-  update(realTime: number, delta: number) {
-    const clock = this.hitStop.step(realTime);
+  private unlockDoors() {
+    for (const lock of this.doorLocks) lock.destroy();
+    this.doorLocks = [];
+  }
+
+  update(_realTime: number, realDelta: number) {
+    // The dev console's `speed` runs everything on a scaled clock.
+    const delta = realDelta * this.speed;
+    this.clock += delta;
+    const clock = this.hitStop.step(this.clock);
     if (clock.frozen !== this.frozen) this.freeze(clock.frozen);
     this.now = clock.gameTime;
     if (clock.frozen) return;
@@ -692,7 +729,7 @@ export class GameScene extends Phaser.Scene {
 
   /** A hit lands with weight: the game freezes for `ms` (merged with any freeze already running). */
   private hitStopFor(ms: number) {
-    this.hitStop.request(this.game.loop.now, ms);
+    this.hitStop.request(this.clock, ms);
   }
 
   /** Keeps one orb per Orbital level circling the player, evenly spaced. */
@@ -724,7 +761,14 @@ export class GameScene extends Phaser.Scene {
     if (!part.active) return;
     const group = this.enemies.find((e) => e.parts.includes(part))?.hitGroup ?? part;
     if (!this.orbGate.pass(group, this.now, TUNING.orbital.hitEveryMs)) return;
-    this.damagePart(part, TUNING.orbital.damage);
+    this.playerHit(part, TUNING.orbital.damage);
+  }
+
+  /** One of the player's own hits on a part: `damage`, or with the onehit cheat on, death to its whole body. */
+  private playerHit(part: EnemySprite, damage: number) {
+    const enemy = this.enemies.find((e) => e.parts.includes(part));
+    if (enemy && this.world.cheats.onehit) this.killOutright(this.piecesOf(enemy.hitGroup ?? enemy));
+    else this.damagePart(part, damage);
   }
 
   /** Space or Shift: dash the way the player is moving, if they have the passive and it has cooled down. */
@@ -759,7 +803,7 @@ export class GameScene extends Phaser.Scene {
       const body = enemy.hitGroup ?? enemy;
       if (!this.dashHits.has(body)) {
         this.dashHits.add(body);
-        this.damagePart(part, dash.damage);
+        this.playerHit(part, dash.damage);
       }
       return;
     }
@@ -776,6 +820,7 @@ export class GameScene extends Phaser.Scene {
       (best, d) => (!best || this.aim[d].timeDown > this.aim[best].timeDown ? d : best),
       undefined,
     );
+    if (aim) this.aimedAt = aim;
     if (!aim || time < this.nextShotAt) return;
     const weapon = resolveWeapon(this.world.player.passives, this.world.player.statUps);
     this.nextShotAt = time + weapon.fireDelayMs;
@@ -905,7 +950,7 @@ export class GameScene extends Phaser.Scene {
     const enemy = this.enemies.find((e) => e.parts.includes(part));
     if (enemy?.invulnerable?.(part)) return;
     const at = { x: part.x, y: part.y };
-    this.damagePart(part, damage);
+    this.playerHit(part, damage);
     if (!enemy) return;
     shakeScreen(this, 'hit');
     const weapon = resolveWeapon(this.world.player.passives, this.world.player.statUps);
@@ -947,7 +992,7 @@ export class GameScene extends Phaser.Scene {
       bolt(0, 0, 4, COLORS.passive.chain, 1);
       bolt(0, 0, 1.2, 0xffffff, 1);
       prev = { x: part.x, y: part.y };
-      this.damagePart(part, damage);
+      this.playerHit(part, damage);
     }
     this.tweens.add({ targets: g, alpha: 0, duration: 220, onComplete: () => g.destroy() });
   }
@@ -1072,8 +1117,8 @@ export class GameScene extends Phaser.Scene {
     this.updateStunMarks(time);
     this.tickPoison(time);
     if (this.enemies.length === 0) return;
-    // Held still before they wake, and while the arena's freeze (F) is on.
-    if (time < this.enemiesWakeAt || this.arena?.frozen) {
+    // Held still before they wake, and while the freeze cheat (the console, the arena's F) is on.
+    if (time < this.enemiesWakeAt || this.world.cheats.freeze) {
       for (const e of this.enemies) for (const p of e.parts) p.body.setVelocity(0, 0);
       return;
     }
@@ -1090,7 +1135,11 @@ export class GameScene extends Phaser.Scene {
     for (const e of this.enemies) {
       // The shared stun (core/stun): a stunned enemy of any kind stands still and does nothing.
       if (isStunned(e, time)) for (const p of e.parts) p.body.setVelocity(0, 0);
-      else e.update(ctx);
+      else {
+        this.updatingSpawned = this.spawned.has(e);
+        e.update(ctx);
+        this.updatingSpawned = false;
+      }
     }
     this.pushWalkersApart();
     this.knockBack(time);
@@ -1238,12 +1287,16 @@ export class GameScene extends Phaser.Scene {
         const shape = this.terrain.get(`${roomId}|${cell.x},${cell.y}`) as Phaser.GameObjects.Rectangle | undefined;
         if (result === 'damaged' && shape) this.fadeTerrain(shape, 0.25 * hits);
       },
-      spawnEnemy: (enemy) => this.addEnemy(enemy),
+      spawnEnemy: (enemy) => {
+        if (this.updatingSpawned) this.spawned.add(enemy);
+        this.addEnemy(enemy);
+      },
       removeEnemy: (enemy) => {
         if (!this.enemies.includes(enemy)) return;
         for (const part of enemy.parts) part.destroy();
         this.enemies = this.enemies.filter((e) => e !== enemy);
-        if (this.enemies.length === 0) this.clearRoom();
+        this.spawned.delete(enemy);
+        this.clearIfWon();
       },
       showBossBar: (bar) => {
         this.bossBar = bar;
@@ -1451,9 +1504,10 @@ export class GameScene extends Phaser.Scene {
     return [...parts].sort((a, b) => dist(a) - dist(b));
   }
 
-  private damagePart(part: EnemySprite, damage: number) {
+  /** Hurts one enemy part; returns what its enemy became (itself, nothing if it died, or the pieces it split into). */
+  private damagePart(part: EnemySprite, damage: number): Enemy[] {
     const enemy = this.enemies.find((e) => e.parts.includes(part));
-    if (!enemy) return;
+    if (!enemy) return [];
     const where = { x: part.x, y: part.y };
     const color = part.fillColor;
     const replacements = enemy.hit(part, damage);
@@ -1462,6 +1516,7 @@ export class GameScene extends Phaser.Scene {
     this.enemies = this.enemies.flatMap((e) => (e === enemy ? replacements : [e]));
     // Newborn enemies (a slime's children) join physics; split pieces keep the parts they had.
     for (const r of replacements) if (r.parts.some((p) => !this.enemyParts.contains(p))) this.addPhysics(r);
+    if (this.spawned.delete(enemy)) for (const r of replacements) this.spawned.add(r);
     const drop = this.lootCarriers.get(enemy);
     if (drop) {
       this.lootCarriers.delete(enemy);
@@ -1471,7 +1526,28 @@ export class GameScene extends Phaser.Scene {
         this.showPickups();
       }
     }
-    if (this.enemies.length === 0) this.clearRoom();
+    this.clearIfWon();
+    return replacements;
+  }
+
+  /**
+   * Kills the enemies outright through the normal death path (scraps, loot, clearing), hitting
+   * whatever they split into as well. One that can't be hurt right now (a worm boss holding still) lives.
+   */
+  private killOutright(enemies: Enemy[]) {
+    let left = enemies;
+    for (let round = 0; round < KILL_ROUNDS && left.length; round++) {
+      left = left.flatMap((e) => {
+        const part = e.parts.find((p) => p.active);
+        return part && this.enemies.includes(e) ? this.damagePart(part, KILL_DAMAGE) : [];
+      });
+    }
+  }
+
+  /** The room's own fight is over once every enemy left is one the console spawned (or none is left). */
+  private clearIfWon() {
+    if (this.world.cleared.has(this.world.currentRoomId) || !this.enemies.every((e) => this.spawned.has(e))) return;
+    this.clearRoom();
   }
 
   private addEnemy(enemy: Enemy) {
@@ -1500,10 +1576,12 @@ export class GameScene extends Phaser.Scene {
 
   /** Takes `halves` half-hearts, unless the player is still flashing from the last hit. */
   private hurtPlayer(halves = 1) {
-    if (this.now < this.invincibleUntil || this.arena?.god) return;
+    if (this.now < this.invincibleUntil) return;
     this.invincibleUntil = this.now + TUNING.invincibleMs;
     this.playerArt?.hurt(this.now);
     shakeScreen(this, 'hurt');
+    // God mode (a playtest cheat): the hit lands, but health never drops.
+    if (this.world.cheats.god) return;
     for (let i = 0; i < halves; i++) {
       if (damagePlayer(this.world)) {
         this.endRun(false);
@@ -1534,7 +1612,15 @@ export class GameScene extends Phaser.Scene {
     this.enterRoom(room, time);
   }
 
-  private enterRoom(room: WorldRoom, time: number) {
+  /** The player walks (or teleports, stepping in at `cell` rather than the nearest door) into `room`. */
+  private enterRoom(room: WorldRoom, time: number, cell?: Cell) {
+    // Only enemies the console spawned (or any, after a teleport out of a fight) can be left behind.
+    if (this.enemies.length || this.doorLocks.length) this.removeEnemies();
+    // Teleported out of the test arena: its keys and help go with it.
+    if (this.arena && room.floorRoom.id !== ARENA_ID) {
+      this.arena.help.destroy();
+      this.arena = undefined;
+    }
     enterRoom(this.world, room.floorRoom.id);
     this.bossBar = undefined;
     for (const shot of [...this.shots.getChildren(), ...this.enemyShots.getChildren()]) shot.destroy();
@@ -1544,7 +1630,8 @@ export class GameScene extends Phaser.Scene {
       .map((d) => ({ d, c: tileCenter(room, d.cell.x, d.cell.y) }))
       .sort((a, b) => Phaser.Math.Distance.Between(a.c.x, a.c.y, this.player.x, this.player.y) -
         Phaser.Math.Distance.Between(b.c.x, b.c.y, this.player.x, this.player.y))[0];
-    if (entry) this.player.body.reset(entry.c.x, entry.c.y);
+    const at = cell ? tileCenter(room, cell.x, cell.y) : entry?.c;
+    if (at) this.player.body.reset(at.x, at.y);
 
     this.showRoomsAround(room);
     this.slideCameraTo(room);
@@ -1644,15 +1731,86 @@ export class GameScene extends Phaser.Scene {
   }
 
   private spawnEnemies(room: WorldRoom) {
-    const at = (c: Cell) => tileCenter(room, c.x, c.y);
-    for (const spawn of room.layout.enemies) {
-      const enemy = ENEMY_FACTORIES[spawn.type](this, spawn, at, room.layout);
-      this.enemyTypes.set(enemy, spawn.type);
-      this.dressEnemy(enemy, spawn.type, !!spawn.champion);
-      const drop = spawn.champion?.drop ?? BOSS_DROPS[spawn.type];
-      if (drop) this.lootCarriers.set(enemy, drop);
-      this.addEnemy(enemy);
+    for (const spawn of room.layout.enemies) this.bringIn(room, spawn, false);
+  }
+
+  /**
+   * Makes one enemy and brings it into the fight. One the console `spawned` is outside the room's
+   * own fight, and keeps a champion's drop but never a boss's, so spawning can't be farmed.
+   */
+  private bringIn(room: WorldRoom, spawn: EnemySpawn, spawned: boolean) {
+    const enemy = ENEMY_FACTORIES[spawn.type](this, spawn, (c: Cell) => tileCenter(room, c.x, c.y), room.layout);
+    this.enemyTypes.set(enemy, spawn.type);
+    this.dressEnemy(enemy, spawn.type, !!spawn.champion);
+    const drop = spawn.champion?.drop ?? (spawned ? undefined : BOSS_DROPS[spawn.type]);
+    if (drop) this.lootCarriers.set(enemy, drop);
+    if (spawned) this.spawned.add(enemy);
+    this.addEnemy(enemy);
+  }
+
+  /**
+   * Carries out one line typed into the dev console (core/console) and returns what it printed.
+   * Core changes the world itself; the actions it hands back are the scene's part.
+   */
+  runConsole(line: string): string[] {
+    const ctx = { world: this.world, playerCell: tileAt(this.currentRoom, this.player.x, this.player.y), aim: this.aimedAt };
+    const { log, actions } = runCommand(line, ctx);
+    for (const action of actions) log.push(...(this.carryOut(action) ?? []));
+    return log;
+  }
+
+  /** Carries out one console action; returns any lines it has to add. */
+  private carryOut(action: ConsoleAction): string[] | void {
+    switch (action.kind) {
+      case 'pickups':
+        return this.showPickups();
+      case 'toggle':
+        return this.showArenaHelp();
+      case 'die':
+        return this.endRun(false);
+      case 'kill':
+        this.killOutright([...this.enemies]);
+        return this.enemies.length ? [`${this.enemies.length} left standing: can't be hurt right now`] : [];
+      case 'speed':
+        return this.setSpeed(action.factor);
+      case 'hitboxes':
+        return this.toggleHitboxes();
+      case 'open':
+        if (this.world.unlocked.has(this.world.currentRoomId)) this.unlockDoors();
+        return;
+      case 'teleport':
+        return this.enterRoom(this.world.rooms.get(action.roomId)!, this.now, action.cell);
+      case 'spawn':
+        for (const spawn of action.spawns) this.bringIn(this.currentRoom, spawn, true);
+        return;
+      case 'restart':
+        return this.newRun({ seed: action.seed ?? Math.floor(Math.random() * 2 ** 31), room: action.room });
+      case 'arena':
+        return this.newRun({ arena: action.request });
     }
+  }
+
+  /** Starts over with a new run, the cheats back off with its new world. */
+  private newRun(data: { seed?: number; room?: string; arena?: ArenaRequest }) {
+    this.scene.stop('hud');
+    this.scene.restart(data);
+  }
+
+  /** Runs the whole game at `factor` times its speed: the game clock, physics, timers and tweens. */
+  private setSpeed(factor: number) {
+    this.speed = factor;
+    this.time.timeScale = factor;
+    this.tweens.timeScale = factor;
+    // Arcade physics counts the other way: 2 is half speed.
+    this.physics.world.timeScale = 1 / factor;
+  }
+
+  /** Shows or hides the physics bodies' outlines. */
+  private toggleHitboxes() {
+    const world = this.physics.world;
+    if (!world.debugGraphic) world.createDebugGraphic();
+    else world.drawDebug = !world.drawDebug;
+    world.debugGraphic.clear();
   }
 
   /** Gives an enemy with paper art its paper character, standing on its body and animated from what it does. */
@@ -1666,6 +1824,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private lockDoors(room: WorldRoom) {
+    if (this.world.unlocked.has(room.floorRoom.id)) return;
     const t = TUNING.tile;
     for (const door of room.layout.doors) {
       const w = doorCorridor(room, door)[0];
@@ -1682,8 +1841,7 @@ export class GameScene extends Phaser.Scene {
 
   private clearRoom() {
     this.world.cleared.add(this.world.currentRoomId);
-    for (const lock of this.doorLocks) lock.destroy();
-    this.doorLocks = [];
+    this.unlockDoors();
     this.showPickups();
     if (this.currentRoom.floorRoom.kind !== 'boss') return;
     // Every boss kill raises one of the player's passives to level 2.

@@ -235,6 +235,38 @@ function Close-CompletedIssue {
     }
 }
 
+function Wait-IssueLeavesList {
+    param(
+        [string]$Repo,
+        [string]$TicketLabel,
+        [int]$IssueNumber,
+        [int]$MinSeconds = 5,
+        [int]$MaxSeconds = 60
+    )
+
+    # GitHub's issue list lags behind a close; wait until it catches up.
+    Write-Host "Várakozás, amíg a #$IssueNumber eltűnik a nyitott ticketek közül..." -ForegroundColor DarkGray
+    Start-Sleep -Seconds $MinSeconds
+
+    $waited = $MinSeconds
+
+    while ($waited -lt $MaxSeconds) {
+        $stillListed = @(
+            Get-OpenAgentTickets -Repo $Repo -TicketLabel $TicketLabel |
+                Where-Object { [int]$_.number -eq $IssueNumber }
+        )
+
+        if ($stillListed.Count -eq 0) {
+            return
+        }
+
+        Start-Sleep -Seconds 5
+        $waited += 5
+    }
+
+    Write-Host "A #$IssueNumber $MaxSeconds mp után is listázva van; a runner kihagyja és folytatja." -ForegroundColor Yellow
+}
+
 # ----- Preconditions -----
 
 Assert-CommandAvailable "git"
@@ -343,6 +375,11 @@ while ($true) {
 
     $completed[[int]$issue.number] = $true
     $processed++
+
+    Wait-IssueLeavesList `
+        -Repo $repo `
+        -TicketLabel $Label `
+        -IssueNumber $issue.number
 
     Write-Host ""
     Write-Host "Kész: #$($issue.number) -> $shortHash" -ForegroundColor Green

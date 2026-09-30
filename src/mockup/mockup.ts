@@ -2,7 +2,7 @@ import { CHARACTERS, type Action, type View } from '../core/art/characters';
 import { hudSvg, HEART_CANVAS, ICON_CANVAS, SHOT_CANVAS } from '../core/art/hud';
 import { PAPER } from '../core/art/palette';
 import { DOWN, LEFT, RIGHT, UP, type Mask } from '../core/art/autotile';
-import { DECOR_CANVAS, TILE, TILE_CANVAS, WALL_STYLES, terrainSvg, type Shell, type WallSide, type WallStyle } from '../core/art/terrain';
+import { CAVE_WALL_CANVAS, DECOR_CANVAS, TILE, TILE_CANVAS, WALL_STYLES, terrainSvg, wallCanvas, type Shell, type WallSide, type WallStyle } from '../core/art/terrain';
 import { createRng } from '../core/rng';
 
 /**
@@ -110,19 +110,24 @@ function drawRoom(sheet: Sheet, scene: Scene, lit: boolean, id: string): string 
   map.forEach((row, gy) =>
     [...row].forEach((ch, gx) => {
       const c = at(gx, gy);
-      const variant = (gx * 7 + gy * 13) % 4;
+      // The caves pick each tile's look at random, as the game does; the forest keeps its old pattern.
+      const variant = shell === 'caves' ? createRng(scene.seed).fork(`${gx},${gy}`).int(0, 3) : (gx * 7 + gy * 13) % 4;
       if (ch === '#') {
         const side: WallSide =
           (gx === 0 || gx === row.length - 1) && (gy === 0 || gy === map.length - 1) ? 'corner'
           : gy === 0 ? 'top' : gy === map.length - 1 ? 'bottom' : gx === 0 ? 'left' : 'right';
+        const wc = wallCanvas(wallStyle);
         // Walls stand at the edge of the view: the top one first, the bottom one over everything.
-        standing.push({ y: gy === 0 ? -100 : gy === map.length - 1 ? 9999 : c.y, svg: tile(terrainSvg.wall(side, variant, wallStyle), c.x, c.y) });
+        standing.push({
+          y: gy === 0 ? -100 : gy === map.length - 1 ? 9999 : c.y + 14,
+          svg: place(terrainSvg.wall(side, variant, wallStyle), wc.w, wc.h, wc.anchor.x, wc.anchor.y, c.x, c.y),
+        });
         return;
       }
       flat.push(tile(terrainSvg.floor(scene.floor, variant, shell), c.x, c.y));
       if (ch === 'D' || ch === 'G') {
         const side = gy === 0 ? 'top' : gy === map.length - 1 ? 'bottom' : gx === 0 ? 'left' : 'right';
-        standing.push({ y: gy === 0 ? -50 : c.y, svg: tile(terrainSvg.door(side, ch === 'G', shell), c.x, c.y) });
+        standing.push({ y: gy === 0 ? -50 : c.y + TILE / 2, svg: tile(terrainSvg.door(side, ch === 'G', shell), c.x, c.y) });
         return;
       }
       const look = LOOK[ch];
@@ -360,8 +365,10 @@ function caveShellSheet(): string {
   const sides: WallSide[] = ['top', 'bottom', 'left', 'right', 'corner'];
   const variants = [0, 1, 2, 3];
   const walls = WALL_STYLES.caves.map((style) => {
-    const figs = sides.flatMap((side) => variants.map((v) => fig(terrainSvg.wall(side, v, style), `${side} ${v + 1}`))).join('');
-    const name = style === 'strata' ? 'Rock-strata walls <span>the usual cave wall; the top wall shows its stacked face, stalactites on variants 2 and 4</span>' : 'Crystal-veined walls <span>rooms with 3 or more crystal tiles, all the way round</span>';
+    const figs = sides
+      .flatMap((side) => variants.map((v) => `<figure>${img(terrainSvg.wall(side, v, style), CAVE_WALL_CANVAS.w, CAVE_WALL_CANVAS.h, 1.2, false, `${side} ${v + 1}`)}<figcaption>${side} ${v + 1}</figcaption></figure>`))
+      .join('');
+    const name = style === 'strata' ? 'Rock-strata walls <span>free-form crags spilling past their tile; the top wall a ragged strata cliff with stalactites</span>' : 'Crystal-veined walls <span>rooms with 3 or more crystal tiles, all the way round</span>';
     return `<section class="strip"><h3>${name}</h3><div class="frames">${figs}</div></section>`;
   });
   const doors = (['top', 'bottom', 'left', 'right'] as const)
@@ -373,14 +380,14 @@ function caveShellSheet(): string {
   // A 3×3 patch of each floor, variants mixed, to judge how it tiles.
   const patch = (kind: 'normal' | 'item' | 'boss') => {
     const cells = [0, 1, 2].flatMap((gy) => [0, 1, 2].map((gx) => {
-      const svg = terrainSvg.floor(kind, (gx * 7 + gy * 13) % 4, 'caves');
+      const svg = terrainSvg.floor(kind, createRng(7).fork(`${kind}${gx},${gy}`).int(0, 3), 'caves');
       return `<image href="${uri(svg)}" width="${TILE_CANVAS.w}" height="${TILE_CANVAS.h}" x="${gx * TILE - (TILE_CANVAS.anchor.x - TILE / 2)}" y="${gy * TILE - (TILE_CANVAS.anchor.y - TILE / 2)}"/>`;
     })).join('');
     return `<figure><svg width="${TILE * 3 * 1.5}" height="${TILE * 3 * 1.5}" viewBox="0 0 ${TILE * 3} ${TILE * 3}" role="img" aria-label="${kind} floor, tiled">${cells}</svg><figcaption>${kind}, tiled</figcaption></figure>`;
   };
   return walls.join('') +
     `<section class="strip"><h3>Mine-prop doorways <span>timber props and lintel; locked ones barred by a rusted iron grate</span></h3><div class="frames">${doors}</div></section>` +
-    `<section class="strip"><h3>Earth floors <span>normal: slabs and cracks · item: worn flagstone shrine · boss: tunnel gouges, bones and shards</span></h3><div class="frames">${floors}</div></section>` +
+    `<section class="strip"><h3>Earth floors <span>normal: the odd slab or crack · item: worn flagstone shrine · boss: darker earth, a burrow now and then</span></h3><div class="frames">${floors}</div></section>` +
     `<section class="strip"><h3>Floors tiled <span>variants mixed, no seams</span></h3><div class="frames">${patch('normal')}${patch('item')}${patch('boss')}</div></section>`;
 }
 
@@ -406,7 +413,7 @@ ${defs(lit)}${defs(unlit)}${defs(grotto)}${defs(boss)}
 <div class="pair">
   <figure class="stage small">${caveUnlit}<figcaption>The same room with the lights on.</figcaption></figure>
   <figure class="stage small">${grottoUnlit}<figcaption>A crystal-heavy room: crystal-veined walls all the way round.</figcaption></figure>
-  <figure class="stage small">${bossUnlit}<figcaption>The worm's room: gouged tunnel trails, bones and shards.</figcaption></figure>
+  <figure class="stage small">${bossUnlit}<figcaption>The worm's room: darker earth broken by burrows (bones and shards come as decor).</figcaption></figure>
 </div>
 <h2>Room shell pieces</h2>
 ${caveShellSheet()}

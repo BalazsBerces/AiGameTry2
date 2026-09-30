@@ -1,5 +1,5 @@
 import { CHARACTERS, type Action, type View } from './characters';
-import { DECOR_CANVAS, DECOR_KINDS, JOIN_LOOKS, MASKED_LOOKS, TILE_CANVAS, TILE_LOOKS, WALL_STYLES, terrainSvg, type Shell, type WallSide, type WallStyle } from './terrain';
+import { DECOR_CANVAS, DECOR_KINDS, JOIN_LOOKS, MASKED_LOOKS, TILE_CANVAS, TILE_LOOKS, WALL_STYLES, terrainSvg, wallCanvas, type Shell, type WallSide, type WallStyle } from './terrain';
 import type { Mask } from './autotile';
 import { HEART_CANVAS, ICON_CANVAS, PICKUP_ART, PICKUP_CANVAS, SHOT_CANVAS, hudSvg, pickupSvg, type PickupArt } from './hud';
 
@@ -66,7 +66,9 @@ function terrainEntries(): ArtEntry[] {
     ...JOIN_LOOKS.flatMap((look) => (['across', 'down'] as const).map((d) => tileEntry(joinKey(look, d), () => terrainSvg.join(look, d)))),
     ...SHELLS.flatMap((shell) => [
       ...WALL_STYLES[shell].flatMap((style: WallStyle) =>
-        (['top', 'bottom', 'left', 'right', 'corner'] as const).flatMap((side) => variants.map((v) => tileEntry(wallKey(shell, side, v, style), () => terrainSvg.wall(side, v, style)))),
+        (['top', 'bottom', 'left', 'right', 'corner'] as const).flatMap((side) =>
+          variants.map((v) => ({ key: wallKey(shell, side, v, style), w: wallCanvas(style).w, h: wallCanvas(style).h, svg: () => terrainSvg.wall(side, v, style) })),
+        ),
       ),
       ...(['up', 'down', 'left', 'right'] as const).flatMap((side) => [false, true].map((l) => tileEntry(doorKey(shell, side, l), () => terrainSvg.door(DOOR_ART_SIDE[side], l, shell)))),
       ...(['normal', 'item', 'boss'] as const).flatMap((kind) => variants.map((v) => tileEntry(floorKey(shell, kind, v), () => terrainSvg.floor(kind, v, shell)))),

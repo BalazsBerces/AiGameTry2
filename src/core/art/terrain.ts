@@ -1,6 +1,6 @@
 import { PAPER as P } from './palette';
 import { DOWN, LEFT, RIGHT, UP, type Mask } from './autotile';
-import { blob, cutPoly, fill, n, pieceRng, polyPath, ragged, ring, sheet, svgDoc } from './svg';
+import { blob, cutPoly, fill, n, pieceRng, polyPath, ragged, ring, sheet, svgDoc, type Pt } from './svg';
 
 /**
  * Terrain in paper. A tile piece's canvas is larger than its tile so tall things (trees) can rise
@@ -184,6 +184,8 @@ export type Shell = 'forest' | 'caves';
 /** The wall styles a floor's rooms come in; the first is its usual one. */
 export const WALL_STYLES = { forest: ['hedge'], caves: ['strata', 'veined'] } as const satisfies Record<Shell, readonly string[]>;
 export type WallStyle = (typeof WALL_STYLES)[Shell][number];
+/** The canvas a wall style's pieces are drawn on (cave rock spills far past its tile). */
+export const wallCanvas = (style: WallStyle) => (style === 'hedge' ? TILE_CANVAS : CAVE_WALL_CANVAS);
 
 /**
  * A hedge wall tile. Every side is a clump of dark foliage from above; the top wall also shows
@@ -284,58 +286,171 @@ function vein(r: ReturnType<typeof pieceRng>, from: { x: number; y: number }, to
 }
 
 /**
- * A cave wall tile: a mass of layered rock slabs seen from above. The top wall also shows its
- * front face, stacked bands of rock strata, with the odd stalactite hanging from the lip.
- * `veined` rock has crystal seams running through it and shards breaking out of it.
+ * A cave wall piece's canvas: much bigger than its tile, so the rock spills into its neighbours
+ * and the wall reads as one free-form mass rather than a row of tiles.
+ */
+export const CAVE_WALL_CANVAS = { w: 128, h: 132, anchor: { x: 64, y: 72 } };
+const { x: WX, y: WY } = CAVE_WALL_CANVAS.anchor;
+
+type Rng = ReturnType<typeof pieceRng>;
+type RockTone = { dark: string; main: string; light: string };
+const ROCK: RockTone = { dark: C.rockDark, main: C.rock, light: C.rockLight };
+const OCHRE_ROCK: RockTone = { dark: C.rockDark, main: C.ochre, light: C.stalactiteLight };
+const DEEP_ROCK: RockTone = { dark: C.rockDeep, main: C.rockDark, light: C.rock };
+
+/** A crag seen from above: an angular rock with a lit top and a pale facet catching the light from up-left. */
+function crag(r: Rng, cx: number, cy: number, rad: number, tone: RockTone) {
+  const count = 6 + Math.floor(r.next() * 3);
+  const turn = r.next() * Math.PI;
+  const pts = Array.from({ length: count }, (_, i) => {
+    const a = turn + (i / count) * Math.PI * 2 + (r.next() - 0.5) * 0.5;
+    const k = 0.72 + r.next() * 0.5;
+    return { x: cx + Math.cos(a) * rad * k, y: cy + Math.sin(a) * rad * k * 0.82 };
+  });
+  const c = { x: cx - rad * 0.08, y: cy - rad * 0.28 };
+  const top = pts.map((p) => ({ x: c.x + (p.x - cx) * 0.7, y: c.y + (p.y - cy) * 0.64 }));
+  const lit = top.reduce((best, p, i) => (p.x + p.y < top[best].x + top[best].y ? i : best), 0);
+  const facet = [c, top[lit], top[(lit + 1) % top.length]];
+  const scar = rad > 13 && r.next() < 0.6
+    ? `<path d="M${n(c.x - rad * 0.4)} ${n(c.y + rad * 0.1)}l${n(rad * 0.35)} ${n(-rad * 0.12)}l${n(rad * 0.3)} ${n(rad * 0.1)}" stroke="${tone.dark}" stroke-width="1.2" fill="none" opacity="0.8"/>`
+    : '';
+  return sheet(fill(polyPath(pts), tone.dark) + fill(polyPath(top), tone.main) + fill(polyPath(facet), tone.light, 'opacity="0.9"') + scar, rad > 14 ? 2 : 1);
+}
+
+/** A rock spire jutting up out of the wall, lit on its left flank. */
+function spire(r: Rng, x: number, y: number, h: number) {
+  const w = 6 + r.next() * 4;
+  const tip = { x: x + (r.next() - 0.5) * h * 0.3, y: y - h };
+  const mid = { x: x + (tip.x - x) * 0.5 + (r.next() - 0.5) * 3, y: y - h * 0.5 };
+  return sheet(
+    fill(polyPath([{ x: x - w, y }, { x: mid.x - w * 0.55, y: mid.y }, tip, { x: mid.x + w * 0.5, y: mid.y }, { x: x + w, y }]), C.rockDark) +
+      fill(polyPath([{ x: x - w, y }, { x: mid.x - w * 0.55, y: mid.y }, tip, { x: mid.x, y: mid.y + 2 }, { x: x - 1, y }]), C.stalactite),
+    2,
+  );
+}
+
+/** A jagged outline round a centre: rock with no straight edge anywhere. */
+function jagged(r: Rng, cx: number, cy: number, rx: number, ry: number, count: number, jitter: number) {
+  return Array.from({ length: count }, (_, i) => {
+    const a = (i / count) * Math.PI * 2;
+    const k = 1 - jitter + r.next() * jitter * 2;
+    return { x: cx + Math.cos(a) * rx * k, y: cy + Math.sin(a) * ry * k };
+  });
+}
+
+/** Which way each wall looks into the room. */
+const INTO: Record<WallSide, { x: number; y: number }> = { top: { x: 0, y: 1 }, bottom: { x: 0, y: -1 }, left: { x: 1, y: 0 }, right: { x: -1, y: 0 }, corner: { x: 0, y: 0 } };
+
+/**
+ * A cave wall: free-form crags heaped on a bed of dark rock that spills far past the tile, rubble
+ * tumbling out into the room, and the odd spire. The top wall shows its front face, a ragged cliff
+ * of rock strata with stalactites hanging from its lip. `veined` rock has crystal seams through it
+ * and shards bursting out. The rock of every piece is laid out afresh, so no two look alike.
  */
 function rockWall(side: WallSide, variant: number, veined: boolean) {
-  const r = (part: string) => pieceRng('rockWall', side, variant, part);
-  const [x0, x1] = [AX - H - 5, AX + H + 5];
+  const r = pieceRng('rockWall', side, variant);
+  const cr = pieceRng('rockWallCrystal', side, variant);
+  const into = INTO[side];
+  // A side wall is drawn over the one above it and under the one below, so it must not reach up
+  // into the tile above (a doorway may be there); it spills down, out and a little into the room.
+  const noHigher = side === 'left' || side === 'right' || side === 'corner' ? WY - H - 3 : -Infinity;
+  const clampUp = (p: Pt) => ({ x: p.x, y: Math.max(p.y, noHigher) });
+  const top = side === 'top';
+  const parts: { y: number; svg: string }[] = [];
+
   let face = '';
-  if (side === 'top') {
-    // Stacked strata, each layer a ledge over the one below; drawn bottom up so each casts its shadow down.
-    const tops = [AY - 6, AY + 1, AY + 7, AY + 13, AY + 18];
+  if (top) {
+    const [x0, x1] = [WX - 46, WX + 46];
+    const lip = WY - 6;
+    // The cliff's foot, ragged, nudging into the room here and there.
+    const foot = Array.from({ length: 12 }, (_, k) => ({ x: x1 - (k * (x1 - x0)) / 11, y: WY + H - 1 + r.next() * 5 }));
+    const tops = [lip, WY + 2, WY + 8, WY + 13, WY + 18];
     const tones = [C.strataDark, C.strataLight, C.strata, C.ochre, C.strataLight];
-    const bands = tops.map((top, i) => {
-      const br = r(`band${i}`);
-      const bottom = i + 1 < tops.length ? tops[i + 1] + 2 : AY + H;
-      const edge = Array.from({ length: 11 }, (_, k) => ({ x: x0 + (k * (x1 - x0)) / 10, y: top + (br.next() - 0.5) * 3.5 }));
-      return sheet(fill(polyPath([...edge, { x: x1, y: bottom }, { x: x0, y: bottom }]), tones[i]) +
-        `<path d="M${x0 + 3} ${n(top + 2.5)}h${x1 - x0 - 6}" stroke="${C.strataDark}" stroke-width="0.8" stroke-dasharray="${5 + i} ${3 + i}" opacity="0.5"/>`);
+    const bands = tops.map((y, i) => {
+      const edge = Array.from({ length: 13 }, (_, k) => ({ x: x0 + (k * (x1 - x0)) / 12, y: y + (r.next() - 0.5) * (i ? 5 : 3) }));
+      const under = i + 1 < tops.length ? [{ x: x1, y: tops[i + 1] + 3 }, { x: x0, y: tops[i + 1] + 3 }] : foot;
+      return sheet(fill(polyPath([...edge, ...under]), tones[i]));
     });
-    // Where the face meets the floor, it throws a dark line.
-    const foot = fill(`M${x0} ${AY + H - 2.5}L${x1} ${AY + H - 2.5}L${x1} ${AY + H}L${x0} ${AY + H}Z`, C.rockDeep);
-    // Stalactites hang from the lip of the rock on odd variants, over the face.
-    const drips = variant % 2
-      ? [-13 + (variant % 3) * 4, 8].map((dx, i) => {
-          const len = 18 + i * 5 + variant;
-          const top = AY - 7;
-          return fill(cutPoly(r(`drip${i}`), [{ x: AX + dx - 5, y: top }, { x: AX + dx + 5, y: top }, { x: AX + dx + 2, y: top + len * 0.55 }, { x: AX + dx + 0.5, y: top + len }], 0.4), C.stalactite) +
-            fill(`M${n(AX + dx - 3)} ${top}L${n(AX + dx - 0.5)} ${top}L${n(AX + dx + 0.3)} ${n(top + len * 0.85)}Z`, C.stalactiteLight);
-        }).join('')
+    // Fractures running down the face split it into blocks.
+    const fractures = Array.from({ length: 2 + Math.floor(r.next() * 2) }, () => {
+      let x = x0 + 10 + r.next() * (x1 - x0 - 20);
+      let y = lip + 2;
+      let d = `M${n(x)} ${n(y)}`;
+      while (y < WY + H - 2) {
+        x += (r.next() - 0.5) * 7;
+        y += 4 + r.next() * 5;
+        d += `L${n(x)} ${n(Math.min(y, WY + H - 1))}`;
+      }
+      return `<path d="${d}" stroke="${C.rockDeep}" stroke-width="1.3" fill="none" opacity="0.85"/>`;
+    }).join('');
+    const drips = Array.from({ length: [1, 3, 0, 2][variant % 4] }, () => {
+      const x = WX - 30 + r.next() * 60;
+      const len = 12 + r.next() * 16;
+      const w = 3.5 + r.next() * 2.5;
+      const tip = { x: x + (r.next() - 0.5) * 3, y: lip - 1 + len };
+      return fill(polyPath([{ x: x - w, y: lip - 2 }, { x: x + w, y: lip - 2 }, { x: x + w * 0.35, y: lip + len * 0.55 }, tip]), C.stalactite) +
+        fill(polyPath([{ x: x - w * 0.7, y: lip - 2 }, { x: x - w * 0.1, y: lip - 2 }, { x: tip.x, y: tip.y - 2 }]), C.stalactiteLight);
+    }).join('');
+    const faceCrystal = veined
+      ? sheet(vein(cr, { x: x0 + 8 + cr.next() * 20, y: WY + H - 4 }, { x: x1 - 8 - cr.next() * 20, y: lip + 4 }) + shards(`face${variant}`, WX - 20 + cr.next() * 40, WY + H - 1, 9 + cr.next() * 5, 2 + Math.floor(cr.next() * 3)))
       : '';
-    const faceVeins = veined ? sheet(vein(r('faceVein'), { x: AX - 20, y: AY + 20 }, { x: AX + 14, y: AY + 3 }) + shards(`face${variant}`, AX + 12, AY + 21, 11, 3)) : '';
-    face = [...bands].reverse().join('') + sheet(foot) + faceVeins + (drips ? sheet(drips, 2) : '');
+    face = [...bands].reverse().join('') + fractures + faceCrystal + (drips ? sheet(drips, 2) : '');
+    // Boulders fallen from the cliff, lying at its foot.
+    for (let i = 0, count = Math.floor(r.next() * 3); i < count; i++) {
+      const rad = 4 + r.next() * 5;
+      parts.push({ y: 999, svg: crag(r, WX - 34 + r.next() * 68, WY + H + 1, rad, r.next() < 0.3 ? OCHRE_ROCK : ROCK) });
+    }
   }
-  const cy = side === 'top' ? AY - 13 : AY;
-  // A bed of rock under the slabs, reaching into the neighbouring wall tiles so the wall reads as one mass.
-  const bed = fill(cutPoly(r('bed'), [
-    { x: x0, y: AY - H - 4 }, { x: AX, y: AY - H - 5 }, { x: x1, y: AY - H - 4 },
-    { x: x1, y: side === 'top' ? AY - 5 : AY + H + 3 }, { x: AX, y: side === 'top' ? AY - 4 : AY + H + 4 }, { x: x0, y: side === 'top' ? AY - 5 : AY + H + 3 },
-  ], 2.5), C.rockDeep);
-  const slabs = [
-    { x: -14, y: 2, rx: 19, ry: 16, c: C.rockDark, turn: 0.2 },
-    { x: 14, y: 2, rx: 19, ry: 16, c: C.rockDark, turn: 0.7 },
-    { x: 0, y: -3, rx: 21, ry: 16, c: C.rock, turn: variant * 0.4 },
-    { x: -9 + (variant % 3) * 6, y: -9, rx: 11, ry: 7, c: C.rockLight, turn: 0.3 + variant },
-  ];
-  const mass = slabs.map((s, i) => sheet(fill(cutPoly(r(`s${i}`), ring(AX + s.x, cy + s.y, s.rx, s.ry, i < 2 ? 8 : 7, s.turn), 2.4), s.c), i < 2 ? 1 : 2)).join('');
-  // Strata lines scored across the top slab.
-  const lines = [-2, 5].map((dy, i) => `<path d="M${AX - 15} ${cy + dy}q${8 + i * 3} ${-3 + i * 2} ${16} 0t14 ${1 - i * 2}" stroke="${C.rockDark}" stroke-width="1.4" fill="none" opacity="0.7"/>`).join('');
-  const crystal = veined
-    ? sheet(vein(r('vein'), { x: AX - 18, y: cy + 8 }, { x: AX + 16, y: cy - 6 }) + (variant % 2 ? '' : shards(`top${side}${variant}`, AX + 5 - (variant % 3) * 5, cy + 2, 12, 3)))
-    : '';
-  return face + sheet(bed) + mass + sheet(lines) + crystal;
+
+  // The bed: a dark heap of rock spilling well past the tile, shifted away from the room.
+  const bedC = top ? { x: WX, y: WY - 22 } : { x: WX - into.x * 5, y: WY - into.y * 5 };
+  const bedR = top ? { x: 48, y: 22 } : { x: 40 - Math.abs(into.x) * 6, y: 38 - Math.abs(into.y) * 6 };
+  const bedPts = jagged(r, bedC.x, bedC.y, bedR.x, bedR.y, 18, 0.2).map(clampUp).map((p) => (top ? { x: p.x, y: Math.min(p.y, WY - 4) } : p));
+  const bed = sheet(fill(polyPath(bedPts), C.rockDeep));
+
+  // Crags heaped on the bed: a few big ones and a scatter of small, placed anywhere, back ones first.
+  const count = 4 + Math.floor(r.next() * 4);
+  for (let i = 0; i < count; i++) {
+    const rad = i < 2 ? 14 + r.next() * 9 : 6 + r.next() * 9;
+    const x = bedC.x + (r.next() - 0.5) * bedR.x * 1.4;
+    let y = bedC.y + (r.next() - 0.5) * bedR.y * 1.3;
+    if (top) y = Math.min(y, WY - 6 - rad * 0.5);
+    y = Math.max(y, noHigher + rad * 1.1);
+    const roll = r.next();
+    parts.push({ y, svg: crag(r, x, y, rad, roll < 0.2 ? OCHRE_ROCK : roll < 0.45 ? DEEP_ROCK : ROCK) });
+  }
+  // Spires on the top wall and the rock beyond the room, never over a doorway.
+  if ((top || side === 'corner') && r.next() < 0.55) {
+    const y = top ? WY - 14 - r.next() * 12 : WY - 4 + r.next() * 16;
+    parts.push({ y: y + 0.5, svg: spire(r, WX - 26 + r.next() * 52, y, 22 + r.next() * 18) });
+  }
+  // Rubble tumbling out of the wall into the room.
+  if (!top && side !== 'corner') {
+    for (let i = 0, rubble = 1 + Math.floor(r.next() * 4); i < rubble; i++) {
+      const along = (r.next() - 0.5) * 44;
+      const out = 20 + r.next() * 10;
+      const x = WX + into.x * out + into.y * along;
+      const y = Math.max(WY + into.y * out + into.x * along, noHigher + 6);
+      parts.push({ y, svg: crag(r, x, y, 3 + r.next() * 4, r.next() < 0.3 ? OCHRE_ROCK : ROCK) });
+    }
+  }
+  // Crystal: seams across the rock and shards bursting out of it.
+  if (veined) {
+    for (let i = 0, seams = 1 + Math.floor(cr.next() * 2); i < seams; i++) {
+      const a = cr.next() * Math.PI;
+      const len = 18 + cr.next() * 16;
+      const c = { x: bedC.x + (cr.next() - 0.5) * bedR.x, y: bedC.y + (cr.next() - 0.5) * bedR.y * 0.8 };
+      parts.push({ y: c.y + 20, svg: sheet(vein(cr, { x: c.x - Math.cos(a) * len, y: Math.max(c.y - Math.sin(a) * len * 0.6, noHigher + 2) }, { x: c.x + Math.cos(a) * len, y: c.y + Math.sin(a) * len * 0.6 })) });
+    }
+    for (let i = 0, clusters = 1 + Math.floor(cr.next() * 2); i < clusters; i++) {
+      const size = 9 + cr.next() * 9;
+      const x = bedC.x + (cr.next() - 0.5) * bedR.x * 1.2;
+      const y = Math.max(bedC.y + (cr.next() - 0.3) * bedR.y * 0.9, noHigher + size + 2);
+      parts.push({ y: y + 1, svg: sheet(shards(`cluster${side}${variant}${i}`, x, top ? Math.min(y, WY - 6) : y, size, 2 + Math.floor(cr.next() * 3)), 2) });
+    }
+  }
+  parts.sort((a, b) => a.y - b.y);
+  return face + bed + parts.map((p) => p.svg).join('');
 }
 
 /** A cave doorway: an opening in the rock framed by timber mine props and a lintel. `locked` bars it with a rusted iron grate. */
@@ -377,17 +492,11 @@ function mineDoor(side: 'top' | 'bottom' | 'left' | 'right', locked: boolean) {
   return opening + sheet(rubble) + grate + sheet(props, 2);
 }
 
-/** A bone: a shaft with a knuckle at each end. */
-const bone = (x: number, y: number, len: number, angle: number) => {
-  const [dx, dy] = [Math.cos(angle) * len / 2, Math.sin(angle) * len / 2];
-  return `<path d="M${n(x - dx)} ${n(y - dy)}L${n(x + dx)} ${n(y + dy)}" stroke="${C.bone}" stroke-width="2.2" stroke-linecap="round"/>` +
-    [-1, 1].map((s) => `<circle cx="${n(x + s * dx)}" cy="${n(y + s * dy)}" r="1.9" fill="${C.bone}"/>`).join('');
-};
-
 /**
- * The cave floor, kept inside its tile so any mix of variants tiles seamlessly: packed earth with
- * stone slabs and hairline cracks; the item room's a worn flagstone patch, an old shrine; the boss
- * room's darker earth gouged by tunnel trails and strewn with bones and crystal shards.
+ * The cave floor, kept inside its tile so any mix of variants tiles seamlessly, and quiet enough
+ * that the grid never shows: packed earth with the odd sunk slab or hairline crack; the item
+ * room's a worn flagstone patch, an old shrine; the boss room's darker earth, now and then
+ * broken by a burrow.
  */
 function caveFloor(variant: number, kind: 'normal' | 'item' | 'boss') {
   const r = (part: string) => pieceRng('caveFloor', kind, variant, part);
@@ -396,7 +505,8 @@ function caveFloor(variant: number, kind: 'normal' | 'item' | 'boss') {
   const base = kind === 'boss' ? C.bossEarth : C.earth;
   const patches = [0, 1].map((i) => {
     const pr = r(`p${i}`);
-    return fill(blob(pr, x0 + 12 + pr.next() * 24, y0 + 12 + pr.next() * 24, 8 + pr.next() * 5, 6 + pr.next() * 4, 8, 0.15), i ? C.earthDark : C.earthPatch, 'opacity="0.7"');
+    // Broad and faint, so no tile's patch stands out as a spot repeated across the room.
+    return fill(blob(pr, x0 + 14 + pr.next() * 20, y0 + 14 + pr.next() * 20, 11 + pr.next() * 4, 9 + pr.next() * 4, 9, 0.25), i ? C.earthDark : C.earthPatch, 'opacity="0.35"');
   });
   const crack = (cr: ReturnType<typeof pieceRng>) => {
     const sx = x0 + 8 + cr.next() * 18;
@@ -409,11 +519,11 @@ function caveFloor(variant: number, kind: 'normal' | 'item' | 'boss') {
     const sr = r('slab');
     const [sx, sy] = [x0 + 15 + sr.next() * 18, y0 + 15 + sr.next() * 18];
     const [rx, ry] = [6 + sr.next() * 5, 4 + sr.next() * 3];
-    const slab = variant % 2 === 0
+    const slab = variant === 0
       ? fill(cutPoly(sr, ring(sx, sy, rx, ry, 5 + (variant % 3), sr.next() * 3), 1.4), C.slab, 'opacity="0.85"') +
         `<path d="M${n(sx - rx * 0.6)} ${n(sy - ry * 0.55)}l${n(rx * 0.9)} ${n(-ry * 0.25)}" stroke="${C.slabLight}" stroke-width="1" opacity="0.6"/>`
       : '';
-    marks = slab + crack(r('crack0')) + (variant === 3 ? crack(r('crack1')) : '');
+    marks = slab + (variant === 2 ? crack(r('crack0')) : '');
   } else if (kind === 'item') {
     // Four worn flagstones with earth between them, their edges rounded off by feet.
     marks = [0, 1].flatMap((i) => [0, 1].map((j) => {
@@ -423,21 +533,27 @@ function caveFloor(variant: number, kind: 'normal' | 'item' | 'boss') {
         (fr.next() < 0.5 ? `<path d="M${n(fx + 2 + fr.next() * 6)} ${n(fy + 3 + fr.next() * 6)}l${n(4 + fr.next() * 4)} ${n(3 + fr.next() * 3)}l${n(fr.next() * 3)} ${n(4 + fr.next() * 3)}" stroke="${C.crack}" stroke-width="0.9" fill="none" opacity="0.6"/>` : '');
     })).join('');
   } else {
-    const gr = r('gouge');
-    const trail = variant % 2 === 0
-      ? (() => {
-          const y = y0 + 14 + gr.next() * 20;
-          const d = `M${x0 + 3} ${n(y)}q${n(12 + gr.next() * 6)} ${n(-8 + gr.next() * 4)} 21 -1t21 ${n(gr.next() * 6 - 3)}`;
-          return `<path d="${d}" stroke="${C.gougeRim}" stroke-width="9" fill="none" stroke-linecap="round" opacity="0.6"/>` +
-            `<path d="${d}" stroke="${C.gouge}" stroke-width="5.5" fill="none" stroke-linecap="round" opacity="0.85"/>`;
-        })()
-      : '';
-    const litter = variant % 2 === 1 || variant === 2
-      ? bone(x0 + 14 + gr.next() * 8, y0 + 12 + gr.next() * 8, 10, gr.next() * Math.PI) +
-        (variant === 3 ? bone(x0 + 30, y0 + 32, 7, 0.4) : '') +
-        shards(`floor${variant}`, x0 + 32 + gr.next() * 6, y0 + 36, 5, 2)
-      : '';
-    marks = trail + crack(r('crack0')) + (litter ? sheet(litter) : '');
+    // The worm's room: each piece something different, placed anywhere, so the floor never repeats.
+    const gr = r('boss');
+    const spot = (margin: number) => ({ x: x0 + margin + gr.next() * (TILE - margin * 2), y: y0 + margin + gr.next() * (TILE - margin * 2) });
+    const crumbs = (count: number, near?: { x: number; y: number }, spread = 20) =>
+      Array.from({ length: count }, () => {
+        const p = near ? { x: near.x + (gr.next() - 0.5) * spread, y: near.y + (gr.next() - 0.5) * spread * 0.7 } : spot(4);
+        return fill(cutPoly(gr, ring(p.x, p.y, 1.2 + gr.next() * 1.8, 1 + gr.next() * 1.2, 5, gr.next() * 3), 0.4), gr.next() < 0.5 ? C.gougeRim : C.slab);
+      }).join('');
+    // Mostly quiet earth, so the floor never shows its grid; one look in four has a burrow in it.
+    // Bones and shards lie on it as decor, scattered off the grid.
+    if (variant === 3) {
+      // A burrow: a dark hole with the earth it threw up heaped round it.
+      const p = spot(16);
+      const rad = 5 + gr.next() * 3;
+      marks = fill(blob(gr, p.x, p.y + 1, rad + 4, (rad + 4) * 0.75, 10, 0.2), C.gougeRim, 'opacity="0.7"') +
+        fill(blob(gr, p.x, p.y, rad, rad * 0.7, 9, 0.18), C.gouge) +
+        fill(blob(gr, p.x + 1, p.y + 1.5, rad * 0.6, rad * 0.4, 7, 0.2), '#000', 'opacity="0.6"') +
+        sheet(crumbs(3 + Math.floor(gr.next() * 3), p, rad * 3));
+    } else {
+      marks = (variant === 1 ? crack(r('crack0')) : '') + (variant === 2 ? crumbs(1 + Math.floor(gr.next() * 2)) : '');
+    }
   }
   return `<rect x="${x0 - 1}" y="${y0 - 1}" width="${TILE + 2}" height="${TILE + 2}" fill="${base}"/>` + patches.join('') + marks;
 }
@@ -529,7 +645,9 @@ export const terrainSvg = {
   tile: (look: string, variant: number, mask: Mask) => tileDoc(TILE_ART[look](variant, mask), 19 + variant),
   join: (look: string, dir: 'across' | 'down') => tileDoc(JOIN_ART[look](dir), 61),
   wall: (side: WallSide, variant: number, style: WallStyle = 'hedge') =>
-    tileDoc(style === 'hedge' ? hedge(side, variant) : rockWall(side, variant, style === 'veined'), 23),
+    style === 'hedge'
+      ? tileDoc(hedge(side, variant), 23)
+      : svgDoc(CAVE_WALL_CANVAS.w, CAVE_WALL_CANVAS.h, rockWall(side, variant, style === 'veined'), 23),
   door: (side: 'top' | 'bottom' | 'left' | 'right', locked: boolean, shell: Shell = 'forest') =>
     tileDoc(shell === 'caves' ? mineDoor(side, locked) : doorway(side, locked), 29),
   floor: (kind: 'normal' | 'item' | 'boss', variant: number, shell: Shell = 'forest') =>

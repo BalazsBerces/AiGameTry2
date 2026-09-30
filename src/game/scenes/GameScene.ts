@@ -90,7 +90,7 @@ import { shakeScreen } from '../effects/shellBurst';
 import { ScrapLayer } from '../art/scrapLayer';
 import { passiveArtKey } from '../art/passiveArt';
 import { PAPER } from '../../core/art/palette';
-import { DECOR_CANVAS, JOIN_LOOKS, TILE_CANVAS, type WallSide } from '../../core/art/terrain';
+import { DECOR_CANVAS, JOIN_LOOKS, TILE_CANVAS, WALL_STYLES, wallCanvas, type Shell, type WallSide } from '../../core/art/terrain';
 import { SHOT_ART, TILE_VARIANTS, decorKey, doorKey, floorKey, joinKey, pickupKey, shotKey, tileKey, wallKey, type FloorKind } from '../../core/art/catalogue';
 import { PICKUP_CANVAS, SHOT_CANVAS, type PickupArt } from '../../core/art/hud';
 import { ART_SCALE } from '../art/bake';
@@ -228,6 +228,16 @@ const PICKUP_FRAME = { w: PICKUP_CANVAS, h: PICKUP_CANVAS, anchor: { x: PICKUP_C
 const FLOOR_KIND: Record<RoomKind, FloorKind> = { start: 'normal', normal: 'normal', item: 'item', boss: 'boss' };
 /** A standing terrain piece's foot line (a tree's trunk base) lies this far below its tile's centre. */
 const TERRAIN_FOOT = 14;
+
+/**
+ * A doorway's foot line. Cave rock spills sideways over its neighbours, so a cave doorway in the
+ * top or bottom wall stands just in front of the wall pieces beside it to keep its frame clear.
+ * (Side walls never reach up into the tile above, so side doorways need no help.)
+ */
+function doorFoot(shell: Shell, side: 'up' | 'down' | 'left' | 'right', y: number): number {
+  const foot = side === 'down' ? y + TUNING.tile : y + TUNING.tile / 2;
+  return shell === 'caves' && (side === 'up' || side === 'down') ? foot + 0.5 : foot;
+}
 
 /** A non-floor tile drawn in its floor's look. */
 function drawTile(scene: Phaser.Scene, x: number, y: number, look: TileLook): Shape {
@@ -1853,7 +1863,7 @@ export class GameScene extends Phaser.Scene {
       this.walls.add(lock);
       const theme = themeForFloor(room.floorIndex);
       const gate = theme.paper
-        ? this.paper.piece(doorKey(theme.shell ?? 'forest', door.side, true), c.x, c.y, TILE_CANVAS, door.side === 'down' ? c.y + t : c.y + t / 2)
+        ? this.paper.piece(doorKey(theme.shell ?? 'forest', door.side, true), c.x, c.y, TILE_CANVAS, doorFoot(theme.shell ?? 'forest', door.side, c.y))
         : undefined;
       if (gate) this.paper.standIn(lock, gate);
       this.doorLocks.push(lock);
@@ -1942,7 +1952,7 @@ export class GameScene extends Phaser.Scene {
           const door = room.layout.doors.find((d) => doorCorridor(room, d)[0].x === tx && doorCorridor(room, d)[0].y === ty);
           const art = theme.paper
             ? door
-              ? this.paper.piece(doorKey(shell, door.side, false), c.x, c.y, TILE_CANVAS, door.side === 'down' ? c.y + t : c.y + t / 2)
+              ? this.paper.piece(doorKey(shell, door.side, false), c.x, c.y, TILE_CANVAS, doorFoot(shell, door.side, c.y))
               : this.paper.piece(floorKey(shell, 'normal', variantAt(tx, ty)), c.x, c.y, TILE_CANVAS)
             : undefined;
           if (!art) this.add.rectangle(c.x, c.y, t, t, palette.door);
@@ -2037,7 +2047,8 @@ export class GameScene extends Phaser.Scene {
       : tx >= width || inside(tx - 1, ty) ? 'right'
       : 'corner';
     const footY = side === 'bottom' ? wall.y + TUNING.tile : side === 'top' ? wall.y + TUNING.tile / 2 : wall.y + 14;
-    const art = this.paper.piece(wallKey(themeForFloor(room.floorIndex).shell ?? 'forest', side, variant),wall.x, wall.y, TILE_CANVAS, footY);
+    const shell = themeForFloor(room.floorIndex).shell ?? 'forest';
+    const art = this.paper.piece(wallKey(shell, side, variant), wall.x, wall.y, wallCanvas(WALL_STYLES[shell][0]), footY);
     if (art) this.paper.standIn(wall, art);
   }
 

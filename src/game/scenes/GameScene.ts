@@ -20,13 +20,16 @@ import type { BossBarSnapshot } from '../../core/bosses/bossBar';
 import {
   boomerangLeg,
   createHitLog,
+  createTileLog,
   homingBlocks,
   meetEnemy,
   meetTerrain,
   type HitLog,
   type Leg,
   type ShotMods,
+  type TileLog,
 } from '../../core/player/shotFlight';
+import { inSwing, swordCells } from '../../core/player/swordSwing';
 import {
   BOMB_RADIUS,
   BOSS_DROPS,
@@ -111,6 +114,8 @@ const PLAYER_FOOT = 9;
 interface Flight {
   mods: ShotMods;
   hits: HitLog;
+  /** The rocks and glowshrooms it has already hit flying through them. */
+  tileHits: TileLog;
   /** Each leg of its flight is one attack for the falloff on many-part bodies (core/multiHit). */
   falloff: Record<Leg, Falloff>;
   born: number;
@@ -855,6 +860,7 @@ export class GameScene extends Phaser.Scene {
           bouncesLeft: weapon.bounces,
         },
         hits: createHitLog(),
+        tileHits: createTileLog(),
         falloff: { out: createFalloff(), back: createFalloff() },
         born: time,
         speed,
@@ -919,19 +925,26 @@ export class GameScene extends Phaser.Scene {
     arc.fillStyle(color, 0.7).slice(from.x, from.y, range, facing - half, facing + half).fillPath();
     arc.lineStyle(2, 0xffffff, 0.85).beginPath().arc(from.x, from.y, range, facing - half, facing + half).strokePath();
     this.time.delayedCall(showMs, () => arc.destroy());
-    return (target: { x: number; y: number; width: number }) => {
-      const dist = Phaser.Math.Distance.Between(from.x, from.y, target.x, target.y);
-      const angle = Math.atan2(target.y - from.y, target.x - from.x);
-      return dist <= range + target.width / 2 && Math.abs(Phaser.Math.Angle.Wrap(angle - facing)) <= half;
-    };
+    const swing = { from: { x: from.x, y: from.y }, facing, arcDeg, reach: range };
+    return (target: { x: number; y: number; width: number }) => inSwing(swing, target, target.width);
   }
 
   /**
    * A melee arc in the aimed direction; damages every enemy part inside it. A blow counts as
-   * travelling from the player to the part, so a shield facing the player turns it aside.
+   * travelling from the player to the part, so a shield facing the player turns it aside. Every
+   * rock and glowshroom inside it takes one hit too (core/swordSwing), even a glowshroom whose
+   * cloud will stun the player.
    */
   private swingSword(aim: Direction, damage: number, arcDeg: number) {
     const inArc = this.sweepArc(this.player, aim, COLORS.passive.sword, arcDeg);
+    const room = this.currentRoom;
+    const swing = {
+      from: this.toTileUnits(room, this.player),
+      facing: Math.atan2(STEP[aim].y, STEP[aim].x),
+      arcDeg,
+      reach: TUNING.sword.range / TUNING.tile,
+    };
+    for (const cell of swordCells(swing, room.layout.tiles)) this.hitTerrainAt(room.floorRoom.id, cell);
     // One swing is one attack: across a many-part body it falls off from the part nearest the player.
     const falloff = createFalloff();
     for (const part of this.nearestFirst(this.enemies.flatMap((e) => e.parts).filter(inArc), this.player)) {
@@ -1350,14 +1363,20 @@ export class GameScene extends Phaser.Scene {
 
   /**
    * A player shot touches a wall piece: flies on through, bounces or is turned by crystal (both
-   * handled here), or stops against it, which is what returning true tells physics to do.
+   * handled here), or stops against it, which is what returning true tells physics to do. Physics
+   * only calls back on a stop, so a shot that flies through or bounces off a rock or glowshroom
+   * hits it here: once on its way through, once per bounce.
    */
   private playerShotMeetsWall(shot: Phaser.GameObjects.Arc, wall: Phaser.GameObjects.Shape): boolean {
     if (!shot.active) return false;
     const flight = shot.getData('flight') as Flight | undefined;
     const { cell, tile } = this.wallPiece(wall);
-    const outcome = meetTerrain(flight?.mods ?? PLAIN_SHOT, tile ?? 'wall');
-    if (outcome === 'pass') return false;
+    const { outcome, hitsTile } = meetTerrain(flight?.mods ?? PLAIN_SHOT, tile ?? 'wall');
+    const roomId = wall.getData('roomId') as string | undefined;
+    if (outcome === 'pass') {
+      if (hitsTile && flight?.tileHits.first(`${roomId}|${cell.x},${cell.y}`)) this.hitTerrain(wall as Phaser.GameObjects.Rectangle);
+      return false;
+    }
     if (outcome === 'stop') return true;
     const pos = this.toTileUnits(this.currentRoom, shot);
     const body = shot.body as Phaser.Physics.Arcade.Body;
@@ -1367,6 +1386,8 @@ export class GameScene extends Phaser.Scene {
     const out = reflectOff({ ...pos, vx, vy }, cell);
     body.setVelocity(out.vx, out.vy);
     if (outcome === 'bounce' && flight) flight.mods.bouncesLeft--;
+    // A rock broken by the bounce vanishes; the shot flies on in its new direction.
+    if (hitsTile) this.hitTerrain(wall as Phaser.GameObjects.Rectangle);
     return false;
   }
 
@@ -1385,15 +1406,20 @@ export class GameScene extends Phaser.Scene {
   private hitTerrain(wall: Phaser.GameObjects.Rectangle) {
     const roomId = wall.getData('roomId') as string | undefined;
     if (!roomId || !wall.active) return;
-    const cell = wall.getData('tile') as Cell;
+    this.hitTerrainAt(roomId, wall.getData('tile') as Cell);
+  }
+
+  /** A player's attack hit `cell`: a glowshroom bursts into its stun cloud, a rock cracks and eventually breaks open. */
+  private hitTerrainAt(roomId: string, cell: Cell) {
     if (burstGlowshroom(this.world, roomId, cell)) {
       this.removeTerrain(roomId, cell);
       this.releaseStunCloud(roomId, cell);
       return;
     }
     const result = hitTile(this.world, roomId, cell);
+    const shape = this.terrain.get(`${roomId}|${cell.x},${cell.y}`) as Phaser.GameObjects.Shape | undefined;
     if (result === 'broken') this.removeTerrain(roomId, cell);
-    else if (result === 'damaged') this.fadeTerrain(wall, 0.25);
+    else if (result === 'damaged' && shape) this.fadeTerrain(shape, 0.25);
   }
 
   /** A cracked rock fades a step toward breaking, its paper art with it. */

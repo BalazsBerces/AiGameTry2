@@ -134,3 +134,5 @@ export const hurtsOnTouch = (tile: Tile) => TILES[tile].hurtsOnTouch;
 export const reflectsShots = (tile: Tile) => TILES[tile].reflectsShots;
 export const hitsToBreak = (tile: Tile) => TILES[tile].hitsToBreak;
 export const bombDestructible = (tile: Tile) => TILES[tile].bombDestructible;
+/** A player's attack damages it: a rock cracks toward breaking, a glowshroom bursts. */
+export const attackBreaks = (tile: Tile) => hitsToBreak(tile) !== undefined || tile === 'glowshroom';

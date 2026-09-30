@@ -1,36 +1,117 @@
 import { describe, expect, it } from 'vitest';
 import type { Tile } from '../rooms/roomGenerator';
-import { boomerangLeg, createHitLog, homingBlocks, meetEnemy, meetTerrain, type ShotMods } from './shotFlight';
+import {
+  boomerangLeg,
+  createHitLog,
+  createTileLog,
+  homingBlocks,
+  meetEnemy,
+  meetTerrain,
+  type Meets,
+  type ShotMods,
+  type TerrainMeeting,
+} from './shotFlight';
 
 const plain: ShotMods = { piercesEnemies: false, piercesTerrain: false, spectral: false, passesShields: false, bouncesLeft: 0 };
 const mods = (m: Partial<ShotMods>): ShotMods => ({ ...plain, ...m });
 
 describe('shots meeting terrain', () => {
+  const outcome = (shot: ShotMods, what: Meets) => meetTerrain(shot, what).outcome;
+
   it('stop plain shots at walls, stone and rock, but bounce them off crystal for free', () => {
-    for (const what of ['wall', 'obstacle', 'rock', 'glowshroom', 'crusher'] as const) expect(meetTerrain(plain, what), what).toBe('stop');
-    expect(meetTerrain(plain, 'crystal')).toBe('reflect');
+    for (const what of ['wall', 'obstacle', 'rock', 'glowshroom', 'crusher'] as const) expect(outcome(plain, what), what).toBe('stop');
+    expect(outcome(plain, 'crystal')).toBe('reflect');
   });
 
   it('bounce shots with bounces left off walls, stone and rock', () => {
-    for (const what of ['wall', 'obstacle', 'rock'] as const) expect(meetTerrain(mods({ bouncesLeft: 1 }), what), what).toBe('bounce');
+    for (const what of ['wall', 'obstacle', 'rock'] as const) expect(outcome(mods({ bouncesLeft: 1 }), what), what).toBe('bounce');
   });
 
   it('let spectral shots through everything but the room’s walls', () => {
-    for (const what of ['obstacle', 'rock', 'crystal', 'glowshroom', 'crusher'] as const) expect(meetTerrain(mods({ spectral: true }), what), what).toBe('pass');
-    expect(meetTerrain(mods({ spectral: true }), 'wall')).toBe('stop');
+    for (const what of ['obstacle', 'rock', 'crystal', 'glowshroom', 'crusher'] as const) expect(outcome(mods({ spectral: true }), what), what).toBe('pass');
+    expect(outcome(mods({ spectral: true }), 'wall')).toBe('stop');
   });
 
   it('pass spectral shots through rock but bounce them off the walls when they also ricochet', () => {
     const both = mods({ spectral: true, bouncesLeft: 2 });
-    expect(meetTerrain(both, 'rock')).toBe('pass');
-    expect(meetTerrain(both, 'obstacle')).toBe('pass');
-    expect(meetTerrain(both, 'wall')).toBe('bounce');
+    expect(outcome(both, 'rock')).toBe('pass');
+    expect(outcome(both, 'obstacle')).toBe('pass');
+    expect(outcome(both, 'wall')).toBe('bounce');
   });
 
   it('let upgraded piercing shots through stone and rock, not the walls', () => {
-    expect(meetTerrain(mods({ piercesTerrain: true }), 'rock')).toBe('pass');
-    expect(meetTerrain(mods({ piercesTerrain: true }), 'obstacle')).toBe('pass');
-    expect(meetTerrain(mods({ piercesTerrain: true }), 'wall')).toBe('stop');
+    expect(outcome(mods({ piercesTerrain: true }), 'rock')).toBe('pass');
+    expect(outcome(mods({ piercesTerrain: true }), 'obstacle')).toBe('pass');
+    expect(outcome(mods({ piercesTerrain: true }), 'wall')).toBe('stop');
+  });
+});
+
+describe('which terrain a shot damages', () => {
+  const shots: Record<string, ShotMods> = {
+    plain,
+    'spectral 1': mods({ spectral: true }),
+    'spectral 2': mods({ spectral: true, piercesEnemies: true }),
+    'pierce 1': mods({ piercesEnemies: true }),
+    'pierce 2': mods({ piercesEnemies: true, piercesTerrain: true }),
+    'ricochet, bounces left': mods({ bouncesLeft: 2 }),
+    'ricochet, spent': mods({ bouncesLeft: 0 }),
+    'spectral ricochet': mods({ spectral: true, bouncesLeft: 2 }),
+  };
+  const table: [string, Meets, TerrainMeeting][] = [
+    ['plain', 'rock', { outcome: 'stop', hitsTile: true }],
+    ['plain', 'glowshroom', { outcome: 'stop', hitsTile: true }],
+    ['pierce 1', 'rock', { outcome: 'stop', hitsTile: true }],
+    ['spectral 1', 'rock', { outcome: 'pass', hitsTile: true }],
+    ['spectral 1', 'glowshroom', { outcome: 'pass', hitsTile: true }],
+    ['spectral 2', 'rock', { outcome: 'pass', hitsTile: true }],
+    ['spectral 2', 'glowshroom', { outcome: 'pass', hitsTile: true }],
+    ['pierce 2', 'rock', { outcome: 'pass', hitsTile: true }],
+    ['pierce 2', 'glowshroom', { outcome: 'pass', hitsTile: true }],
+    ['spectral ricochet', 'rock', { outcome: 'pass', hitsTile: true }],
+    ['ricochet, bounces left', 'rock', { outcome: 'bounce', hitsTile: true }],
+    ['ricochet, bounces left', 'glowshroom', { outcome: 'bounce', hitsTile: true }],
+    ['ricochet, spent', 'rock', { outcome: 'stop', hitsTile: true }],
+    ['ricochet, spent', 'glowshroom', { outcome: 'stop', hitsTile: true }],
+    // Nothing unbreakable ever takes a hit.
+    ['ricochet, bounces left', 'obstacle', { outcome: 'bounce', hitsTile: false }],
+    ['ricochet, bounces left', 'wall', { outcome: 'bounce', hitsTile: false }],
+    ['ricochet, bounces left', 'crystal', { outcome: 'reflect', hitsTile: false }],
+    ['ricochet, spent', 'obstacle', { outcome: 'stop', hitsTile: false }],
+    ['ricochet, spent', 'wall', { outcome: 'stop', hitsTile: false }],
+    ['ricochet, spent', 'crystal', { outcome: 'reflect', hitsTile: false }],
+    ['spectral 1', 'obstacle', { outcome: 'pass', hitsTile: false }],
+    ['spectral 1', 'crystal', { outcome: 'pass', hitsTile: false }],
+    ['spectral 1', 'wall', { outcome: 'stop', hitsTile: false }],
+    ['pierce 2', 'obstacle', { outcome: 'pass', hitsTile: false }],
+    ['pierce 2', 'wall', { outcome: 'stop', hitsTile: false }],
+    ['plain', 'obstacle', { outcome: 'stop', hitsTile: false }],
+    ['plain', 'crusher', { outcome: 'stop', hitsTile: false }],
+    ['plain', 'crystal', { outcome: 'reflect', hitsTile: false }],
+    ['plain', 'hole', { outcome: 'pass', hitsTile: false }],
+    ['plain', 'thorn', { outcome: 'pass', hitsTile: false }],
+    ['spectral 1', 'hole', { outcome: 'pass', hitsTile: false }],
+    ['pierce 2', 'thorn', { outcome: 'pass', hitsTile: false }],
+  ];
+
+  it.each(table)('%s meeting %s', (shot, what, expected) => {
+    expect(meetTerrain(shots[shot], what)).toEqual(expected);
+  });
+});
+
+describe('a pass-through shot’s tile hits', () => {
+  it('hits each tile only on first contact', () => {
+    const log = createTileLog();
+    expect(log.first('r|1,1')).toBe(true);
+    expect(log.first('r|1,1')).toBe(false);
+    expect(log.first('r|2,1')).toBe(true);
+    expect(log.first('r|2,1')).toBe(false);
+  });
+
+  it('is kept per shot', () => {
+    const a = createTileLog();
+    const b = createTileLog();
+    expect(a.first('r|1,1')).toBe(true);
+    expect(b.first('r|1,1')).toBe(true);
   });
 });
 

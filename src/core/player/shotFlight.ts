@@ -1,5 +1,5 @@
 import type { Tile } from '../rooms/roomGenerator';
-import { blocksShots, reflectsShots } from '../map/tiles';
+import { attackBreaks, blocksShots, reflectsShots } from '../map/tiles';
 
 /**
  * What a player projectile does as it flies, given the passives it carries (see `resolveWeapon`):
@@ -19,20 +19,51 @@ export type Meets = 'wall' | Tile;
 
 /**
  * `pass`: flies on through; `bounce`: bounces, spending one of its bounces; `reflect`: bounces
- * for free (crystal turns every shot); `stop`: spent there, hitting the tile.
+ * for free (crystal turns every shot); `stop`: spent there.
  */
 export type TerrainOutcome = 'pass' | 'bounce' | 'reflect' | 'stop';
+
+/** What a shot does at a piece of terrain, and whether that tile takes a hit from it. */
+export interface TerrainMeeting {
+  outcome: TerrainOutcome;
+  hitsTile: boolean;
+}
 
 /**
  * Spectral and terrain-piercing shots pass through every tile but never the room's walls;
  * crystal turns every other shot for free; otherwise a shot bounces while it has bounces, or stops.
+ * Whichever it does, a breakable tile it meets (rock, glowshroom) takes a hit, so no passive
+ * takes away breaking terrain.
  */
-export function meetTerrain(shot: ShotMods, what: Meets): TerrainOutcome {
+export function meetTerrain(shot: ShotMods, what: Meets): TerrainMeeting {
+  const hitsTile = what !== 'wall' && blocksShots(what) && attackBreaks(what);
+  return { outcome: terrainOutcome(shot, what), hitsTile };
+}
+
+function terrainOutcome(shot: ShotMods, what: Meets): TerrainOutcome {
   if (what !== 'wall' && !blocksShots(what)) return 'pass';
   if (what !== 'wall' && (shot.spectral || shot.piercesTerrain)) return 'pass';
   if (what !== 'wall' && reflectsShots(what)) return 'reflect';
   return shot.bouncesLeft > 0 ? 'bounce' : 'stop';
 }
+
+/**
+ * The tiles a shot passing through terrain has already hit, so it hits each only once however
+ * many frames it spends inside. Keyed by whatever names a tile uniquely (room and cell).
+ */
+export function createTileLog() {
+  const seen = new Set<string>();
+  return {
+    /** True the first time the shot touches `tile`. */
+    first(tile: string): boolean {
+      if (seen.has(tile)) return false;
+      seen.add(tile);
+      return true;
+    },
+  };
+}
+
+export type TileLog = ReturnType<typeof createTileLog>;
 
 /** A shot meets an enemy part, `shielded` if its shield faces the shot: does it hurt it, and fly on? */
 export function meetEnemy(shot: ShotMods, shielded: boolean): { damages: boolean; continues: boolean } {

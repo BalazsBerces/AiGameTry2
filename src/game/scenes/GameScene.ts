@@ -85,7 +85,7 @@ import { createFalloff, createHitGate, type Falloff } from '../../core/player/mu
 import { PaperLayer, type PaperActor } from '../art/paperLayer';
 import { footDepth } from '../../core/art/depth';
 import { AmbientLayer } from '../art/ambientLayer';
-import { GloomLayer, type PlacedPool } from '../art/gloomLayer';
+import { GloomLayer, type GloomFrame, type PlacedPool } from '../art/gloomLayer';
 import { PLAYER_POOL, SHOT_POOL, glowersOf, isGloomy, pulse, type Glower, type GlowTint } from '../../core/art/gloom';
 import { HIT_STOP, createHitStop, type HitStop } from '../../core/juice/hitStop';
 import { createShake, type Shake } from '../../core/juice/shake';
@@ -728,7 +728,25 @@ export class GameScene extends Phaser.Scene {
     this.scraps.update(delta);
     this.applyShake(time);
     this.ambient.update(!!themeForFloor(this.currentRoom.floorIndex).paper);
-    this.gloom.update(isGloomy({ floorIndex: this.currentRoom.floorIndex, enemies: this.currentRoom.layout.enemies }) ? this.lightPools(time) : undefined);
+    this.gloom.update(isGloomy({ floorIndex: this.currentRoom.floorIndex, enemies: this.currentRoom.layout.enemies }) ? this.gloomFrame(time) : undefined);
+  }
+
+  /** What the gloom is drawn over this frame: its light pools, the room's floor (its walls shaded deeper) and the doorways kept clear. */
+  private gloomFrame(time: number): GloomFrame {
+    const room = this.currentRoom;
+    const t = TUNING.tile;
+    const corner = tileCenter(room, 0, 0);
+    const [left, top] = [corner.x - t / 2, corner.y - t / 2];
+    const step = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] } as const;
+    return {
+      pools: this.lightPools(time),
+      // The top wall's cliff face belongs with the room: the shade starts above it.
+      room: { left, top: top - t, right: left + room.layout.width * t, bottom: top + room.layout.height * t },
+      doors: room.layout.doors.map((d) => {
+        const c = tileCenter(room, d.cell.x, d.cell.y);
+        return { x: c.x + step[d.side][0] * t, y: c.y + step[d.side][1] * t };
+      }),
+    };
   }
 
   /**

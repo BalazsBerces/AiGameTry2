@@ -13,7 +13,12 @@ import { decorNudge } from './catalogue';
 import { TILE, wallGems, type WallSide } from './terrain';
 
 /** How dark the gloom is away from any light: moderate, never hiding the room's layout. */
-export const GLOOM = { color: 0x04070a, alpha: 0.46 };
+export const GLOOM = { color: 0x04070a, alpha: 0.55 };
+/**
+ * The rock round the room sinks deeper into the gloom, so the walls recede and the eye stays on the
+ * floor: a shade per band, stacking up `step` px apart going out from the room's edge.
+ */
+export const WALL_SHADE = { bands: [0.12, 0.12, 0.14], step: 10 };
 
 /** A lit spot cut out of the gloom. */
 export interface LightPool {

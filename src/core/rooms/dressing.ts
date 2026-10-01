@@ -94,7 +94,7 @@ function shuffled<T>(items: readonly T[], rng: Rng): T[] {
  */
 export function dressRoom({ tiles, theme, rng }: DressingRequest): Dressing {
   // Their own stream, so a change to how decor is laid never reshuffles the tiles' variants.
-  const variantRng = rng.fork('variants');
+  const variantRng = rng.fork('tile variants');
   const variants = tiles.map((row) => row.map(() => variantRng.int(0, VARIANTS - 1)));
   const regions = findRegions(tiles);
   const wallStyle = wallStyleOf(tiles, theme);

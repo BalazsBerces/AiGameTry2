@@ -1,6 +1,7 @@
 import { CHARACTERS, type Action, type View } from './characters';
-import { DECOR_CANVAS, DECOR_KINDS, JOIN_LOOKS, MASKED_LOOKS, TILE_CANVAS, TILE_LOOKS, WALL_STYLES, floorCanvas, floorLooks, hasGround, terrainSvg, wallCanvas, type Shell, type WallSide, type WallStyle } from './terrain';
+import { DECOR_CANVAS, DECOR_KINDS, JOIN_LOOKS, MASKED_LOOKS, TILE_CANVAS, TILE_LOOKS, WALL_JOIN_LOOKS, WALL_JOIN_SIDES, WALL_STYLES, floorCanvas, floorLooks, hasGround, terrainSvg, wallCanvas, type Shell, type WallSide, type WallStyle } from './terrain';
 import type { Mask } from './autotile';
+import type { Direction } from '../map/floorGenerator';
 import { HEART_CANVAS, ICON_CANVAS, PICKUP_ART, PICKUP_CANVAS, SHOT_CANVAS, hudSvg, pickupSvg, type PickupArt, type ShotArt } from './hud';
 
 /**
@@ -42,6 +43,8 @@ export const TILE_VARIANTS = 4;
 
 export const tileKey = (art: string, variant: number, mask: Mask = 0) => `t:${art}:${variant % TILE_VARIANTS}:${MASKED_LOOKS.includes(art) ? mask : 0}`;
 export const joinKey = (art: string, dir: 'across' | 'down') => `j:${art}:${dir}`;
+/** Where a tile of `art` grows out of the room's wall on its `side` (a rubble wall into the cave wall). */
+export const wallJoinKey = (art: string, side: Direction) => `j:${art}:wall-${side}`;
 /** The room shell's pieces are keyed by the floor's shell: each floor has walls, doors and floors of its own. */
 export const wallKey = (shell: Shell, side: WallSide, variant: number, style: WallStyle = WALL_STYLES[shell][0]) =>
   `w:${shell}:${style}:${side}:${variant % TILE_VARIANTS}`;
@@ -78,6 +81,7 @@ function terrainEntries(): ArtEntry[] {
       variants.flatMap((v) => (MASKED_LOOKS.includes(look) ? masks : [0]).map((m) => tileEntry(tileKey(look, v, m), () => terrainSvg.tile(look, v, m)))),
     ),
     ...JOIN_LOOKS.flatMap((look) => (['across', 'down'] as const).map((d) => tileEntry(joinKey(look, d), () => terrainSvg.join(look, d)))),
+    ...WALL_JOIN_LOOKS.flatMap((look) => WALL_JOIN_SIDES.map((side) => tileEntry(wallJoinKey(look, side), () => terrainSvg.wallJoin(look, side)))),
     ...SHELLS.flatMap((shell) => [
       ...WALL_STYLES[shell].flatMap((style: WallStyle) =>
         (['top', 'bottom', 'left', 'right', 'corner'] as const).flatMap((side) =>

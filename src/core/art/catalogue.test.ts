@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { artCatalogue, charKey, decorKey, doorKey, floorKey, floorLook, groundKey, joinKey, shotKey, tileKey, wallKey, type DoorSide, type FloorKind } from './catalogue';
+import { artCatalogue, charKey, decorKey, doorKey, floorKey, floorLook, groundKey, joinKey, shotKey, tileKey, wallJoinKey, wallKey, type DoorSide, type FloorKind } from './catalogue';
 import { CHARACTERS, type Action } from './characters';
 import { PAPER } from './palette';
-import { CAVE_FLOOR_LOOKS, JOIN_LOOKS, TILE, WALL_STYLES, wallGems, type WallSide } from './terrain';
+import { CAVE_FLOOR_LOOKS, JOIN_LOOKS, TILE, WALL_JOIN_LOOKS, WALL_JOIN_SIDES, WALL_STYLES, wallGems, type WallSide } from './terrain';
 import { themeForFloor } from '../map/themes';
 import { roomThemesFor } from '../rooms/roomThemes';
 
@@ -147,6 +147,16 @@ describe('the art catalogue', () => {
       for (const d of ['across', 'down'] as const) expect(byKey.has(joinKey('loose rock', d)), d).toBe(true);
       expect(svgOf(joinKey('loose rock', 'across'))).not.toBe(svgOf(joinKey('loose rock', 'down')));
       expect(JOIN_LOOKS).not.toContain('mushroom cap');
+    });
+
+    it('grows rubble walls out of the cave wall: a join for every side a wall can be on, each its own and the same every time', () => {
+      const keys = WALL_JOIN_SIDES.map((side) => wallJoinKey('loose rock', side));
+      for (const key of keys) {
+        expect(byKey.has(key), key).toBe(true);
+        expect(svgOf(key), key).toBe(svgOf(key));
+      }
+      expect(new Set(keys.map(svgOf)).size).toBe(4);
+      expect(WALL_JOIN_LOOKS).toEqual(['loose rock']);
     });
 
     it("names art for every look, sub-themes' included", () => {

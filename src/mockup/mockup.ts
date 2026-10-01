@@ -2,7 +2,7 @@ import { CHARACTERS, type Action, type View } from '../core/art/characters';
 import { hudSvg, HEART_CANVAS, ICON_CANVAS, SHOT_CANVAS, type ShotArt } from '../core/art/hud';
 import { PAPER } from '../core/art/palette';
 import { DOWN, LEFT, RIGHT, UP, type Mask } from '../core/art/autotile';
-import { CAVE_FLOOR_CANVAS, CAVE_WALL_CANVAS, DECOR_CANVAS, JOIN_LOOKS, MASKED_LOOKS, TILE, TILE_CANVAS, WALL_STYLES, floorCanvas, floorLooks, hasGround, terrainSvg, wallCanvas, type Shell, type WallSide, type WallStyle } from '../core/art/terrain';
+import { CAVE_FLOOR_CANVAS, CAVE_WALL_CANVAS, DECOR_CANVAS, JOIN_LOOKS, MASKED_LOOKS, TILE, TILE_CANVAS, WALL_JOIN_LOOKS, WALL_STYLES, floorCanvas, floorLooks, hasGround, terrainSvg, wallCanvas, type Shell, type WallSide, type WallStyle } from '../core/art/terrain';
 import { createRng } from '../core/rng';
 import { SHOT_ART, floorLook } from '../core/art/catalogue';
 import { roomThemeById, roomThemesFor } from '../core/rooms/roomThemes';
@@ -157,6 +157,14 @@ function drawRoom(sheet: Sheet, scene: Scene, lit: boolean, id: string): string 
       if (JOIN_LOOKS.includes(look)) {
         if (same(1, 0)) standing.push({ y: c.y + 0.1, svg: tile(terrainSvg.join(look, 'across'), c.x + TILE / 2, c.y) });
         if (same(0, 1)) standing.push({ y: c.y + TILE / 2, svg: tile(terrainSvg.join(look, 'down'), c.x, c.y + TILE / 2) });
+      }
+      // Rubble walls grow out of the room wall they touch.
+      if (WALL_JOIN_LOOKS.includes(look)) {
+        for (const [side, dx, dy] of [['up', 0, -1], ['right', 1, 0], ['down', 0, 1], ['left', -1, 0]] as const) {
+          if (cell(gx + dx, gy + dy) !== '#') continue;
+          const at = { x: c.x + (dx * TILE) / 2, y: c.y + (dy * TILE) / 2 };
+          standing.push({ y: at.y + 14.5, svg: tile(terrainSvg.wallJoin(look, side), at.x, at.y) });
+        }
       }
     }),
   );
@@ -348,7 +356,7 @@ const RUBBLE_MAP = [
   '#..b......b...#',
   'D..bbb.b..b...#',
   '#......b......#',
-  '#.bbbb.bbb.bb.#',
+  '#bbbb.bbb.bbbb#',
   '#.........b...#',
   '###############',
 ];
@@ -580,8 +588,9 @@ function caveTerrainSheet(): string {
     ['crystal spire', 'Crystal spires <span>crystal grotto; prisms studding the rock, a rooted cluster at the foot</span>'], ['giant mushroom', 'Giant mushrooms <span>mushroom hollow</span>'], ['mushroom cap', 'Mushroom caps <span>mushroom hollow, breakable</span>'],
   ];
   const tiles = looks.map(([look, title]) => strip(title, variants.map((v) => fig(terrainSvg.tile(look, v, 0), `${look} ${v + 1}`)).join('')));
-  const joins = strip('Joins <span>neighbouring stalagmites fuse, thorn vines reach into each other, loose rock heaps into rubble walls</span>',
-    ['stalagmite', 'thorn vine', 'loose rock'].flatMap((look) => (['across', 'down'] as const).map((d) => fig(terrainSvg.join(look, d), `${look}, ${d}`))).join(''));
+  const joins = strip('Joins <span>neighbouring stalagmites fuse, thorn vines reach into each other, loose rock heaps into rubble walls and grows out of the cave wall</span>',
+    ['stalagmite', 'thorn vine', 'loose rock'].flatMap((look) => (['across', 'down'] as const).map((d) => fig(terrainSvg.join(look, d), `${look}, ${d}`))).join('') +
+      (['up', 'right', 'down', 'left'] as const).map((side) => fig(terrainSvg.wallJoin('loose rock', side), `loose rock into the wall ${side}`)).join(''));
   const maskName = (m: number) => [[UP, 'up'], [RIGHT, 'right'], [DOWN, 'down'], [LEFT, 'left']].filter(([bit]) => m & (bit as number)).map(([, name]) => name).join('+') || 'alone';
   const masked = (['chasm', 'rift'] as const).map((look) =>
     strip(`${look === 'chasm' ? 'Chasm' : 'Rift <span>rift sub-theme</span>'} <span>a piece for every neighbour mask (named: where it carries on)</span>`,
@@ -629,7 +638,7 @@ ${defs(lit)}${defs(unlit)}${defs(grotto)}${defs(hollow)}${defs(rift)}${defs(rubb
   <figure class="stage small">${grottoUnlit}<figcaption>A crystal grotto: crystal spires, and crystal enough for veined walls all the way round.</figcaption></figure>
   <figure class="stage small">${hollowUnlit}<figcaption>A mushroom hollow: giant mushrooms, clumps of mushroom caps and glowshrooms.</figcaption></figure>
   <figure class="stage small">${riftUnlit}<figcaption>A rift: the chasm's lip torn red. A worm crawls along the top and turns down the room, its crawl rippling from head to tail; a champion heads off the other way below.</figcaption></figure>
-  <figure class="stage small">${rubbleUnlit}<figcaption>Rubble walls: neighbouring loose rock fuses into continuous walls, the way the worm boss's maze is built. Where a rock has broken (the gap in the long run) its joins are gone and the ends are left ragged.</figcaption></figure>
+  <figure class="stage small">${rubbleUnlit}<figcaption>Rubble walls: neighbouring loose rock fuses into continuous walls, the way the worm boss's maze is built, and grows out of the cave wall wherever it meets it. Where a rock has broken (the gap in the long run) its joins are gone and the ends are left ragged.</figcaption></figure>
   <figure class="stage small">${bossUnlit}<figcaption>The worm's room: darker earth broken by burrows, strewn with bones and shards. The worm boss crawls round it, heaving an egg out of its back; another egg is in the air, one rests by the wall and one is splitting open to hatch.</figcaption></figure>
 </div>
 <h2>The cave cast, frame by frame</h2>

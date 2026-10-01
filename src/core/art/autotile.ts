@@ -1,3 +1,4 @@
+import type { Direction } from '../map/floorGenerator';
 import type { Tile } from '../rooms/roomGenerator';
 
 /** Which of a tile's four neighbours are the same kind: bit 1 up, 2 right, 4 down, 8 left. */
@@ -26,6 +27,41 @@ export interface Join {
   y: number;
   dir: 'across' | 'down';
   tile: Tile;
+}
+
+/** Where a tile meets the room's wall: the tile at x,y has wall on its `side`. */
+export interface WallJoin {
+  x: number;
+  y: number;
+  side: Direction;
+  tile: Tile;
+}
+
+const WALL_SIDES: readonly [Direction, number, number][] = [
+  ['up', 0, -1],
+  ['right', 1, 0],
+  ['down', 0, 1],
+  ['left', -1, 0],
+];
+
+/**
+ * Every side where a `joinable` tile touches the room's wall (loose rock growing out of the cave
+ * wall): a wall tile in the room (an L room's missing corner), or past the room's edge, except where
+ * a door opens through it.
+ */
+export function wallJoins(tiles: readonly (readonly Tile[])[], joinable: readonly Tile[], doors: readonly { side: Direction; cell: { x: number; y: number } }[] = []): WallJoin[] {
+  const joins: WallJoin[] = [];
+  tiles.forEach((row, y) =>
+    row.forEach((tile, x) => {
+      if (!joinable.includes(tile)) return;
+      for (const [side, dx, dy] of WALL_SIDES) {
+        const beyond = tiles[y + dy]?.[x + dx];
+        const door = doors.some((d) => d.side === side && d.cell.x === x && d.cell.y === y);
+        if (beyond === 'wall' || (beyond === undefined && !door)) joins.push({ x, y, side, tile });
+      }
+    }),
+  );
+  return joins;
 }
 
 /** Every seam where two touching tiles of a `joinable` kind grow into each other (tree canopies, thorn vines), once each. */

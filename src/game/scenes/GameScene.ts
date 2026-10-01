@@ -91,11 +91,11 @@ import { shakeScreen } from '../effects/shellBurst';
 import { ScrapLayer } from '../art/scrapLayer';
 import { passiveArtKey } from '../art/passiveArt';
 import { PAPER } from '../../core/art/palette';
-import { DECOR_CANVAS, JOIN_LOOKS, TILE_CANVAS, WALL_STYLES, floorCanvas, hasGround, wallCanvas, type Shell, type WallSide } from '../../core/art/terrain';
-import { SHOT_ART, TILE_VARIANTS, decorKey, doorKey, floorKey, floorLook, groundKey, joinKey, pickupKey, shotKey, tileKey, wallKey, type FloorKind } from '../../core/art/catalogue';
+import { DECOR_CANVAS, JOIN_LOOKS, TILE_CANVAS, WALL_JOIN_LOOKS, WALL_STYLES, floorCanvas, hasGround, wallCanvas, type Shell, type WallSide } from '../../core/art/terrain';
+import { SHOT_ART, TILE_VARIANTS, decorKey, doorKey, floorKey, floorLook, groundKey, joinKey, pickupKey, shotKey, tileKey, wallJoinKey, wallKey, type FloorKind } from '../../core/art/catalogue';
 import { PICKUP_CANVAS, SHOT_CANVAS, type PickupArt } from '../../core/art/hud';
 import { ART_SCALE } from '../art/bake';
-import { joinsBetween, neighbourMask } from '../../core/art/autotile';
+import { joinsBetween, neighbourMask, wallJoins } from '../../core/art/autotile';
 import { ARENA_ID, arenaRoom, parseArenaQuery, type ArenaRequest } from '../../core/rooms/testArena';
 import { seedWithRoom, urlStartRoom } from '../../core/map/travel';
 import { run as runCommand, type ConsoleAction } from '../../core/console/console';
@@ -2183,11 +2183,23 @@ export class GameScene extends Phaser.Scene {
       if (!art) continue;
       // Gone as soon as either tile it joins is.
       const b = j.dir === 'across' ? { x: j.x + 1, y: j.y } : { x: j.x, y: j.y + 1 };
-      for (const cell of [{ x: j.x, y: j.y }, b]) {
-        const key = `${room.floorRoom.id}|${cell.x},${cell.y}`;
-        this.joinArt.set(key, [...(this.joinArt.get(key) ?? []), art]);
-      }
+      for (const cell of [{ x: j.x, y: j.y }, b]) this.trackJoin(room, cell, art);
     }
+    // Rubble walls grow out of the cave wall they touch; each such join goes with its rock.
+    const wallJoinable = joinable.filter((tile) => WALL_JOIN_LOOKS.includes(looks[tile].art!));
+    for (const j of wallJoins(room.layout.tiles, wallJoinable, room.layout.doors)) {
+      const a = tileCenter(room, j.x, j.y);
+      const step = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[j.side];
+      const at = { x: a.x + (step[0] * TUNING.tile) / 2, y: a.y + (step[1] * TUNING.tile) / 2 };
+      const art = this.paper.piece(wallJoinKey(looks[j.tile as (typeof joinable)[number]].art!, j.side), at.x, at.y, TILE_CANVAS, at.y + TERRAIN_FOOT);
+      if (art) this.trackJoin(room, j, art);
+    }
+  }
+
+  /** `art` joins the tile at `cell` to a neighbour: it goes as soon as that tile does (removeTerrain). */
+  private trackJoin(room: WorldRoom, cell: Cell, art: Phaser.GameObjects.Image) {
+    const key = `${room.floorRoom.id}|${cell.x},${cell.y}`;
+    this.joinArt.set(key, [...(this.joinArt.get(key) ?? []), art]);
   }
 
   /** Takes a room's drawn crusher blocks out of the breakable terrain and tracks them for sliding. */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Tile } from '../rooms/roomGenerator';
-import { DOWN, LEFT, RIGHT, UP, joinsBetween, neighbourMask } from './autotile';
+import { DOWN, LEFT, RIGHT, UP, joinsBetween, neighbourMask, wallJoins } from './autotile';
 
 /** `~` pond, `T` tree, `x` thorn, `.` floor. */
 const grid = (rows: string[]): Tile[][] =>
@@ -61,6 +61,26 @@ describe('autotile', () => {
         { x: 0, y: 0, dir: 'across', tile: 'rock' },
         { x: 0, y: 0, dir: 'down', tile: 'rock' },
       ]);
+    });
+
+    it('joins loose rock to the room wall it touches, on that side', () => {
+      expect(wallJoins(rubble(['#..', '...', '..#']), ['rock'])).toEqual([
+        { x: 0, y: 0, side: 'up', tile: 'rock' },
+        { x: 0, y: 0, side: 'left', tile: 'rock' },
+        { x: 2, y: 2, side: 'right', tile: 'rock' },
+        { x: 2, y: 2, side: 'down', tile: 'rock' },
+      ]);
+    });
+
+    it('joins loose rock to a wall tile inside the room (an L room\'s missing corner)', () => {
+      const tiles = rubble(['...', '.#.', '...']);
+      tiles[1][2] = 'wall';
+      expect(wallJoins(tiles, ['rock'])).toEqual([{ x: 1, y: 1, side: 'right', tile: 'rock' }]);
+    });
+
+    it('never joins through a doorway, or a tile kind that is not joinable', () => {
+      expect(wallJoins(rubble(['.#.', '...']), ['rock'], [{ side: 'up', cell: { x: 1, y: 0 } }])).toEqual([]);
+      expect(wallJoins(grid(['T..']), ['rock'])).toEqual([]);
     });
 
     it('drops every join touching a loose rock once it breaks to floor', () => {

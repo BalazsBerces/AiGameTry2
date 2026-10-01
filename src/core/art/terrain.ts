@@ -1,4 +1,5 @@
 import { PAPER as P } from './palette';
+import type { Direction } from '../map/floorGenerator';
 import { DOWN, LEFT, RIGHT, UP, type Mask } from './autotile';
 import { blob, cutPoly, fill, group, n, pieceRng, polyPath, ragged, ring, sheet, svgDoc, type Pt } from './svg';
 
@@ -781,6 +782,32 @@ function rubbleJoin(dir: 'across' | 'down') {
   );
 }
 
+/**
+ * Where a rubble wall meets the cave wall on its `side`: a heap of dark wall rock and crags spread
+ * along the seam and leaning into the wall, so the rubble grows out of the wall with no gap between.
+ */
+function rubbleWallJoin(side: Direction) {
+  const r = pieceRng('rubbleWallJoin', side);
+  const toWall = { up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 } }[side];
+  const along = toWall.y ? { x: 30, y: 12 } : { x: 14, y: 30 };
+  const c = { x: AX + toWall.x * 4, y: AY + toWall.y * 4 };
+  const bedPts = jagged(r, c.x, c.y, along.x * 0.9, along.y * 0.9, 16, 0.2);
+  return (
+    sheet(fill(polyPath(bedPts), C.rockDeep)) +
+    Array.from({ length: 6 }, (_, i) => ({
+      x: c.x + (r.next() - 0.5) * along.x * 1.2,
+      y: c.y + (r.next() - 0.5) * along.y * 1.1,
+      rad: i < 2 ? 11 + r.next() * 3 : 5 + r.next() * 5,
+    }))
+      .sort((a, b) => a.y - b.y)
+      .map((s) => {
+        const roll = r.next();
+        return crag(r, s.x, s.y, s.rad, roll < 0.3 ? DEEP_ROCK : roll < 0.5 ? OCHRE_ROCK : ROCK);
+      })
+      .join('')
+  );
+}
+
 /** A boulder: one heavy round rock, lit from up-left, cracked and flecked with lichen; the thing that rolls and crushes. */
 function boulder(variant: number) {
   const r = (part: string) => pieceRng('boulder', variant, part);
@@ -1188,6 +1215,12 @@ const JOIN_ART: Readonly<Record<string, (dir: 'across' | 'down') => string>> = {
   'thorn vine': (d) => vineJoin(d, { stem: C.vine, spike: C.thornSpike, key: 'caveVineJoin' }),
 };
 export const JOIN_LOOKS = Object.keys(JOIN_ART);
+/** Looks that grow out of the room's wall where they touch it, one join per side the wall is on. */
+const WALL_JOIN_ART: Readonly<Record<string, (side: Direction) => string>> = {
+  'loose rock': (side) => rubbleWallJoin(side),
+};
+export const WALL_JOIN_LOOKS = Object.keys(WALL_JOIN_ART);
+export const WALL_JOIN_SIDES: readonly Direction[] = ['up', 'right', 'down', 'left'];
 /** Looks drawn as pieces that fit their neighbours (a pond's banks, a chasm's lip): each has a piece per neighbour mask. */
 export const MASKED_LOOKS = ['pond', 'bog', 'chasm', 'rift'];
 
@@ -1227,6 +1260,7 @@ export const TILE_LOOKS = Object.keys(TILE_ART);
 export const terrainSvg = {
   tile: (look: string, variant: number, mask: Mask) => tileDoc(TILE_ART[look](variant, mask), 19 + variant),
   join: (look: string, dir: 'across' | 'down') => tileDoc(JOIN_ART[look](dir), 61),
+  wallJoin: (look: string, side: Direction) => tileDoc(WALL_JOIN_ART[look](side), 63),
   wall: (side: WallSide, variant: number, style: WallStyle = 'hedge') =>
     style === 'hedge'
       ? tileDoc(hedge(side, variant), 23)

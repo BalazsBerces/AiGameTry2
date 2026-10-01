@@ -432,7 +432,7 @@ describe('spawn and arena', () => {
   it('matches enemy names like items, ignoring case and taking a unique prefix', () => {
     const { ctx } = openRoom();
     expect(spawnsOf(run('spawn GARG', ctx).actions).map((s) => s.type)).toEqual(['gargoyle']);
-    expect(run('spawn g', ctx).log).toEqual(['"g" could be: goblin, ghoul, gargoyle, ghost']);
+    expect(run('spawn g', ctx).log).toEqual(['"g" could be: goblin, ghoul, geode, gargoyle, ghost']);
     expect(run('spawn dragon', ctx).log).toEqual(['no enemy called "dragon"']);
   });
 

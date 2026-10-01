@@ -1,5 +1,5 @@
 import { CHARACTERS, type Action, type View } from './characters';
-import { DECOR_CANVAS, DECOR_KINDS, JOIN_LOOKS, MASKED_LOOKS, TILE_CANVAS, TILE_LOOKS, WALL_JOIN_LOOKS, WALL_JOIN_SIDES, WALL_STYLES, floorCanvas, floorLooks, hasGround, terrainSvg, wallCanvas, type Shell, type WallSide, type WallStyle } from './terrain';
+import { DECOR_CANVAS, DECOR_KINDS, JOIN_LOOKS, MASKED_LOOKS, TILE_CANVAS, TILE_LOOKS, WALL_JOIN_LOOKS, WALL_JOIN_SIDES, WALL_STYLES, floorCanvas, floorLooks, hasGround, terrainSvg, tileLooks, wallCanvas, type Shell, type WallSide, type WallStyle } from './terrain';
 import type { Mask } from './autotile';
 import type { Direction } from '../map/floorGenerator';
 import { HEART_CANVAS, ICON_CANVAS, PICKUP_ART, PICKUP_CANVAS, SHOT_CANVAS, hudSvg, pickupSvg, type PickupArt, type ShotArt } from './hud';
@@ -41,7 +41,14 @@ function characterEntries(): ArtEntry[] {
 /** Looks each terrain tile kind comes in, picked by the tile's variant (core/dressing). */
 export const TILE_VARIANTS = 4;
 
-export const tileKey = (art: string, variant: number, mask: Mask = 0) => `t:${art}:${variant % TILE_VARIANTS}:${MASKED_LOOKS.includes(art) ? mask : 0}`;
+export const tileKey = (art: string, variant: number, mask: Mask = 0) => `t:${art}:${variant % tileLooks(art)}:${MASKED_LOOKS.includes(art) ? mask : 0}`;
+/**
+ * Which of its looks a terrain tile of `art` at x,y takes: just its variant, or for a look with
+ * more looks than variants (the giant mushroom's species), one mixed with where the tile is.
+ */
+export function tileLook(art: string, variant: number, x: number, y: number): number {
+  return tileLooks(art) === TILE_VARIANTS ? variant : spread(variant, x, y, tileLooks(art));
+}
 export const joinKey = (art: string, dir: 'across' | 'down') => `j:${art}:${dir}`;
 /** Where a tile of `art` grows out of the room's wall on its `side` (a rubble wall into the cave wall). */
 export const wallJoinKey = (art: string, side: Direction) => `j:${art}:wall-${side}`;
@@ -62,11 +69,15 @@ export const floorKey = (shell: Shell, kind: FloorKind, look: number) => `f:${sh
  */
 export function floorLook(shell: Shell, variant: number, x: number, y: number): number {
   if (floorLooks(shell) === TILE_VARIANTS) return variant;
-  // An integer hash of where the tile lies: neighbours land on unrelated looks, with no rows or diagonals.
+  return spread(variant, x, y, floorLooks(shell));
+}
+
+/** One of `count` looks from a tile's variant and an integer hash of where it lies: neighbours land on unrelated looks, with no rows or diagonals. */
+function spread(variant: number, x: number, y: number, count: number): number {
   let h = Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(variant, 1274126177);
   h = Math.imul(h ^ (h >>> 13), 1103515245);
   h ^= h >>> 16;
-  return (h >>> 0) % floorLooks(shell);
+  return (h >>> 0) % count;
 }
 const SHELLS = Object.keys(WALL_STYLES) as Shell[];
 export const decorKey = (kind: string, variant: number) => `k:${kind}:${variant % TILE_VARIANTS}`;
@@ -86,7 +97,7 @@ function terrainEntries(): ArtEntry[] {
   const masks = Array.from({ length: 16 }, (_, m) => m);
   return [
     ...TILE_LOOKS.flatMap((look) =>
-      variants.flatMap((v) => (MASKED_LOOKS.includes(look) ? masks : [0]).map((m) => tileEntry(tileKey(look, v, m), () => terrainSvg.tile(look, v, m)))),
+      Array.from({ length: tileLooks(look) }, (_, v) => v).flatMap((v) => (MASKED_LOOKS.includes(look) ? masks : [0]).map((m) => tileEntry(tileKey(look, v, m), () => terrainSvg.tile(look, v, m)))),
     ),
     ...JOIN_LOOKS.flatMap((look) => (['across', 'down'] as const).map((d) => tileEntry(joinKey(look, d), () => terrainSvg.join(look, d)))),
     ...WALL_JOIN_LOOKS.flatMap((look) => WALL_JOIN_SIDES.map((side) => tileEntry(wallJoinKey(look, side), () => terrainSvg.wallJoin(look, side)))),

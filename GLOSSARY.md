@@ -28,17 +28,17 @@ A small cluster of crystal set into a cave wall, sparse and kept back from the r
 _Avoid_: crystal seam, wall crystal
 
 **Glowshroom**:
-A glowing violet mushroom clump that bursts into a stun cloud. Violet glow on a mushroom always means a glowshroom.
+A glowing violet mushroom clump that bursts into a stun cloud. Its pinkish violet is the brightest fungus light in the hollow; the hollow's other fungus glows a deeper, bluer plum.
 
-**Withered** (mushroom):
-Dead fungus: grey-brown, drooping and without colour of its own, so it never reads as a glowshroom. Giant mushrooms and mushroom caps are withered.
-_Avoid_: dull, inactive
+**Mature** (mushroom):
+The hollow's harmless, full-grown fungus: a deep purple, richest at the crown, flecked pale lilac, glowing a deep plum. Giant mushrooms and mushroom caps are mature.
+_Avoid_: withered, dull, inactive
 
 **Giant mushroom**:
-The mushroom hollow's obstacle: a tall withered mushroom with only a faint colourless glow.
+The mushroom hollow's obstacle: a tall mature mushroom glowing a deep plum, drawn as one of several species (inkcap, parasol, a cluster of bells, a leaning pair).
 
 **Mushroom cap**:
-The mushroom hollow's loose rock: a low clump of withered fungus that breaks after a few shots.
+The mushroom hollow's loose rock: a low clump of mature fungus with a small plum glow; breaks after a few shots.
 
 ## Light
 

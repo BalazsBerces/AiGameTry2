@@ -94,7 +94,7 @@ import { ScrapLayer } from '../art/scrapLayer';
 import { passiveArtKey } from '../art/passiveArt';
 import { PAPER } from '../../core/art/palette';
 import { DECOR_CANVAS, JOIN_LOOKS, TILE_CANVAS, WALL_JOIN_LOOKS, WALL_STYLES, floorCanvas, hasGround, wallCanvas, type Shell, type WallSide } from '../../core/art/terrain';
-import { SHOT_ART, TILE_VARIANTS, decorKey, decorNudge, doorKey, floorKey, floorLook, groundKey, joinKey, pickupKey, shotKey, tileKey, wallJoinKey, wallKey, type FloorKind } from '../../core/art/catalogue';
+import { SHOT_ART, TILE_VARIANTS, decorKey, decorNudge, doorKey, floorKey, floorLook, groundKey, joinKey, pickupKey, shotKey, tileKey, tileLook, wallJoinKey, wallKey, type FloorKind } from '../../core/art/catalogue';
 import { PICKUP_CANVAS, SHOT_CANVAS, type PickupArt } from '../../core/art/hud';
 import { ART_SCALE } from '../art/bake';
 import { joinsBetween, neighbourMask, wallJoins } from '../../core/art/autotile';
@@ -209,8 +209,8 @@ const ENEMY_ART: Partial<Record<EnemyLook, { footOffset: number; fps?: number; o
 };
 
 const hex = (color: string) => parseInt(color.slice(1), 16);
-/** The colours glowers cast into the gloom: crystal cyan, glowshroom violet, withered giant mushroom a faint pale. */
-const GLOW_TINT: Record<GlowTint, number> = { cyan: hex(GLOW_COLOR.cyan), violet: hex(GLOW_COLOR.violet), pale: hex(GLOW_COLOR.pale) };
+/** The colours glowers cast into the gloom: crystal cyan, glowshroom violet, mature fungus a deep plum. */
+const GLOW_TINT: Record<GlowTint, number> = { cyan: hex(GLOW_COLOR.cyan), violet: hex(GLOW_COLOR.violet), plum: hex(GLOW_COLOR.plum) };
 /** The paper an enemy tears into when it dies; enemies left out tear into their shape's colour. */
 /** Bosses stand their ground: a hit never knocks them back. */
 const BOSSES: ReadonlySet<EnemyType> = new Set<BossType>(['wormBoss', 'ironMaiden', 'candleWitch', 'treantBoss']);
@@ -2232,14 +2232,14 @@ export class GameScene extends Phaser.Scene {
     if (!look.art && themeForFloor(room.floorIndex).paper && tile !== 'hole') shape.setDepth(footDepth(c.y + TERRAIN_FOOT, PLAIN_SERIAL));
     if (!look.art) return shape;
     const flat = tile === 'hole';
-    const key = tileKey(look.art, variant ?? 0, flat ? neighbourMask(room.layout.tiles, tx, ty) : 0);
+    const key = tileKey(look.art, tileLook(look.art, variant ?? 0, tx, ty), flat ? neighbourMask(room.layout.tiles, tx, ty) : 0);
     const art = this.paper.piece(key, c.x, c.y, TILE_CANVAS, flat ? undefined : c.y + TERRAIN_FOOT);
     if (art) this.paper.standIn(shape, art);
     return shape;
   }
 
   /**
-   * Neighbouring trees' canopies and thorns' vines grow into each other across the seam between them,
+   * Neighbouring thorns' vines grow into each other across the seam between them (trees stand apart),
    * and neighbouring loose rock fuses into rubble walls (wherever its look has a join: never the hollow's caps).
    */
   private drawJoins(room: WorldRoom) {

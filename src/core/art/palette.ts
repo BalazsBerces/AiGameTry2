@@ -136,12 +136,15 @@ export const PAPER = {
     fungusShade: '#4e1e5a',
     fungusGill: '#e08ec4',
     fungusGlow: '#c060d0',
-    // Withered fungus (giant mushrooms, mushroom caps): dead, ashen grey-brown, with no violet left in it.
-    withered: '#54493f',
-    witheredLight: '#73675a',
-    witheredShade: '#352d27',
-    witheredGill: '#857a6c',
-    witheredRot: '#1f1915',
+    // Mature fungus (giant mushrooms, mushroom caps): a deep purple, richest at the crown, darker
+    // to the rim, with pale lilac flecks. Deeper and bluer than the glowshroom's violet.
+    mature: '#3a1650',
+    matureBruise: '#521e78',
+    matureCrown: '#6c2a9e',
+    matureLight: '#9a5ad0',
+    matureShade: '#200c30',
+    matureGill: '#a882c8',
+    matureFleck: '#d0b0f0',
 
     chasm: '#060403',
     riftLip: '#5e2c1e',

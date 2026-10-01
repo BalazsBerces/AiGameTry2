@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { artCatalogue, charKey, decorKey, doorKey, floorKey, floorLook, groundKey, joinKey, shotKey, tileKey, wallJoinKey, wallKey, type DoorSide, type FloorKind } from './catalogue';
+import { artCatalogue, charKey, decorKey, doorKey, floorKey, floorLook, groundKey, joinKey, shotKey, tileKey, tileLook, wallJoinKey, wallKey, type DoorSide, type FloorKind } from './catalogue';
 import { CHARACTERS, type Action } from './characters';
 import { PAPER } from './palette';
-import { CAVE_FLOOR_LOOKS, JOIN_LOOKS, TILE, WALL_JOIN_LOOKS, WALL_JOIN_SIDES, WALL_STYLES, wallGems, type WallSide } from './terrain';
+import { CAVE_FLOOR_LOOKS, JOIN_LOOKS, TILE, WALL_JOIN_LOOKS, WALL_JOIN_SIDES, WALL_STYLES, tileLooks, wallGems, type WallSide } from './terrain';
 import { themeForFloor } from '../map/themes';
 import { roomThemesFor } from '../rooms/roomThemes';
 
@@ -140,7 +140,8 @@ describe('the art catalogue', () => {
       ...roomThemesFor(1).flatMap((theme) => Object.values(theme.looks ?? {}).map((look) => look.art!)),
     ];
     const fitted = ['chasm', 'rift'];
-    const tiles = caveArts.flatMap((art) => VARIANTS.flatMap((v) => (fitted.includes(art) ? MASKS : [0]).map((m) => tileKey(art, v, m))));
+    const looksOf = (art: string) => Array.from({ length: tileLooks(art) }, (_, v) => v);
+    const tiles = caveArts.flatMap((art) => looksOf(art).flatMap((v) => (fitted.includes(art) ? MASKS : [0]).map((m) => tileKey(art, v, m))));
     const joins = ['stalagmite', 'thorn vine', 'loose rock'].flatMap((art) => (['across', 'down'] as const).map((d) => joinKey(art, d)));
 
     it('joins loose rock into rubble walls, but never the mushroom hollow\'s caps', () => {
@@ -167,7 +168,20 @@ describe('the art catalogue', () => {
 
     it('holds every variant of each look, every neighbour mask of chasm and rift, and stalagmite, thorn-vine and loose-rock joins', () => {
       for (const key of [...tiles, ...joins]) expect(byKey.has(key), key).toBe(true);
-      expect(new Set(tiles).size).toBe(9 * 4 + 2 * 4 * 16);
+      expect(new Set(tiles).size).toBe(8 * 4 + 5 + 2 * 4 * 16);
+    });
+
+    it('grows giant mushrooms in five species, each its own, picked by variant and where the tile stands', () => {
+      const species = looksOf('giant mushroom').map((v) => svgOf(tileKey('giant mushroom', v, 0)));
+      expect(new Set(species).size).toBe(5);
+      const picked = new Set<number>();
+      for (let y = 0; y < 9; y++) for (let x = 0; x < 15; x++) {
+        const look = tileLook('giant mushroom', (x + y) % 4, x, y);
+        expect(look).toBe(tileLook('giant mushroom', (x + y) % 4, x, y));
+        picked.add(look);
+      }
+      expect([...picked].sort()).toEqual([0, 1, 2, 3, 4]);
+      for (const v of VARIANTS) expect(tileLook('mushroom cap', v, 5, 3)).toBe(v);
     });
 
     it('fits chasm and rift pieces to their neighbours: each mask a piece of its own', () => {
@@ -179,12 +193,12 @@ describe('the art catalogue', () => {
       for (const key of [...tiles, ...joins]) expect(svgOf(key), key).toBe(svgOf(key));
     });
 
-    it('draws giant mushrooms and mushroom caps withered, with none of the glowshroom\'s violet', () => {
+    it('draws giant mushrooms and mushroom caps in mature purples, with none of the glowshroom\'s colours', () => {
       const { fungus, fungusLight, fungusShade, fungusGill, fungusGlow } = PAPER.caves;
       const violet = [fungus, fungusLight, fungusShade, fungusGill, fungusGlow].map((c) => c.toLowerCase());
       const violetIn = (art: string, v: number) => violet.filter((c) => svgOf(tileKey(art, v, 0)).toLowerCase().includes(c));
+      for (const v of looksOf('giant mushroom')) expect(violetIn('giant mushroom', v), `giant mushroom ${v}`).toEqual([]);
       for (const v of VARIANTS) {
-        expect(violetIn('giant mushroom', v), `giant mushroom ${v}`).toEqual([]);
         expect(violetIn('mushroom cap', v), `mushroom cap ${v}`).toEqual([]);
         expect(violetIn('glowshroom', v), `glowshroom ${v}`).not.toEqual([]);
       }
@@ -312,8 +326,13 @@ describe('the art catalogue', () => {
       const [kind, name] = e.key.split(':');
       return kind === 'k' ? decor.includes(name) : ['t', 'j'].includes(kind) && forest.includes(name);
     });
-    expect(entries.length).toBe(212);
-    // The fingerprint of the forest's terrain tiles, joins and decor before the caves got theirs.
-    expect(fnv(entries.map((e) => e.key + e.svg()).join('\n'))).toBe('4a2d21a6');
+    expect(entries.length).toBe(206);
+    // The fingerprint of the forest's terrain tiles, joins and decor before the caves got theirs (less the trees' joins, since dropped).
+    expect(fnv(entries.map((e) => e.key + e.svg()).join('\n'))).toBe('c1ebeca0');
+  });
+
+  it('lets every tree stand apart: no canopy grows into its neighbour\'s, while thorn bushes still join', () => {
+    for (const tree of ['tree', 'oak', 'willow']) expect(JOIN_LOOKS, tree).not.toContain(tree);
+    expect(JOIN_LOOKS).toContain('thorn bush');
   });
 });

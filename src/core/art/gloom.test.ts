@@ -12,11 +12,11 @@ const HOLLOW_LOOKS: Partial<Record<Tile, string>> = { crystal: 'crystal cluster'
 const room = (rows: string[], extra: Partial<GlowRoom> = {}): GlowRoom => ({ tiles: tilesOf(rows), lookOf: (t) => HOLLOW_LOOKS[t], decor: [], walls: [], ...extra });
 
 describe("a room's glowers", () => {
-  it('lights one per crystal cluster, crystal spire, glowshroom and giant mushroom, in their colours', () => {
+  it('lights one per crystal cluster, crystal spire, glowshroom and giant mushroom (and mushroom cap), in their colours', () => {
     const glowers = glowersOf(room(['C.G', 'M.C']));
     expect(glowers.filter((g) => g.tint === 'cyan')).toHaveLength(2);
     expect(glowers.filter((g) => g.tint === 'violet')).toHaveLength(1);
-    expect(glowers.filter((g) => g.tint === 'pale')).toHaveLength(1);
+    expect(glowers.filter((g) => g.tint === 'plum')).toHaveLength(1);
     expect(glowers).toHaveLength(4);
     const spires = glowersOf(room(['C'], { lookOf: () => 'crystal spire' }));
     expect(spires.map((g) => g.tint)).toEqual(['cyan']);
@@ -28,18 +28,22 @@ describe("a room's glowers", () => {
     expect(Math.floor(g.y / TILE)).toBe(1);
   });
 
-  it('makes violet light only a glowshroom\'s: a withered giant mushroom glows colourless and barely at all', () => {
+  it('lights giant mushrooms and mushroom caps a deep plum, the glowshroom alone violet and brightest', () => {
     const [glowshroom] = glowersOf(room(['G']));
     const [giant] = glowersOf(room(['M']));
+    const [cap] = glowersOf(room(['r']));
     expect(glowshroom.tint).toBe('violet');
-    expect(giant.tint).toBe('pale');
-    expect(giant.intensity).toBeGreaterThan(0);
-    expect(giant.intensity).toBeLessThan(glowshroom.intensity / 5);
-    expect(giant.radius).toBeLessThan(glowshroom.radius);
+    for (const g of [giant, cap]) {
+      expect(g.tint).toBe('plum');
+      expect(g.intensity).toBeGreaterThan(0);
+      expect(g.intensity).toBeLessThan(glowshroom.intensity);
+    }
+    expect(cap.radius).toBeLessThan(giant.radius);
   });
 
-  it('leaves mushroom caps, rock and bare floor unlit', () => {
-    expect(glowersOf(room(['rr.', '...']))).toEqual([]);
+  it('leaves rock and bare floor unlit', () => {
+    expect(glowersOf(room(['...', '...']))).toEqual([]);
+    expect(glowersOf(room(['r'], { lookOf: () => 'loose rock' }))).toEqual([]);
   });
 
   it('loses the light of a glower whose tile broke', () => {

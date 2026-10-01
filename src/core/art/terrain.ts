@@ -122,17 +122,9 @@ function thorn(variant: number) {
 }
 
 /**
- * Where two neighbouring trees' canopies grow into each other, or two thorn bushes' vines: drawn
- * on the seam between them, whose centre is the canvas anchor. `down` joins a tile to the one below.
+ * Where two neighbouring thorn bushes' vines grow into each other: drawn on the seam between them,
+ * whose centre is the canvas anchor. `down` joins a tile to the one below.
  */
-function canopyJoin(look: Foliage, dir: 'across' | 'down') {
-  const r = (part: string) => pieceRng('canopyJoin', dir, part);
-  // A canopy stands 26 px above its tile's centre: the seam's clump sits between the two.
-  const y = AY - 26 + (dir === 'down' ? 0 : -2);
-  const [rx, ry] = dir === 'across' ? [18, 15] : [17, 19];
-  return sheet(fill(ragged(r('dark'), AX, y, rx, ry, 12, 0.24), look.dark), 2) + sheet(fill(ragged(r('main'), AX, y - 3, rx * 0.7, ry * 0.6, 9, 0.22), look.main));
-}
-
 function vineJoin(dir: 'across' | 'down', look: { stem: string; spike: string; key: string } = { stem: P.thorn, spike: P.thornSpike, key: 'vineJoin' }) {
   const r = pieceRng(look.key, dir);
   const [dx, dy] = dir === 'across' ? [26, 0] : [0, 26];
@@ -877,14 +869,28 @@ function crystalSpire(variant: number) {
 
 /**
  * How a mushroom's cap is coloured: dome, highlight, gills, gill ribs and the flecks on top.
- * `droop` sags the rim down at its edges (dead fungus) instead of frilling it up.
+ * `droop` (0-1) sags the rim down at its edges (mature fungus) instead of frilling it up. `drain`
+ * lays bands of colour over the dome, rim-most first, each smaller and higher, so the colour
+ * deepens from the rim in to the crown.
  */
-type Fungus = { cap: string; light: string; gill: string; rib: string; spot: string; droop?: boolean };
+type Fungus = { cap: string; light: string; gill: string; rib: string; spot: string; droop?: number; drain?: string[] };
 const GLOWING: Fungus = { cap: C.fungus, light: C.fungusLight, gill: C.fungusGill, rib: C.fungusShade, spot: C.fungusGill };
 /** The scattered decor caps: a duller violet than the glowshrooms. */
 const DULL: Fungus = { ...GLOWING, cap: C.fungusShade, light: C.fungus };
-/** Withered fungus (giant mushrooms, mushroom caps): ashen grey-brown, drooping, with dark rot specks; never violet. */
-const WITHERED: Fungus = { cap: C.withered, light: C.witheredLight, gill: C.witheredGill, rib: C.witheredShade, spot: C.witheredRot, droop: true };
+/**
+ * Mature fungus (giant mushrooms, mushroom caps): more alive than dead, a deep purple glowing
+ * from its crown out to a darker rim that only starts to sag, with pale lilac flecks. Deeper than a
+ * glowshroom's violet and none of its colours.
+ */
+const MATURE: Fungus = {
+  cap: C.mature,
+  light: C.matureLight,
+  gill: C.matureGill,
+  rib: C.matureShade,
+  spot: C.matureFleck,
+  droop: 0.35,
+  drain: [C.matureBruise, C.matureCrown],
+};
 
 /**
  * A cave mushroom seen at 3/4: a pale stem and a cap tipped toward the camera, so its gills show
@@ -895,6 +901,11 @@ function mushroom(r: Rng, x: number, foot: number, stem: number, cap: number, fr
   const capY = foot - stem;
   const stemSvg = fill(cutPoly(r, [{ x: x - w * 1.15, y: foot }, { x: x - w, y: capY + 2 }, { x: x + w, y: capY + 2 }, { x: x + w * 1.2, y: foot }], 0.4), C.bone) +
     fill(polyPath([{ x: x + w * 0.2, y: foot }, { x: x + w * 0.3, y: capY + 2 }, { x: x + w, y: capY + 2 }, { x: x + w * 1.2, y: foot }]), C.boneShade, 'opacity="0.8"');
+  return sheet(stemSvg) + sheet(domeCap(r, x, capY, cap, frill, spots, tone), 2);
+}
+
+/** A mushroom's domed cap of radius `cap`, its rim at `capY`, with its gills showing under it (see `mushroom`). */
+function domeCap(r: Rng, x: number, capY: number, cap: number, frill: number, spots: number, tone: Fungus) {
   // The gills: the cap's underside, a pale disc ribbed from its centre, peeking out below the dome.
   const under = { x, y: capY + cap * 0.12 };
   const gills = ellipse(under.x, under.y, cap * 0.92, cap * 0.3, tone.gill) +
@@ -902,9 +913,10 @@ function mushroom(r: Rng, x: number, foot: number, stem: number, cap: number, fr
       const a = Math.PI * (0.12 + (i / 8) * 0.76);
       return `<path d="M${n(under.x)} ${n(under.y - cap * 0.05)}L${n(under.x + Math.cos(a) * cap * 0.86)} ${n(under.y + Math.sin(a) * cap * 0.27)}" stroke="${tone.rib}" stroke-width="0.8" opacity="0.8"/>`;
     }).join('');
-  // A withered cap slumps: a lower dome whose edges sag down past the gills (`out` is -1..1 across the cap).
-  const sag = (out: number) => (tone.droop ? cap * 0.38 * out * out : 0);
-  const height = tone.droop ? 0.55 : 0.72;
+  // A drooping cap slumps: a lower dome whose edges sag down past the gills (`out` is -1..1 across the cap).
+  const droop = tone.droop ?? 0;
+  const sag = (out: number) => cap * 0.38 * droop * out * out;
+  const height = 0.72 - 0.17 * droop;
   const arc = Array.from({ length: 9 }, (_, i) => {
     const a = Math.PI + (i / 8) * Math.PI;
     return { x: x + Math.cos(a) * cap, y: capY + Math.sin(a) * cap * height + sag(Math.cos(a)) };
@@ -914,10 +926,20 @@ function mushroom(r: Rng, x: number, foot: number, stem: number, cap: number, fr
     const out = 1 - (i + 1) / 4;
     return { x: x + cap * out, y: capY + rimY(i, out) };
   }).filter((p) => Math.abs(p.x - x) < cap);
+  // Each band of draining colour shares the dome's top but is narrower, its base lifted off the rim.
+  const band = (k: number) => {
+    const lift = (1 - k) * 0.8;
+    return Array.from({ length: 9 }, (_, i) => {
+      const a = Math.PI + (i / 8) * Math.PI;
+      return { x: x + Math.cos(a) * cap * k, y: capY + (Math.sin(a) * (1 - lift) - lift) * cap * height + sag(Math.cos(a) * k) };
+    });
+  };
+  const drain = (tone.drain ?? []).map((color, i, all) => fill(cutPoly(r, band(0.72 - (i / all.length) * 0.6), 0.5), color, 'opacity="0.9"')).join('');
   const dome = fill(cutPoly(r, [...arc, ...rim], 0.4), tone.cap) +
+    drain +
     fill(cutPoly(r, arc.slice(1, 5).concat([{ x: x - cap * 0.1, y: capY - cap * 0.25 * (height / 0.72) }]), 0.4), tone.light, 'opacity="0.55"') +
     Array.from({ length: spots }, () => ellipse(x + (r.next() - 0.5) * cap * 1.1, capY - cap * (0.2 + r.next() * 0.35) * (height / 0.72), 1 + cap * 0.07, 0.8 + cap * 0.05, tone.spot, 'opacity="0.9"')).join('');
-  return sheet(stemSvg) + sheet(gills + dome, 2);
+  return gills + dome;
 }
 
 /** A glowshroom: a clump of violet fungi with their gills showing, in a faint glow; bursts into a stun cloud. */
@@ -938,25 +960,196 @@ function glowshroom(variant: number) {
   );
 }
 
-/** A giant mushroom: a tall pale stalk under a broad withered cap sagging at its rim, withered shelf fungi drooping off its stem. */
-function giantMushroom(variant: number) {
-  const r = pieceRng('giantMushroom', variant);
-  const foot = AY + 10;
-  const stem = 32 + (variant % 3) * 3;
-  // Each shelf hangs from the stem, its outer edge slumped down.
-  const shelf = (y: number, s: number, size: number) =>
-    sheet(fill(cutPoly(r, [{ x: AX + s * 4, y: y - size * 0.3 }, { x: AX + s * (4 + size), y: y }, { x: AX + s * (4.5 + size * 0.8), y: y + size * 0.55 }, { x: AX + s * 4, y: y + size * 0.25 }], 0.4), C.witheredLight) +
-      `<path d="M${n(AX + s * 5)} ${n(y + size * 0.15)}L${n(AX + s * (4 + size * 0.75))} ${n(y + size * 0.35)}" stroke="${C.witheredShade}" stroke-width="0.8"/>`);
+/**
+ * A pale stalk from `foot` up to `top`, `w` wide at the foot narrowing to `wTop`, bowed `bow` px
+ * sideways at its middle; shaded down its right side.
+ */
+function stalk(r: Rng, foot: Pt, top: Pt, w: number, wTop: number, bow = 0) {
+  const spine = Array.from({ length: 6 }, (_, i) => {
+    const t = i / 5;
+    return { x: foot.x + (top.x - foot.x) * t + bow * Math.sin(Math.PI * t), y: foot.y + (top.y - foot.y) * t, hw: (w + (wTop - w) * t) / 2 };
+  });
+  const left = spine.map((p) => ({ x: p.x - p.hw, y: p.y }));
+  const right = spine.map((p) => ({ x: p.x + p.hw, y: p.y })).reverse();
+  const shade = spine.map((p) => ({ x: p.x + p.hw * 0.25, y: p.y })).concat(right);
+  return fill(cutPoly(r, [...left, ...right], 0.3), C.bone) + fill(polyPath(shade), C.boneShade, 'opacity="0.8"');
+}
+
+/** A swollen foot at the base of a stalk, half sunk in the floor. */
+const bulb = (x: number, y: number, rx: number) =>
+  ellipse(x, y, rx, rx * 0.65, C.bone) + ellipse(x + rx * 0.35, y + rx * 0.1, rx * 0.6, rx * 0.45, C.boneShade, 'opacity="0.7"');
+
+/**
+ * An inkcap: a tall, closed bell of a cap hanging down round its stalk, shaggy with pale scales,
+ * its bottom edge frayed dark where it has started to ink. `h` is its height above `foot`.
+ */
+function inkcap(r: Rng, x: number, foot: number, h: number, w: number, lean = 0) {
+  const top = { x: x + lean, y: foot - h };
+  const hem = foot - h * 0.42;
+  // The cap hangs round a centre line from its tip down to its hem, over the stalk.
+  const mid = (t: number) => top.x + (x + lean * 0.4 - top.x) * t;
+  const side = (s: number) =>
+    [0.1, 0.3, 0.55, 0.8, 1].map((t) => ({ x: mid(t) + s * w * Math.sqrt(t) * (t < 0.2 ? 0.7 : 1), y: top.y + (hem - top.y) * t }));
+  const fray = Array.from({ length: 7 }, (_, i) => ({ x: mid(1) + w * (1 - (i * 2) / 6), y: hem + (i % 2 ? 3 : 0.5) }));
+  const outline = [top, ...side(1), ...fray, ...side(-1).reverse()];
+  const crown = [top, ...side(0.75).slice(0, 3), ...side(-0.75).slice(0, 3).reverse()];
+  const ink = [...side(1).slice(3), ...fray, ...side(-1).slice(3).reverse()];
+  // Shaggy scales: short pale curls lifting off the cap, scattered, never in rows.
+  const scales = Array.from({ length: Math.round(w * 0.9) }, () => {
+    const t = 0.2 + r.next() * 0.6;
+    const sx = mid(t) + (r.next() * 2 - 1) * w * Math.sqrt(t) * 0.7;
+    const sy = top.y + (hem - top.y) * t;
+    return `<path d="M${n(sx - 1.2)} ${n(sy - 0.6)}Q${n(sx)} ${n(sy + 1.4)} ${n(sx + 1)} ${n(sy + 0.2)}" stroke="${C.matureLight}" stroke-width="0.7" fill="none" opacity="0.6"/>`;
+  });
   return (
-    contact(20, 7, 12) +
-    mushroom(r, AX, foot, stem, 23, 2.2, 5, WITHERED) +
-    shelf(foot - 10, variant % 2 ? 1 : -1, 7) +
-    (variant > 1 ? shelf(foot - 19, variant % 2 ? -1 : 1, 5) : '') +
-    mushroom(r, AX + (variant % 2 ? -14 : 14), foot + 4, 6, 6, 0, 1, WITHERED)
+    sheet(stalk(r, { x, y: foot }, { x: x + lean * 0.4, y: hem - 2 }, w * 0.42, w * 0.32)) +
+    sheet(
+      fill(cutPoly(r, outline, 0.4), C.matureBruise) +
+        fill(cutPoly(r, crown, 0.4), C.matureCrown, 'opacity="0.9"') +
+        fill(cutPoly(r, ink, 0.3), C.mature, 'opacity="0.95"') +
+        fill(cutPoly(r, [top, ...side(-1).slice(0, 4), ...side(-0.45).slice(0, 4).reverse()], 0.3), C.matureLight, 'opacity="0.45"') +
+        scales.join(''),
+      2,
+    )
   );
 }
 
-/** A mushroom cap: a low clump of withered shelf fungi slumped on a rock bed; breaks after a few shots. */
+/**
+ * A parasol: a tall slender stalk with a ragged skirt ring, under a wide, flat cap with a dark
+ * boss at its centre and rings of scales round it.
+ */
+function parasol(r: Rng, x: number, foot: number, h: number, cap: number, lean = 0) {
+  const capY = foot - h;
+  const top = { x: x + lean, y: capY };
+  const arc = Array.from({ length: 11 }, (_, i) => {
+    const a = Math.PI + (i / 10) * Math.PI;
+    const boss = Math.exp(-((Math.cos(a) * 2.6) ** 2));
+    return { x: top.x + Math.cos(a) * cap, y: capY + Math.sin(a) * (cap * 0.26 + boss * cap * 0.1) };
+  });
+  const rim = Array.from({ length: 9 }, (_, i) => ({ x: top.x + cap * (0.9 - (i * 1.8) / 8), y: capY + 1.5 + (i % 2 ? 1 : 0) }));
+  const gills = ellipse(top.x, capY + 2, cap * 0.85, 2.6, C.matureGill) +
+    Array.from({ length: 11 }, (_, i) => {
+      const gx = top.x + cap * 0.8 * (-1 + (i * 2) / 10);
+      return `<path d="M${n(top.x)} ${n(capY + 1.2)}L${n(gx)} ${n(capY + 2.8)}" stroke="${C.matureShade}" stroke-width="0.6" opacity="0.8"/>`;
+    }).join('');
+  const scales = [0.38, 0.62, 0.84].flatMap((k, ring) =>
+    Array.from({ length: 4 + ring * 2 }, (_, i) => {
+      const a = Math.PI * (1.08 + ((i + 0.5) / (4 + ring * 2)) * 0.84);
+      return ellipse(top.x + Math.cos(a) * cap * k, capY + Math.sin(a) * cap * 0.26 * k * 1.3 - 0.5, 1.4 - ring * 0.25, 0.7, ring ? C.matureFleck : C.matureLight, `opacity="${0.85 - ring * 0.15}"`);
+    }),
+  );
+  const ringY = capY + h * 0.2;
+  const skirt = [{ x: top.x - 3, y: ringY - 1 }, { x: top.x + 3, y: ringY - 1 }, { x: top.x + 5, y: ringY + 2.5 }, { x: top.x + 2, y: ringY + 3.5 }, { x: top.x - 1, y: ringY + 2.5 }, { x: top.x - 5, y: ringY + 3 }];
+  return (
+    sheet(bulb(x, foot - 1, 4.5) + stalk(r, { x, y: foot - 2 }, top, 4.6, 3.2, lean * 0.3)) +
+    sheet(fill(cutPoly(r, skirt, 0.4), C.bone) + fill(polyPath(skirt.slice(1, 4)), C.boneShade, 'opacity="0.7"')) +
+    sheet(
+      gills +
+        fill(cutPoly(r, [...arc, ...rim], 0.4), C.matureBruise) +
+        fill(cutPoly(r, arc.slice(2, 6).concat([{ x: top.x - cap * 0.05, y: capY - cap * 0.12 }, { x: top.x - cap * 0.6, y: capY - 1 }]), 0.4), C.matureLight, 'opacity="0.4"') +
+        ellipse(top.x, capY - cap * 0.32, cap * 0.22, cap * 0.08, C.mature) +
+        ellipse(top.x - 1, capY - cap * 0.34, cap * 0.1, cap * 0.035, C.matureCrown) +
+        scales.join(''),
+      2,
+    )
+  );
+}
+
+/** A bell: a small conical cap with a flared rim, on its own thin stalk; hangs tipped over by `tilt` degrees. */
+function bell(r: Rng, top: Pt, cap: number, tilt: number) {
+  const { x, y } = top;
+  const outline = [
+    { x, y: y - cap * 1.35 },
+    { x: x + cap * 0.45, y: y - cap * 1.05 },
+    { x: x + cap * 0.8, y: y - cap * 0.4 },
+    { x: x + cap * 1.05, y: y + cap * 0.18 },
+    { x: x + cap * 0.5, y: y + cap * 0.05 },
+    { x: x - cap * 0.5, y: y + cap * 0.08 },
+    { x: x - cap * 1.05, y: y + cap * 0.2 },
+    { x: x - cap * 0.8, y: y - cap * 0.4 },
+    { x: x - cap * 0.45, y: y - cap * 1.05 },
+  ];
+  const crown = [outline[0], outline[1], { x: x + cap * 0.55, y: y - cap * 0.6 }, { x: x - cap * 0.55, y: y - cap * 0.6 }, outline[8]];
+  const streak = [outline[0], outline[8], outline[7], { x: x - cap * 0.45, y: y - cap * 0.35 }, { x: x - cap * 0.15, y: y - cap * 1.1 }];
+  return group(
+    fill(cutPoly(r, outline, 0.3), C.matureBruise) +
+      fill(cutPoly(r, crown, 0.3), C.matureCrown) +
+      fill(polyPath(streak), C.matureLight, 'opacity="0.45"') +
+      `<path d="M${n(x - cap * 0.95)} ${n(y + cap * 0.18)}L${n(x + cap * 0.95)} ${n(y + cap * 0.16)}" stroke="${C.mature}" stroke-width="1.1"/>`,
+    `rotate(${n(tilt)} ${n(x)} ${n(y)})`,
+  );
+}
+
+/** A cluster: a fan of thin stalks springing from one knot, each tipped with a bell, the tallest in the middle. */
+function bellCluster(r: Rng, x: number, foot: number, stems: { dx: number; h: number; lean: number; cap: number }[]) {
+  const tops = stems.map((s) => ({ ...s, top: { x: x + s.dx + s.lean, y: foot - s.h } }));
+  return (
+    sheet(tops.map((s) => stalk(r, { x: x + s.dx * 0.4, y: foot }, s.top, 2.6, 1.8, s.lean * 0.35)).join('') + ellipse(x, foot - 0.5, 6, 2.6, C.boneShade)) +
+    sheet(tops.map((s) => bell(r, s.top, s.cap, s.lean * 2.2)).join(''), 2)
+  );
+}
+
+/** A leaning mushroom: a domed cap on a stalk that curves out to one side, its cap tipped the same way. */
+function leaner(r: Rng, x: number, foot: number, h: number, cap: number, lean: number) {
+  const top = { x: x + lean, y: foot - h };
+  return (
+    sheet(stalk(r, { x, y: foot }, { x: top.x, y: top.y + 2 }, Math.max(4, cap * 0.32), Math.max(3, cap * 0.22), -lean * 0.25)) +
+    sheet(group(domeCap(r, top.x, top.y, cap, 0, 3, MATURE), `rotate(${n(lean * 0.9)} ${n(top.x)} ${n(top.y)})`), 2)
+  );
+}
+
+/** The original giant mushroom: a pale stalk under a broad domed cap, shelf fungi stepping up its stem. */
+function toadstool(r: Rng, foot: number) {
+  // Each shelf hangs from the stem, its outer edge slumped down.
+  const shelf = (y: number, s: number, size: number) =>
+    sheet(fill(cutPoly(r, [{ x: AX + s * 4, y: y - size * 0.3 }, { x: AX + s * (4 + size), y: y }, { x: AX + s * (4.5 + size * 0.8), y: y + size * 0.55 }, { x: AX + s * 4, y: y + size * 0.25 }], 0.4), C.matureLight) +
+      `<path d="M${n(AX + s * 5)} ${n(y + size * 0.15)}L${n(AX + s * (4 + size * 0.75))} ${n(y + size * 0.35)}" stroke="${C.matureShade}" stroke-width="0.8"/>`);
+  return (
+    contact(20, 7, 12) +
+    mushroom(r, AX, foot, 35, 23, 2.2, 5, MATURE) +
+    shelf(foot - 10, 1, 7) +
+    shelf(foot - 19, -1, 5) +
+    mushroom(r, AX - 14, foot + 4, 6, 6, 0, 1, MATURE)
+  );
+}
+
+/** How many species a giant mushroom comes in: more than a tile's variants, so it is picked by where it stands too (`tileLooks`). */
+const GIANT_MUSHROOM_SPECIES = 5;
+/** How many looks a terrain look comes in: 4 (one per tile variant), or more for the giant mushroom's species. */
+export const tileLooks = (look: string) => (look === 'giant mushroom' ? GIANT_MUSHROOM_SPECIES : 4);
+
+/**
+ * A giant mushroom: big mature fungus in one of five species, so a hollow full of them isn't a row
+ * of the same toadstool. An inkcap with a young one beside it; a parasol; a cluster of bells;
+ * a leaning pair; the broad-capped toadstool with shelves up its stem.
+ */
+function giantMushroom(variant: number) {
+  const r = pieceRng('giantMushroom', variant);
+  const foot = AY + 10;
+  switch (variant % GIANT_MUSHROOM_SPECIES) {
+    case 4:
+      return toadstool(r, foot);
+    case 0:
+      return contact(18, 6, 12) + inkcap(r, AX - 4, foot, 58, 12, -2) + inkcap(r, AX + 13, foot + 3, 30, 7, -1);
+    case 1:
+      return contact(22, 6, 12) + parasol(r, AX, foot, 46, 26, -2);
+    case 2:
+      return (
+        contact(18, 6, 12) +
+        bellCluster(r, AX, foot, [
+          { dx: -1, h: 52, lean: -2, cap: 9 },
+          { dx: 4, h: 44, lean: 6, cap: 8 },
+          { dx: -6, h: 38, lean: -9, cap: 7.5 },
+          { dx: 9, h: 28, lean: 11, cap: 6 },
+          { dx: -10, h: 22, lean: -13, cap: 5 },
+        ])
+      );
+    default:
+      return contact(20, 6, 12) + leaner(r, AX - 3, foot, 44, 17, -9) + leaner(r, AX + 5, foot + 2, 26, 10, 10);
+  }
+}
+
+/** A mushroom cap: a low clump of mature shelf fungi slumped on a rock bed; breaks after a few shots. */
 function mushroomCap(variant: number) {
   const r = pieceRng('mushroomCap', variant);
   const foot = AY + 10;
@@ -966,7 +1159,7 @@ function mushroomCap(variant: number) {
     [{ dx: 6, dy: -2, stem: 7, cap: 12 }, { dx: -9, dy: 2, stem: 4, cap: 9 }, { dx: 12, dy: 6, stem: 2, cap: 5 }],
     [{ dx: -6, dy: -1, stem: 5, cap: 10 }, { dx: 7, dy: -3, stem: 7, cap: 9 }, { dx: -1, dy: 5, stem: 3, cap: 9 }],
   ][variant % 4];
-  return contact(18, 6, 12) + rockBed(r, AX, foot - 2, 16, 6) + caps.map((c) => mushroom(r, AX + c.dx, foot + c.dy, c.stem, c.cap, 1.6, 2, WITHERED)).join('');
+  return contact(18, 6, 12) + rockBed(r, AX, foot - 2, 16, 6) + caps.map((c) => mushroom(r, AX + c.dx, foot + c.dy, c.stem, c.cap, 1.6, 2, MATURE)).join('');
 }
 
 /** A cave thorn vine: dark creepers curling out from a knot, bristling with crimson spikes; it reaches into neighbouring vines. */
@@ -1220,11 +1413,8 @@ export const DECOR_KINDS = Object.keys(DECOR_ART);
 const OAK: Foliage = { main: '#23421f', light: '#2f5628', dark: '#152a12' };
 const WILLOW: Foliage = { main: '#3a5a32', light: '#4a6c3e', dark: '#283f22' };
 
-/** Looks whose neighbours grow into each other across the seam, and how. */
+/** Looks whose neighbours grow into each other across the seam, and how. Trees never do: each stands on its own. */
 const JOIN_ART: Readonly<Record<string, (dir: 'across' | 'down') => string>> = {
-  tree: (d) => canopyJoin(TREE, d),
-  oak: (d) => canopyJoin(OAK, d),
-  willow: (d) => canopyJoin(WILLOW, d),
   'thorn bush': (d) => vineJoin(d),
   stalagmite: (d) => stalagmiteJoin(d),
   'loose rock': (d) => rubbleJoin(d),

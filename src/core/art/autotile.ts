@@ -64,7 +64,7 @@ export function wallJoins(tiles: readonly (readonly Tile[])[], joinable: readonl
   return joins;
 }
 
-/** Every seam where two touching tiles of a `joinable` kind grow into each other (tree canopies, thorn vines), once each. */
+/** Every seam where two touching tiles of a `joinable` kind grow into each other (thorn vines, rubble), once each. */
 export function joinsBetween(tiles: readonly (readonly Tile[])[], joinable: readonly Tile[]): Join[] {
   const joins: Join[] = [];
   tiles.forEach((row, y) =>

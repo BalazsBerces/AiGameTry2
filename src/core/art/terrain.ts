@@ -513,7 +513,7 @@ export function wallGems(side: WallSide, variant: number): WallGem[] {
   if (side === 'corner') return [];
   const r = pieceRng('wallGems', side, variant);
   const roll = r.next();
-  const count = roll < 0.45 ? 0 : roll < 0.82 ? 1 : 2;
+  const count = roll < 0.74 ? 0 : roll < 0.93 ? 1 : 2;
   const into = INTO[side];
   // Along the wall, the gems keep apart; across it, they sit 14-24 px back from the room-facing edge.
   const slots = count === 2 ? [-12, 12] : [0];

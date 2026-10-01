@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GLOOM, TINTED, WALL_SHADE, type LightPool } from '../../core/art/gloom';
+import { BLOOM, GLOOM, TINTED, WALL_SHADE, type LightPool } from '../../core/art/gloom';
 import { DARK_DEPTH } from '../entities/bosses/candleWitch';
 
 /** Under the Candle Witch's own, deeper dark (and the HUD, a scene of its own), so her fight works as it always has. */
@@ -9,22 +9,27 @@ const BRUSH = 128;
 /** The gloom reaches this far past the view, so the camera never outruns it for a frame. */
 const MARGIN = 64;
 
-/** A soft round brush: solid white in the middle, fading to nothing at the rim. */
-function makeBrush(scene: Phaser.Scene, key: string) {
+/** A round white brush, its strength going out from the middle through `stops` ([offset, alpha]). */
+function makeBrush(scene: Phaser.Scene, key: string, stops: [number, number][]) {
   if (scene.textures.exists(key)) return;
   const tex = scene.textures.createCanvas(key, BRUSH * 2, BRUSH * 2)!;
   const g = tex.getContext();
   const grad = g.createRadialGradient(BRUSH, BRUSH, 0, BRUSH, BRUSH, BRUSH);
-  grad.addColorStop(0, 'rgba(255,255,255,1)');
-  grad.addColorStop(0.45, 'rgba(255,255,255,0.9)');
-  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  for (const [at, alpha] of stops) grad.addColorStop(at, `rgba(255,255,255,${alpha})`);
   g.fillStyle = grad;
   g.fillRect(0, 0, BRUSH * 2, BRUSH * 2);
   tex.refresh();
 }
+/** Solid in the middle, fading to nothing at the rim: what light pools are cut out of the gloom with. */
+const POOL_STOPS: [number, number][] = [[0, 1], [0.45, 0.9], [1, 0]];
+/** Bright at the middle and dropping off fast, then a long faint tail, as light falls off from its source. */
+const FALLOFF_STOPS: [number, number][] = [[0, 1], [0.1, 0.7], [0.25, 0.35], [0.5, 0.12], [0.75, 0.04], [1, 0]];
 
-/** A light pool placed in the world, cast in `tint` (a crystal's cyan) where it has one. */
-export type PlacedPool = LightPool & { x: number; y: number; tint?: number };
+/**
+ * A light pool placed in the world. A coloured one (a crystal's) casts its `tint`, and `core` is the
+ * reach of the glowing thing itself, lifted wholly out of the gloom so the light reads as coming from it.
+ */
+export type PlacedPool = LightPool & { x: number; y: number; tint?: number; core?: number };
 
 /** What the gloom is drawn over this frame. */
 export interface GloomFrame {
@@ -37,8 +42,9 @@ export interface GloomFrame {
 
 /**
  * The gloom over the view (core/gloom): a render texture filled with it each frame and erased back
- * to light round each light pool, a soft glow in its colour laid over a coloured one. Nothing but drawing: which rooms, which pools and how strong all
- * come from the core.
+ * to light round each light pool; a coloured one's glower shows out of the gloom at full brightness,
+ * blooms, and lights its pool in its colour, falling off fast from it. Nothing but drawing: which
+ * rooms, which pools and how strong all come from the core.
  */
 export class GloomLayer {
   private gloom: Phaser.GameObjects.RenderTexture;
@@ -46,11 +52,13 @@ export class GloomLayer {
   /** The deeper shade over the walls, and the brush its bands are drawn with. */
   private shade: Phaser.GameObjects.RenderTexture;
   private bands: Phaser.GameObjects.Graphics;
-  /** Coloured glows, pooled: one per tinted light pool, the rest hidden. */
+  /** Coloured light, pooled: a wash over each tinted pool and a bloom on its source, the rest hidden. */
   private glows: Phaser.GameObjects.Image[] = [];
+  private blooms: Phaser.GameObjects.Image[] = [];
 
   constructor(private scene: Phaser.Scene) {
-    makeBrush(scene, 'gloom-brush');
+    makeBrush(scene, 'gloom-brush', POOL_STOPS);
+    makeBrush(scene, 'light-falloff', FALLOFF_STOPS);
     const cam = scene.cameras.main;
     this.gloom = scene.add.renderTexture(0, 0, cam.width + MARGIN * 2, cam.height + MARGIN * 2).setOrigin(0).setDepth(GLOOM_DEPTH).setVisible(false);
     this.stamp = scene.make.image({ key: 'gloom-brush', add: false });
@@ -64,15 +72,9 @@ export class GloomLayer {
     this.gloom.setVisible(!!frame);
     this.shade.setVisible(!!frame);
     const tinted = pools?.filter((p) => p.tint !== undefined) ?? [];
-    while (this.glows.length < tinted.length) {
-      // Over the gloom: the pool is lit in the glower's colour, not cut back to white.
-      this.glows.push(this.scene.add.image(0, 0, 'gloom-brush').setBlendMode(Phaser.BlendModes.ADD).setDepth(GLOOM_DEPTH + 0.05));
-    }
-    this.glows.forEach((g, i) => {
-      const p = tinted[i];
-      g.setVisible(!!p);
-      if (p) g.setPosition(p.x, p.y).setScale((p.radius * 0.9) / BRUSH).setTint(p.tint!).setAlpha(TINTED.glow * p.intensity);
-    });
+    // Over the gloom: the pool is lit in the glower's colour, falling off fast from it, and the glower itself blooms.
+    this.place(this.glows, tinted, (g, p) => g.setScale((p.radius * 1.1) / BRUSH).setAlpha(TINTED.glow * p.intensity));
+    this.place(this.blooms, tinted, (g, p) => g.setScale(((p.core ?? 0) * 1.8) / BRUSH).setAlpha(BLOOM * (0.5 + p.intensity)));
     if (!pools) return;
     const cam = this.scene.cameras.main;
     const left = cam.scrollX - MARGIN;
@@ -81,8 +83,23 @@ export class GloomLayer {
     for (const p of pools) {
       this.stamp.setScale(p.radius / BRUSH).setAlpha(p.intensity * (p.tint === undefined ? 1 : TINTED.lift)).setPosition(p.x - left, p.y - top);
       this.gloom.erase(this.stamp);
+      // The glowing thing itself shows at its full brightness.
+      if (p.core) {
+        this.stamp.setScale(p.core / BRUSH).setAlpha(1);
+        this.gloom.erase(this.stamp);
+      }
     }
     this.shadeWalls(frame!, left, top);
+  }
+
+  /** Keeps one coloured light image in `images` on each of `pools`, set up by `look`; spare ones hidden. */
+  private place(images: Phaser.GameObjects.Image[], pools: readonly PlacedPool[], look: (g: Phaser.GameObjects.Image, p: PlacedPool) => void) {
+    while (images.length < pools.length) images.push(this.scene.add.image(0, 0, 'light-falloff').setBlendMode(Phaser.BlendModes.ADD).setDepth(GLOOM_DEPTH + 0.05));
+    images.forEach((g, i) => {
+      const p = pools[i];
+      g.setVisible(!!p);
+      if (p) look(g.setPosition(p.x, p.y).setTint(p.tint!), p);
+    });
   }
 
   /** Stacks the walls' shade in bands going out from the room's edge, then clears it from the doorways. */

@@ -761,7 +761,7 @@ export class GameScene extends Phaser.Scene {
     return [
       { x: this.player.x, y: this.player.y, ...PLAYER_POOL },
       ...shots.filter((s) => s.active).map((s) => ({ x: s.x, y: s.y, radius: SHOT_POOL.radius * (s.radius / SHOT_ART.enemy), intensity: SHOT_POOL.intensity })),
-      ...this.glowersOf(room).map((g) => ({ x: ox + g.x, y: oy + g.y, radius: g.radius, intensity: g.intensity * pulse(g.seed, time), tint: GLOW_TINT[g.tint] })),
+      ...this.glowersOf(room).map((g) => ({ x: ox + g.x, y: oy + g.y, radius: g.radius, intensity: g.intensity * pulse(g.seed, time), tint: GLOW_TINT[g.tint], core: g.core })),
     ];
   }
 

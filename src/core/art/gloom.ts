@@ -68,10 +68,15 @@ export const GLOW_COLOR: Record<GlowTint, string> = { cyan: '#3a78f0', violet: '
  * A coloured glower's light is its colour, not white: it lifts only `lift` of the gloom a white light
  * would, and lays its colour over the pool at `glow` strength.
  */
-export const TINTED = { lift: 0.45, glow: 0.42 };
+export const TINTED = { lift: 0.45, glow: 0.6 };
+/** How bright a coloured glower's bloom is: a small strong glow of its colour right on the thing itself. */
+export const BLOOM = 0.38;
+
+/** A coloured light: its pool, its colour, and `core`, the reach in px of the glowing thing itself (fully out of the gloom). */
+export type ColouredLight = LightPool & { tint: GlowTint; core: number };
 
 /** Something fixed in a room that casts a light pool: where (px from the room's top-left tile corner), how far and strong, and its pulse's seed. */
-export interface Glower extends LightPool {
+export interface Glower extends ColouredLight {
   x: number;
   y: number;
   tint: GlowTint;
@@ -79,24 +84,24 @@ export interface Glower extends LightPool {
 }
 
 /** Terrain looks that glow, by look: crystal cyan, glowing fungus violet. Mushroom caps stay dull. */
-const GLOWING_LOOKS: Readonly<Record<string, LightPool & { tint: GlowTint; rise: number }>> = {
-  'crystal cluster': { radius: 85, intensity: 0.5, tint: 'cyan', rise: 6 },
-  'crystal spire': { radius: 95, intensity: 0.5, tint: 'cyan', rise: 14 },
-  glowshroom: { radius: 90, intensity: 0.55, tint: 'violet', rise: 6 },
-  'giant mushroom': { radius: 100, intensity: 0.5, tint: 'violet', rise: 16 },
+const GLOWING_LOOKS: Readonly<Record<string, ColouredLight & { rise: number }>> = {
+  'crystal cluster': { radius: 85, intensity: 0.5, tint: 'cyan', rise: 6, core: 30 },
+  'crystal spire': { radius: 95, intensity: 0.5, tint: 'cyan', rise: 14, core: 34 },
+  glowshroom: { radius: 90, intensity: 0.55, tint: 'violet', rise: 6, core: 24 },
+  'giant mushroom': { radius: 100, intensity: 0.5, tint: 'violet', rise: 16, core: 34 },
 };
 /** Floor decor that glints in the gloom: very faint. */
-const GLOWING_DECOR: Readonly<Record<string, LightPool & { tint: GlowTint }>> = {
-  glints: { radius: 36, intensity: 0.22, tint: 'cyan' },
-  shards: { radius: 32, intensity: 0.18, tint: 'cyan' },
-  spores: { radius: 36, intensity: 0.22, tint: 'violet' },
+const GLOWING_DECOR: Readonly<Record<string, ColouredLight>> = {
+  glints: { radius: 36, intensity: 0.22, tint: 'cyan', core: 8 },
+  shards: { radius: 32, intensity: 0.18, tint: 'cyan', core: 8 },
+  spores: { radius: 36, intensity: 0.22, tint: 'violet', core: 8 },
 };
 /** A wall gem's faint light. */
-export const WALL_GEM_GLOW: LightPool & { tint: GlowTint } = { radius: 44, intensity: 0.3, tint: 'cyan' };
+export const WALL_GEM_GLOW: ColouredLight = { radius: 44, intensity: 0.3, tint: 'cyan', core: 10 };
 /** How a terrain look glows (raised `rise` px off its tile's centre, to the glowing part), or undefined if it stays dull. */
-export const lookGlow = (look: string): (LightPool & { tint: GlowTint; rise: number }) | undefined => GLOWING_LOOKS[look];
+export const lookGlow = (look: string): (ColouredLight & { rise: number }) | undefined => GLOWING_LOOKS[look];
 /** How a decor kind glints, or undefined if it doesn't. */
-export const decorGlow = (kind: string): (LightPool & { tint: GlowTint }) | undefined => GLOWING_DECOR[kind];
+export const decorGlow = (kind: string): ColouredLight | undefined => GLOWING_DECOR[kind];
 
 /** What a room's fixed glowers are read from. */
 export interface GlowRoom {
@@ -125,7 +130,7 @@ export function glowersOf(room: GlowRoom): Glower[] {
       const glow = look ? lookGlow(look) : undefined;
       if (!glow) return [];
       const c = centre({ x, y });
-      return [{ x: c.x, y: c.y - glow.rise, radius: glow.radius, intensity: glow.intensity, tint: glow.tint, seed: seedOf({ x, y }, 0) }];
+      return [{ x: c.x, y: c.y - glow.rise, radius: glow.radius, intensity: glow.intensity, tint: glow.tint, core: glow.core, seed: seedOf({ x, y }, 0) }];
     }),
   );
   const decor = room.decor.flatMap((d) => {

@@ -85,6 +85,8 @@ import { createFalloff, createHitGate, type Falloff } from '../../core/player/mu
 import { PaperLayer, type PaperActor } from '../art/paperLayer';
 import { footDepth } from '../../core/art/depth';
 import { AmbientLayer } from '../art/ambientLayer';
+import { GloomLayer, type PlacedPool } from '../art/gloomLayer';
+import { PLAYER_POOL, SHOT_POOL, isGloomy } from '../../core/art/gloom';
 import { HIT_STOP, createHitStop, type HitStop } from '../../core/juice/hitStop';
 import { createShake, type Shake } from '../../core/juice/shake';
 import { shakeScreen } from '../effects/shellBurst';
@@ -396,6 +398,8 @@ export class GameScene extends Phaser.Scene {
   private playerArt?: PaperActor;
   /** Faint dust drifting through the rooms. */
   private ambient!: AmbientLayer;
+  /** The caves' gloom, cut by light pools round the player and shots in flight. */
+  private gloom!: GloomLayer;
   /** The game's clock: real time less every hit-stop so far. Gameplay timers all run on it. */
   now = 0;
   private hitStop: HitStop = createHitStop();
@@ -592,6 +596,7 @@ export class GameScene extends Phaser.Scene {
     // The playfield is one map cell; the label strip under it belongs to the HUD.
     this.cameras.main.setViewport(0, 0, CELL_PX_W, CELL_PX_H);
     this.ambient = new AmbientLayer(this);
+    this.gloom = new GloomLayer(this);
     this.cameras.main.setBackgroundColor(themeForFloor(start.floorIndex).palette.background);
     this.showRoomsAround(start);
     this.followInside(start);
@@ -715,6 +720,16 @@ export class GameScene extends Phaser.Scene {
     this.scraps.update(delta);
     this.applyShake(time);
     this.ambient.update(!!themeForFloor(this.currentRoom.floorIndex).paper);
+    this.gloom.update(isGloomy({ floorIndex: this.currentRoom.floorIndex, enemies: this.currentRoom.layout.enemies }) ? this.lightPools() : undefined);
+  }
+
+  /** This frame's light pools in the gloom: round the player, and round every shot in flight (scaled with it). */
+  private lightPools(): PlacedPool[] {
+    const shots = [...this.shots.getChildren(), ...this.enemyShots.getChildren()] as Phaser.GameObjects.Arc[];
+    return [
+      { x: this.player.x, y: this.player.y, ...PLAYER_POOL },
+      ...shots.filter((s) => s.active).map((s) => ({ x: s.x, y: s.y, radius: SHOT_POOL.radius * (s.radius / SHOT_ART.enemy), intensity: SHOT_POOL.intensity })),
+    ];
   }
 
   /**

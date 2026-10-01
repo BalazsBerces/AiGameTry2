@@ -562,8 +562,8 @@ function caveTerrainSheet(): string {
   const variants = [0, 1, 2, 3];
   const looks: [string, string][] = [
     ['stalagmite', 'Stalagmites'], ['loose rock', 'Loose rock <span>breakable</span>'], ['thorn vine', 'Thorn vines <span>hurt on touch</span>'],
-    ['boulder', 'Boulders <span>the crusher</span>'], ['crystal cluster', 'Crystal clusters <span>reflect shots</span>'], ['glowshroom', 'Glowshrooms <span>stun burst</span>'],
-    ['crystal spire', 'Crystal spires <span>crystal grotto</span>'], ['giant mushroom', 'Giant mushrooms <span>mushroom hollow</span>'], ['mushroom cap', 'Mushroom caps <span>mushroom hollow, breakable</span>'],
+    ['boulder', 'Boulders <span>the crusher</span>'], ['crystal cluster', 'Crystal clusters <span>reflect shots; quartz prisms fanned from one root, half buried in a crust of rock and earth, cracks running into the floor</span>'], ['glowshroom', 'Glowshrooms <span>stun burst</span>'],
+    ['crystal spire', 'Crystal spires <span>crystal grotto; prisms studding the rock, a rooted cluster at the foot</span>'], ['giant mushroom', 'Giant mushrooms <span>mushroom hollow</span>'], ['mushroom cap', 'Mushroom caps <span>mushroom hollow, breakable</span>'],
   ];
   const tiles = looks.map(([look, title]) => strip(title, variants.map((v) => fig(terrainSvg.tile(look, v, 0), `${look} ${v + 1}`)).join('')));
   const joins = strip('Joins <span>neighbouring stalagmites fuse, thorn vines reach into each other</span>',

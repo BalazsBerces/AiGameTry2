@@ -263,19 +263,74 @@ function floorTile(variant: number, kind: 'normal' | 'item' | 'boss') {
 
 const C = P.caves;
 
-/** A few hard-cut crystal shards: an icy body, a pale facet and a deep shaded side. */
-function shards(key: string, x: number, y: number, size: number, count: number) {
+/**
+ * A quartz prism standing out of the ground at `root`, leaning `lean` radians off upright: parallel
+ * sides `w` wide and `h` long to its point, three faces showing (lit on the left, mid, shaded on the
+ * right) each running up into its own facet of the point, and a hard highlight down the lit edge.
+ * `snapped`, its point is broken off in a pale jagged break (a stub).
+ */
+function prism(r: Rng, root: Pt, h: number, w: number, lean: number, snapped = false) {
+  const u = { x: Math.sin(lean), y: -Math.cos(lean) };
+  const v = { x: Math.cos(lean), y: Math.sin(lean) };
+  const at = (k: number, s: number) => ({ x: root.x + u.x * k + v.x * s, y: root.y + u.y * k + v.y * s });
+  const point = Math.min(w * 1.5, h * 0.4);
+  const body = snapped ? h * (0.75 + r.next() * 0.15) : h - point;
+  const edges = [-w, -w * 0.3, w * 0.35, w];
+  const tip = at(h, (r.next() - 0.5) * w * 0.3);
+  const side = (i: number, tone: string) => fill(polyPath([at(0, edges[i]), at(body, edges[i]), at(body, edges[i + 1]), at(0, edges[i + 1])]), tone);
+  const facet = (i: number, tone: string) => fill(polyPath([at(body, edges[i]), tip, at(body, edges[i + 1])]), tone);
+  const outline = fill(polyPath(snapped ? [at(-1, -w - 0.6), at(body + 0.6, -w - 0.6), at(body + 0.6, w + 0.6), at(-1, w + 0.6)] : [at(-1, -w - 0.6), at(body, -w - 0.6), { x: tip.x + u.x * 0.8, y: tip.y + u.y * 0.8 }, at(body, w + 0.6), at(-1, w + 0.6)]), C.crystalDeep);
+  const faces = side(0, C.crystal) + side(1, C.crystalShade) + side(2, C.crystalDeep);
+  // A break: the snapped top a jagged pale scar across the body's end.
+  const top = snapped
+    ? fill(polyPath([at(body, -w), at(body + w * 0.35, -w * 0.4), at(body - w * 0.1, w * 0.1), at(body + w * 0.25, w * 0.6), at(body, w), at(body - w * 0.45, w * 0.3), at(body - w * 0.3, -w * 0.5)]), C.crystalLight, 'opacity="0.9"')
+    : facet(0, C.crystalLight) + facet(1, C.crystal) + facet(2, C.crystalShade);
+  const edge = at(body * 0.08, edges[1]);
+  const highlight = `<path d="M${n(edge.x)} ${n(edge.y)}L${n(at(body, edges[1]).x)} ${n(at(body, edges[1]).y)}${snapped ? '' : `L${n(tip.x)} ${n(tip.y)}`}" stroke="${C.crystalLight}" stroke-width="${n(Math.max(0.6, w * 0.16))}" fill="none" stroke-linejoin="bevel" opacity="0.95"/>`;
+  return outline + faces + top + highlight;
+}
+
+/**
+ * A few quartz prisms fanned out of one root at x,y (their bases a little under it, for the ground
+ * to bury): the tallest near the middle and in front, the rest leaning out to either side.
+ */
+function shards(key: string, x: number, y: number, size: number, count: number, snapped = false) {
   const r = pieceRng('shards', key);
+  const mid = (count - 1) / 2;
+  const prisms = Array.from({ length: count }, (_, i) => ({
+    i,
+    lean: (i - mid) * 0.42 + (r.next() - 0.5) * 0.25,
+    h: size * (0.75 + r.next() * 0.4) * (i === Math.floor(count / 2) ? 1.25 : 1),
+    w: size * (0.17 + r.next() * 0.05),
+  }));
+  // Outermost first, so the upright ones in the middle stand in front.
+  return prisms
+    .sort((a, b) => Math.abs(b.i - mid) - Math.abs(a.i - mid))
+    .map((p) => prism(r, { x: x + (p.i - mid) * p.w * 0.9, y: y + 2 }, p.h, p.w, p.lean, snapped))
+    .join('');
+}
+
+/** The crust crystal breaks out of: a jagged lip of earth and rock across the prisms' bases, crags and grit on it. */
+function crust(r: Rng, x: number, y: number, rx: number, ry: number) {
+  const lip = jagged(r, x, y, rx, ry, 16, 0.22);
+  const crags = [-0.6, 0.05, 0.55].map((k) => crag(r, x + rx * k + (r.next() - 0.5) * 3, y + (r.next() - 0.3) * ry * 0.6, 2.6 + r.next() * 2.2, r.next() < 0.35 ? OCHRE_ROCK : ROCK)).join('');
+  const grit = Array.from({ length: 5 }, () => `<circle cx="${n(x + (r.next() - 0.5) * rx * 1.8)}" cy="${n(y + (r.next() - 0.5) * ry)}" r="${n(0.6 + r.next() * 0.7)}" fill="${C.rockLight}"/>`).join('');
+  return sheet(fill(polyPath(lip), C.rockDark) + fill(polyPath(lip.map((p) => ({ x: p.x * 0.85 + x * 0.15, y: p.y * 0.7 + (y + ry * 0.3) * 0.3 }))), C.earthPatch) + grit) + crags;
+}
+
+/** Cracks in the floor running out from where crystal broke through the ground at x,y. */
+function floorCracks(r: Rng, x: number, y: number, reach: number, count: number) {
   return Array.from({ length: count }, (_, i) => {
-    const lean = (i - (count - 1) / 2) * 0.45 + (r.next() - 0.5) * 0.3;
-    const h = size * (0.7 + r.next() * 0.5) * (i === Math.floor(count / 2) ? 1.25 : 1);
-    const w = size * 0.32;
-    const bx = x + (i - (count - 1) / 2) * w * 1.4;
-    const tip = { x: bx + Math.sin(lean) * h, y: y - Math.cos(lean) * h };
-    const body = cutPoly(r, [{ x: bx - w, y }, { x: bx - w * 0.8, y: y - h * 0.55 }, tip, { x: bx + w * 0.8, y: y - h * 0.5 }, { x: bx + w, y }], 0.3);
-    const facet = polyPath([{ x: bx - w * 0.2, y }, tip, { x: bx + w * 0.8, y: y - h * 0.5 }, { x: bx + w, y }]);
-    const glint = polyPath([{ x: bx - w * 0.6, y: y - h * 0.15 }, { x: bx - w * 0.5, y: y - h * 0.5 }, { x: tip.x - w * 0.15, y: tip.y + h * 0.18 }, { x: bx - w * 0.15, y: y - h * 0.2 }]);
-    return fill(body, C.crystal) + fill(facet, C.crystalShade) + fill(glint, C.crystalLight, 'opacity="0.85"');
+    // Out to either side and a little toward the camera, wandering as it goes.
+    const dir = { x: i % 2 ? 1 : -1, y: 0.15 + r.next() * 0.45 };
+    let p = { x: x + dir.x * reach * 0.4, y: y + dir.y * reach * 0.15 };
+    let d = `M${n(p.x)} ${n(p.y)}`;
+    for (let s = 0; s < 3; s++) {
+      p = { x: p.x + dir.x * reach * 0.2 + (r.next() - 0.5) * 3, y: p.y + dir.y * reach * 0.2 + (r.next() - 0.5) * 2.5 };
+      d += `L${n(p.x)} ${n(p.y)}`;
+    }
+    return `<path d="${d}" stroke="${C.slabLight}" stroke-width="1" fill="none" opacity="0.45" transform="translate(0 0.9)"/>` +
+      `<path d="${d}" stroke="${C.crack}" stroke-width="${n(1.3 - i * 0.12)}" fill="none" stroke-linejoin="round" stroke-linecap="round"/>`;
   }).join('');
 }
 
@@ -748,36 +803,44 @@ function boulder(variant: number) {
   );
 }
 
-/** A crystal cluster: hard, faceted, icy shards breaking out of a bed of rock; bounces shots. */
+/**
+ * A crystal cluster: quartz prisms fanned out of one root, a smaller spray beside them, both half
+ * buried in a crust of rock and earth with cracks running out into the floor; bounces shots.
+ */
 function crystalCluster(variant: number) {
   const r = pieceRng('crystalCluster', variant);
   const foot = AY + 8;
   const [big, small] = [[30, 3], [26, 2], [34, 3], [28, 4]][variant % 4];
+  const side = [11, -12, 10, -9][variant % 4];
   return (
     contact(19, 6, 12) +
+    floorCracks(r, AX, foot + 3, 30, 3 + (variant % 2)) +
     ellipse(AX, foot - 4, 20, 10, C.crystal, 'opacity="0.12"') +
     rockBed(r, AX, foot, 17, 7) +
     sheet(shards(`cluster${variant}`, AX - 2 + (variant % 2) * 4, foot, big, small), 2) +
-    sheet(shards(`clusterFront${variant}`, AX + [11, -12, 10, -9][variant % 4], foot + 5, 13, 2), 2) +
-    crag(r, AX - 13 + (variant % 2) * 24, foot + 4, 4, ROCK)
+    sheet(shards(`clusterFront${variant}`, AX + side, foot + 4, 13, 2), 2) +
+    crust(r, AX + side * 0.25, foot + 4, 19, 6)
   );
 }
 
-/** A crystal spire: a tall column of rock studded with crystal, a cluster at its foot. */
+/** A crystal spire: a tall column of rock studded with prisms, a cluster at its foot breaking out of a crust of rock and earth. */
 function crystalSpire(variant: number) {
   const r = pieceRng('crystalSpire', variant);
   const foot = AY + 8;
   const h = 46 + (variant % 3) * 3;
+  const footAt = AX + (variant % 2 ? -11 : 11);
   const studs = [0.35, 0.6, 0.82].slice(0, 2 + (variant % 2)).map((k, i) => {
     const s = i % 2 ? 1 : -1;
     return shards(`spireStud${variant}${i}`, AX + s * (7 - k * 5), foot - h * k + 4, 11 - k * 4, 2);
   });
   return (
     contact(20, 7, 12) +
+    floorCracks(r, AX, foot + 4, 30, 3) +
     rockBed(r, AX, foot - 1, 18, 7) +
     rockSpire(r, AX, foot, h, 15, ROCK) +
     sheet(studs.join(''), 2) +
-    sheet(shards(`spireFoot${variant}`, AX + (variant % 2 ? -11 : 11), foot + 4, 16, 3), 2)
+    sheet(shards(`spireFoot${variant}`, footAt, foot + 3, 16, 3), 2) +
+    crust(r, (AX + footAt) / 2, foot + 4, 17, 5.5)
   );
 }
 
@@ -993,7 +1056,7 @@ const DECOR_ART: Readonly<Record<string, (variant: number) => string>> = {
     const r = pieceRng('caveShards', v);
     // Broken crystal lying flat, and now and then a stub still standing.
     const lying = [{ x: -5, y: 1 }, { x: 4, y: -2 }, { x: 1, y: 4 }].slice(0, 2 + (v % 2)).map((p) => sliver(r, DX + p.x, DY + p.y, 4 + r.next() * 3, r.next() * Math.PI));
-    return sheet(lying.join('') + (v >= 2 ? shards(`decor${v}`, DX + (v === 2 ? 6 : -6), DY + 2, 6, 2) : ''));
+    return sheet(lying.join('') + (v >= 2 ? shards(`decor${v}`, DX + (v === 2 ? 6 : -6), DY + 1, 7, 2, true) : ''));
   },
   glints: (v) => {
     const r = pieceRng('glints', v);
@@ -1061,18 +1124,24 @@ const DECOR_ART: Readonly<Record<string, (variant: number) => string>> = {
   },
 };
 
-/** A shard of crystal lying flat: an icy sliver, its far half in shade and a pale edge catching the light. */
+/**
+ * A broken prism lying flat: parallel sides running to a point at one end and snapped off at the
+ * other, its upper face lit and its lower in shade, a hard ridge between them and a pale break.
+ */
 function sliver(r: Rng, x: number, y: number, len: number, angle: number) {
   // Seen from above at a slant, so its run across the screen is foreshortened up and down.
   const along = { x: Math.cos(angle), y: Math.sin(angle) * 0.6 };
   const across = { x: -Math.sin(angle), y: Math.cos(angle) * 0.6 };
-  const w = len * 0.42;
+  const w = len * 0.3;
   const at = (a: number, b: number) => ({ x: x + along.x * a + across.x * b, y: y + along.y * a + across.y * b });
-  const tip = at(len, (r.next() - 0.5) * w);
-  const tail = at(-len * 0.45, 0);
-  return fill(cutPoly(r, [tail, at(0, -w), tip, at(len * 0.1, w)], 0.2), C.crystal) +
-    fill(polyPath([at(-len * 0.2, 0), tip, at(len * 0.1, w)]), C.crystalShade) +
-    `<path d="M${n(tail.x)} ${n(tail.y)}L${n(at(0, -w).x)} ${n(at(0, -w).y)}L${n(tip.x)} ${n(tip.y)}" stroke="${C.crystalLight}" stroke-width="0.7" fill="none" opacity="0.9"/>`;
+  const [tail, shoulder] = [-len * 0.5, len * 0.55];
+  const tip = at(len, (r.next() - 0.5) * w * 0.4);
+  const brk =[at(tail, -w), at(tail - w * 0.5, -w * 0.2), at(tail + w * 0.2, w * 0.3), at(tail - w * 0.2, w)];
+  return fill(polyPath([...brk, at(shoulder, w), tip, at(shoulder, -w)]), C.crystalDeep) +
+    fill(polyPath([at(tail, -w * 0.75), at(shoulder, -w * 0.75), tip, at(shoulder, 0), at(tail, 0)]), C.crystal) +
+    fill(polyPath([at(tail, 0), at(shoulder, 0), tip, at(shoulder, w * 0.8), at(tail, w * 0.8)]), C.crystalShade) +
+    fill(polyPath(brk), C.crystalLight, 'opacity="0.85"') +
+    `<path d="M${n(at(tail, 0).x)} ${n(at(tail, 0).y)}L${n(at(shoulder, 0).x)} ${n(at(shoulder, 0).y)}L${n(tip.x)} ${n(tip.y)}" stroke="${C.crystalLight}" stroke-width="0.7" fill="none" opacity="0.9"/>`;
 }
 
 /** A four-pointed glint of light. */

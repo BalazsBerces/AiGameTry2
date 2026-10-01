@@ -362,15 +362,26 @@ function crag(r: Rng, cx: number, cy: number, rad: number, tone: RockTone) {
   return sheet(fill(polyPath(pts), tone.dark) + fill(polyPath(top), tone.main) + fill(polyPath(facet), tone.light, 'opacity="0.9"') + scar, rad > 14 ? 2 : 1);
 }
 
-/** A rock spire jutting up out of the wall, lit on its left flank. */
-function spire(r: Rng, x: number, y: number, h: number) {
+/**
+ * A rock spire jutting up out of the wall, lit on its left flank, grown out of the wall's rock like a
+ * stalagmite out of its heap: its foot flared and shading into deep rock, rubble over its base. `rr` draws the rooting.
+ */
+function spire(r: Rng, rr: Rng, x: number, y: number, h: number) {
   const w = 6 + r.next() * 4;
   const tip = { x: x + (r.next() - 0.5) * h * 0.3, y: y - h };
   const mid = { x: x + (tip.x - x) * 0.5 + (r.next() - 0.5) * 3, y: y - h * 0.5 };
-  return sheet(
-    fill(polyPath([{ x: x - w, y }, { x: mid.x - w * 0.55, y: mid.y }, tip, { x: mid.x + w * 0.5, y: mid.y }, { x: x + w, y }]), C.rockDark) +
-      fill(polyPath([{ x: x - w, y }, { x: mid.x - w * 0.55, y: mid.y }, tip, { x: mid.x, y: mid.y + 2 }, { x: x - 1, y }]), C.stalactite),
-    2,
+  // Its flanks `k` of the way up, just inside them, `s` -1 left and 1 right (0 its middle).
+  const edge = (k: number, s: number) => {
+    const [a, b] = k < 0.5 ? [{ x: x + s * w, y }, { x: mid.x + s * w * 0.52, y: mid.y }] : [{ x: mid.x + s * w * 0.52, y: mid.y }, tip];
+    const t = k < 0.5 ? k * 2 : k * 2 - 1;
+    return { x: a.x + (b.x - a.x) * t - s * 0.8, y: a.y + (b.y - a.y) * t };
+  };
+  return (
+    sheet(
+      fill(polyPath([{ x: x - w, y }, { x: mid.x - w * 0.55, y: mid.y }, tip, { x: mid.x + w * 0.5, y: mid.y }, { x: x + w, y }]), C.rockDark) +
+        fill(polyPath([{ x: x - w, y }, { x: mid.x - w * 0.55, y: mid.y }, tip, { x: mid.x, y: mid.y + 2 }, { x: x - 1, y }]), C.stalactite),
+      2,
+    ) + roots(rr, edge, x, y, w, 2).svg
   );
 }
 
@@ -470,7 +481,7 @@ function rockWall(side: WallSide, variant: number, veined: boolean) {
   // Spires on the top wall and the rock beyond the room, never over a doorway.
   if ((top || side === 'corner') && r.next() < 0.55) {
     const y = top ? WY - 14 - r.next() * 12 : WY - 4 + r.next() * 16;
-    parts.push({ y: y + 0.5, svg: spire(r, WX - 26 + r.next() * 52, y, 22 + r.next() * 18) });
+    parts.push({ y: y + 0.5, svg: spire(r, pieceRng('rockWallSpire', side, variant), WX - 26 + r.next() * 52, y, 22 + r.next() * 18) });
   }
   // Rubble tumbling out of the wall into the room.
   if (!top && side !== 'corner') {
@@ -677,8 +688,11 @@ function caveFloor(look: number, kind: 'normal' | 'item' | 'boss') {
 // Terrain in the caves
 // ---------------------------------------------------------------------------------------------
 
-/** A spire of rock rising from `foot`: a dark flank, a lit left face, growth rings; `snapped` breaks its tip off. */
-function rockSpire(r: Rng, x: number, foot: number, h: number, w: number, tone: RockTone, snapped = false) {
+/**
+ * A spire of rock rising from `foot`, unsheeted: a dark flank, a lit left face, growth rings; `snapped`
+ * breaks its tip off. `edge` traces its flanks (`s` -1 left, 1 right) `k` of the way up, just inside them.
+ */
+function spireBody(r: Rng, x: number, foot: number, h: number, w: number, tone: RockTone, snapped = false) {
   const lean = (r.next() - 0.5) * w * 0.6;
   const at = (k: number, s: number) => ({ x: x + lean * k + s * w * (1 - k) ** 0.8 + (r.next() - 0.5) * 1.6, y: foot - h * k });
   const top = snapped ? [at(0.84, -1), { x: x + lean * 0.9 + 1, y: foot - h * 0.8 }, at(0.88, 1)] : [{ x: x + lean, y: foot - h }];
@@ -690,7 +704,58 @@ function rockSpire(r: Rng, x: number, foot: number, h: number, w: number, tone: 
     return `<path d="M${n(a.x + 1)} ${n(a.y)}Q${n((a.x + b.x) / 2)} ${n(a.y + 2.5)} ${n(b.x - 1)} ${n(b.y)}" stroke="${tone.light}" stroke-width="1" fill="none" opacity="0.45"/>`;
   }).join('');
   const broken = snapped ? fill(polyPath(top), tone.light, 'opacity="0.85"') : '';
-  return sheet(fill(polyPath([...left, ...top, ...right]), tone.dark) + fill(polyPath([...left, top[0], ...ridge]), tone.main) + rings + broken, 2);
+  const edge = (k: number, s: number) => ({ x: x + lean * k + s * (w * (1 - k) ** 0.8 - 0.9), y: foot - h * k });
+  return { svg: fill(polyPath([...left, ...top, ...right]), tone.dark) + fill(polyPath([...left, top[0], ...ridge]), tone.main) + rings + broken, edge };
+}
+
+/** A spire of rock rising from `foot`, standing free on its own sheet. */
+const rockSpire = (r: Rng, x: number, foot: number, h: number, w: number, tone: RockTone, snapped = false) => sheet(spireBody(r, x, foot, h, w, tone, snapped).svg, 2);
+
+/**
+ * A spire grown out of the rock it stands in rather than set on it. `skirt` is its foot flared into a
+ * wide, ragged spill of deep rock, to lay into the heap's own sheet so the formation casts one shadow.
+ * `svg` is the spire on its sheet, the skirt again over its foot (hiding the straight cut and the
+ * shadow it would throw there), its lower flanks shading down into the deep rock, and rubble crags
+ * lying over the front of its base. `rr` draws the rooting, so the spire's own shape is left as it was.
+ */
+function rootedSpire(r: Rng, rr: Rng, x: number, foot: number, h: number, w: number, tone: RockTone, snapped = false) {
+  const body = spireBody(r, x, foot, h, w, tone, snapped);
+  const root = roots(rr, body.edge, x, foot, w, Math.min(4, h * 0.08));
+  return { skirt: root.skirt, svg: sheet(body.svg, 2) + root.svg };
+}
+
+/**
+ * The roots of a spire `w` wide standing at x,`foot`, its flanks traced by `edge`: `skirt`, its foot
+ * flared into a wide, ragged spill of deep rock rising `lift` px up its flanks; `svg`, its lower flanks
+ * shading down into the deep rock in ragged bands, the skirt laid over its foot, and rubble over the front of its base.
+ */
+function roots(rr: Rng, edge: (k: number, s: number) => Pt, x: number, foot: number, w: number, lift: number) {
+  // A ragged line across the spire `k` of the way up, from its right flank to its left.
+  const brow = (k: number, wander: number) => [
+    edge(k, 1),
+    ...[0.5, 0, -0.5].map((s) => {
+      const p = edge(k + (rr.next() - 0.5) * wander, s);
+      return { x: p.x + (rr.next() - 0.5) * w * 0.2, y: p.y };
+    }),
+    edge(k, -1),
+  ];
+  const neck = 0.2;
+  const spread = w * (1.45 + rr.next() * 0.3);
+  const hem = Array.from({ length: 7 }, (_, i) => {
+    const s = (i / 6) * 2 - 1;
+    return { x: x + s * spread + (rr.next() - 0.5) * 2.5, y: foot + 1.5 + (1 - Math.abs(s)) * 1.5 + rr.next() * 2 };
+  });
+  const hip = (s: number) => ({ x: x + s * (w * 1.15 + rr.next() * 2), y: foot - lift - rr.next() * 1.5 });
+  const skirt = fill(polyPath([...brow(neck, 0.14), hip(-1), ...hem, hip(1)]), C.rockDeep);
+  // Bands of deeper rock, darker the nearer the foot.
+  const shade = [[0.5, 0.3], [0.34, 0.45]]
+    .map(([k, opacity]) => fill(polyPath([...brow(k, 0.12), edge(neck - 0.06, -1), edge(neck - 0.06, 1)]), C.rockDeep, `opacity="${opacity}"`))
+    .join('');
+  const rubble = [-1, 1]
+    .filter(() => rr.next() < 0.8)
+    .map((s) => crag(rr, x + s * w * (0.35 + rr.next() * 0.5), foot + 2 + rr.next() * 2, 2.6 + rr.next() * 2, rr.next() < 0.5 ? DEEP_ROCK : ROCK))
+    .join('');
+  return { skirt, svg: shade + skirt + rubble };
 }
 
 /** Standing rock: a spire's lit face in pale stalactite paper, so it reads against the earth. */
@@ -699,9 +764,10 @@ const SPIRE_ROCK: RockTone = { dark: C.rockDark, main: C.stalactite, light: C.st
 /** A low heap of dark rock the spires stand in, jagged all round. */
 const rockBed = (r: Rng, x: number, y: number, rx: number, ry: number) => sheet(fill(polyPath(jagged(r, x, y, rx, ry, 14, 0.18)), C.rockDeep));
 
-/** A stalagmite: rock spires rising from a heap of rock, rubble at their feet; neighbours fuse into one formation. */
+/** A stalagmite: rock spires growing out of a heap of rock, rubble at their feet; neighbours fuse into one formation. */
 function stalagmite(variant: number) {
   const r = pieceRng('stalagmite', variant);
+  const rr = pieceRng('stalagmiteRoots', variant);
   const spires = [
     [{ dx: 0, dy: 0, h: 46, w: 16 }],
     [{ dx: -7, dy: -1, h: 40, w: 14 }, { dx: 10, dy: 3, h: 26, w: 11 }],
@@ -709,22 +775,28 @@ function stalagmite(variant: number) {
     [{ dx: -9, dy: -2, h: 32, w: 13 }, { dx: 6, dy: 0, h: 48, w: 15 }, { dx: 15, dy: 4, h: 15, w: 8 }],
   ][variant % 4];
   const foot = AY + 8;
+  // The heap's outline is drawn first, as it always was, so every spire keeps its shape.
+  const bed = jagged(r, AX, foot - 1, 19, 7, 14, 0.18);
+  const rooted = spires.map((s, i) => rootedSpire(r, rr, AX + s.dx, foot + s.dy, s.h, s.w, i % 2 ? OCHRE_ROCK : SPIRE_ROCK, 'snapped' in s));
   return (
     contact(21, 7, 12) +
-    rockBed(r, AX, foot - 1, 19, 7) +
-    spires.map((s, i) => rockSpire(r, AX + s.dx, foot + s.dy, s.h, s.w, i % 2 ? OCHRE_ROCK : SPIRE_ROCK, 'snapped' in s)).join('') +
+    sheet(fill(polyPath(bed), C.rockDeep) + rooted.map((s) => s.skirt).join('')) +
+    rooted.map((s) => s.svg).join('') +
     [-14, 13].map((dx, i) => crag(r, AX + dx + r.next() * 4, foot + 5 + i * 2, 3.5 + r.next() * 2.5, ROCK)).join('')
   );
 }
 
-/** Where two stalagmites fuse into one formation: a ridge of rock across the seam, a squat spire rising out of it. */
+/** Where two stalagmites fuse into one formation: a ridge of rock across the seam, a squat spire growing out of it. */
 function stalagmiteJoin(dir: 'across' | 'down') {
   const r = pieceRng('stalagmiteJoin', dir);
+  const rr = pieceRng('stalagmiteJoinRoots', dir);
   const foot = AY + 8;
   const across = dir === 'across';
+  const bed = jagged(r, AX, foot - 1, across ? 22 : 11, across ? 7 : 24, 14, 0.18);
+  const spire = rootedSpire(r, rr, AX + (across ? 0 : -2), foot + (across ? 0 : 2), across ? 24 : 20, across ? 14 : 11, SPIRE_ROCK);
   return (
-    rockBed(r, AX, foot - 1, across ? 22 : 11, across ? 7 : 24) +
-    rockSpire(r, AX + (across ? 0 : -2), foot + (across ? 0 : 2), across ? 24 : 20, across ? 14 : 11, SPIRE_ROCK) +
+    sheet(fill(polyPath(bed), C.rockDeep) + spire.skirt) +
+    spire.svg +
     crag(r, AX + (across ? -6 : 5), foot + (across ? 5 : 10), 4 + r.next() * 2, OCHRE_ROCK)
   );
 }

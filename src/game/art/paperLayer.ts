@@ -43,6 +43,8 @@ export class PaperActor {
   visual?: (time: number) => Visual & { kind?: string };
   /** Up in the air (a jumping slime): drawn at its shape's depth, over everything standing, not by its feet. */
   aloft?: () => boolean;
+  /** The action and frame it showed last (a geode's light follows its art's glow). */
+  shown: { action: Action; frame: number } = { action: 'idle', frame: 0 };
 
   constructor(
     scene: Phaser.Scene,
@@ -84,6 +86,7 @@ export class PaperActor {
     const aim = this.aim && time < this.aim.until ? this.aim : undefined;
     const { kind = this.kind, ...look } = this.visual?.(time) ?? {};
     const f = this.animator.update(time, { ...v, aim, loop: this.loop, ...look });
+    this.shown = { action: f.action, frame: f.frame };
     // A champion's gold-trimmed frame where there is one, else the plain frame.
     const trimmed = charKey(kind, f.action, f.frame, f.view, this.opts.champion);
     const key = bakedArt(trimmed) ? trimmed : charKey(kind, f.action, f.frame, f.view);

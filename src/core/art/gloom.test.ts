@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Tile } from '../rooms/roomGenerator';
-import { PULSE, glowersOf, isGloomy, pulse, type GlowRoom } from './gloom';
+import { geodeLook, type Action } from './characters';
+import { GLOOM, PULSE, WALL_SHADE, geodeLight, glowersOf, isGloomy, pulse, type GlowRoom } from './gloom';
 import { TILE, wallGems } from './terrain';
 
 const CAVES = 1;
@@ -57,7 +58,7 @@ describe("a room's glowers", () => {
     const decor = ['glints', 'spores', 'shards', 'pebbles', 'bones', 'caps'].map((kind, x) => ({ kind, cell: { x, y: 0 } }));
     const faint = glowersOf(room(['......'], { decor }));
     expect(faint.map((g) => g.tint)).toEqual(['cyan', 'violet', 'cyan']);
-    const crystal = glowersOf(room(['C']))[0];
+    const crystal = glowersOf(room(['C'], { lookOf: () => 'crystal spire' }))[0];
     for (const g of faint) {
       expect(g.intensity).toBeLessThan(crystal.intensity / 2);
       expect(g.radius).toBeLessThan(crystal.radius / 2);
@@ -77,6 +78,76 @@ describe("a room's glowers", () => {
   it('gives neighbours seeds of their own, so they breathe out of step', () => {
     const seeds = glowersOf(room(['CCC', 'GGG'])).map((g) => g.seed);
     expect(new Set(seeds).size).toBe(6);
+  });
+
+  it("lights a small crystal cluster less far than a tall crystal spire, its glowing core smaller too", () => {
+    const [cluster] = glowersOf(room(['C']));
+    const [spire] = glowersOf(room(['C'], { lookOf: () => 'crystal spire' }));
+    expect(cluster.radius).toBeLessThan(spire.radius);
+    expect(cluster.core).toBeLessThan(spire.core);
+  });
+});
+
+describe('how dark the gloom is', () => {
+  it('is lighter than it was, but still there', () => {
+    expect(GLOOM.alpha).toBeGreaterThan(0);
+    expect(GLOOM.alpha).toBeLessThan(0.55);
+  });
+
+  it('still shades the rock round the room deeper, just less heavily', () => {
+    for (const band of WALL_SHADE.bands) {
+      expect(band).toBeGreaterThan(0);
+      expect(band).toBeLessThan(0.12);
+    }
+  });
+});
+
+describe("a geode's light", () => {
+  const SHUT: [Action, number] = ['idle', 0];
+  const OPEN: [Action, number] = ['attack', 1];
+  const [cluster] = glowersOf(room(['C']));
+
+  it('is cyan, like the crystal it is', () => {
+    for (const [a, f] of [SHUT, OPEN, ['attack', 2] as [Action, number]]) expect(geodeLight(a, f).tint).toBe('cyan');
+  });
+
+  it('seeps faintly while shut, and spreads about as far as a crystal cluster once open', () => {
+    const shut = geodeLight(...SHUT);
+    const open = geodeLight(...OPEN);
+    expect(shut.radius).toBeLessThan(open.radius);
+    expect(shut.intensity).toBeLessThan(open.intensity);
+    expect(shut.core).toBeLessThan(open.core);
+    expect(Math.abs(open.radius - cluster.radius)).toBeLessThanOrEqual(10);
+    expect(open.core).toBeLessThan(open.radius / 2);
+  });
+
+  it('swells across the charge and flares brightest as it fires', () => {
+    const charge = [0, 1, 2].map((f) => geodeLight('attack', f).intensity);
+    expect(charge[0]).toBeGreaterThan(geodeLight('idle', 1).intensity);
+    expect(charge[1]).toBeGreaterThan(charge[0]);
+    expect(charge[2]).toBeGreaterThan(charge[1]);
+    expect(charge[2]).toBeLessThanOrEqual(1);
+  });
+
+  it('follows the glow its art draws: pulsing with it at rest, dipping when hurt', () => {
+    const rest = [0, 1].map((f) => ({ light: geodeLight('idle', f).intensity, glow: geodeLook('idle', f).glow }));
+    expect(rest[0].light / rest[0].glow).toBeCloseTo(rest[1].light / rest[1].glow);
+    expect(Math.sign(rest[1].light - rest[0].light)).toBe(Math.sign(rest[1].glow - rest[0].glow));
+    expect(geodeLight('hurt', 0).intensity).toBeLessThan(Math.min(...rest.map((r) => r.light)));
+  });
+});
+
+describe("a geode's glow", () => {
+  it('is the same for the same action and frame', () => {
+    for (const [a, f] of [['idle', 0], ['attack', 2], ['hurt', 0]] as [Action, number][]) expect(geodeLook(a, f)).toEqual(geodeLook(a, f));
+  });
+
+  it('rises across the charge, highest as it fires, and opens on its core part way through', () => {
+    const charge = [0, 1, 2].map((f) => geodeLook('attack', f));
+    expect(charge[1].glow).toBeGreaterThan(charge[0].glow);
+    expect(charge[2].glow).toBeGreaterThan(charge[1].glow);
+    expect(charge.map((c) => c.open > 0.5)).toEqual([false, true, true]);
+    expect(geodeLook('idle', 0).open).toBe(0);
   });
 });
 

@@ -19,6 +19,10 @@ _Avoid_: rampart, worm obstacles
 **Join**:
 The piece drawn across the seam between two neighbouring tiles of the same kind, fusing them into one formation; it goes when either tile does. Loose rock also joins the cave wall it touches, so a rubble wall grows out of the wall.
 
+**Stalagmite**:
+The caves' obstacle: spires of rock rising out of a heap of rock, rooted in it rather than set on it; neighbours fuse into one formation.
+_Avoid_: stalactite (those hang from the top wall's lip)
+
 **Crystal**:
 Cave terrain grown out of the ground as faceted prisms: a crystal cluster (bounces shots) or a crystal spire.
 _Avoid_: iceberg, ice
@@ -53,7 +57,7 @@ The Candle Witch's deep darkness, part of her fight.
 A lit spot cut out of the gloom round a glower.
 
 **Glower**:
-Anything that casts a light pool in the gloom: the player, shots, crystals, wall gems, glowshrooms, giant mushrooms and glinting floor decor.
+Anything that casts a light pool in the gloom: the player, shots, crystals, wall gems, glowshrooms, giant mushrooms, geodes and glinting floor decor.
 
 ## Enemies and shots
 

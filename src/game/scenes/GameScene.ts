@@ -86,7 +86,7 @@ import { PaperLayer, type PaperActor } from '../art/paperLayer';
 import { footDepth } from '../../core/art/depth';
 import { AmbientLayer } from '../art/ambientLayer';
 import { GloomLayer, type GloomFrame, type PlacedPool } from '../art/gloomLayer';
-import { GLOW_COLOR, PLAYER_POOL, SHOT_POOL, glowersOf, isGloomy, pulse, type Glower, type GlowTint } from '../../core/art/gloom';
+import { GLOW_COLOR, PLAYER_POOL, SHOT_POOL, geodeLight, glowersOf, isGloomy, pulse, type Glower, type GlowTint } from '../../core/art/gloom';
 import { HIT_STOP, createHitStop, type HitStop } from '../../core/juice/hitStop';
 import { createShake, type Shake } from '../../core/juice/shake';
 import { shakeScreen } from '../effects/shellBurst';
@@ -751,8 +751,8 @@ export class GameScene extends Phaser.Scene {
 
   /**
    * This frame's light pools in the gloom: round the player, round each of the player's shots in flight
-   * (scaled with it; enemy shots cast none), and round the room's fixed glowers, each breathing at its
-   * own pace and casting its colour.
+   * (scaled with it; enemy shots cast none), round the room's fixed glowers, each breathing at its
+   * own pace and casting its colour, and round each live geode, following the glow its art shows.
    */
   private lightPools(time: number): PlacedPool[] {
     const room = this.currentRoom;
@@ -763,7 +763,19 @@ export class GameScene extends Phaser.Scene {
       { x: this.player.x, y: this.player.y, ...PLAYER_POOL },
       ...shots.filter((s) => s.active).map((s) => ({ x: s.x, y: s.y, radius: SHOT_POOL.radius * (s.radius / SHOT_ART.player), intensity: SHOT_POOL.intensity })),
       ...this.glowersOf(room).map((g) => ({ x: ox + g.x, y: oy + g.y, radius: g.radius, intensity: g.intensity * pulse(g.seed, time), tint: GLOW_TINT[g.tint], core: g.core })),
+      ...this.geodeLights(),
     ];
+  }
+
+  /** Each live geode's light, champions' too, where it stands and as bright as its art's glow this frame. */
+  private geodeLights(): PlacedPool[] {
+    return this.enemies.flatMap((enemy) => {
+      const body = enemy.parts[0];
+      if (this.enemyTypes.get(enemy) !== 'geode' || !body?.active) return [];
+      const { action, frame } = this.paper.of(body)?.shown ?? { action: 'idle', frame: 0 };
+      const light = geodeLight(action, frame);
+      return [{ x: body.x, y: body.y, radius: light.radius, intensity: light.intensity, tint: GLOW_TINT[light.tint], core: light.core }];
+    });
   }
 
   /** `room`'s fixed glowers: its crystal and glowing fungus, glinting decor, and the gems in its veined walls. */

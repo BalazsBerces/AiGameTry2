@@ -1,7 +1,7 @@
 /**
  * The gloom: a moderate darkness over every cave room but the worm boss's arena, cut by light
  * pools round its glowers (the player, shots in flight, crystal, glowing fungus, the floor's
- * glints). Atmosphere, not a mechanic: the room stays readable everywhere, and nothing here moves,
+ * glints, geodes). Atmosphere, not a mechanic: the room stays readable everywhere, and nothing here moves,
  * flickers or drifts but the pools' slow breathing.
  * The Candle Witch's dark is her own and has nothing to do with it.
  */
@@ -10,15 +10,16 @@ import { themeForFloor } from '../map/themes';
 import type { Decor } from '../rooms/dressing';
 import type { Tile } from '../rooms/roomGenerator';
 import { decorNudge } from './catalogue';
+import { geodeLook, type Action } from './characters';
 import { TILE, wallGems, type WallSide } from './terrain';
 
 /** How dark the gloom is away from any light: moderate, never hiding the room's layout. */
-export const GLOOM = { color: 0x04070a, alpha: 0.55 };
+export const GLOOM = { color: 0x04070a, alpha: 0.45 };
 /**
  * The rock round the room sinks deeper into the gloom, so the walls recede and the eye stays on the
  * floor: a shade per band, stacking up `step` px apart going out from the room's edge.
  */
-export const WALL_SHADE = { bands: [0.12, 0.12, 0.14], step: 10 };
+export const WALL_SHADE = { bands: [0.09, 0.09, 0.11], step: 10 };
 
 /** A lit spot cut out of the gloom. */
 export interface LightPool {
@@ -96,7 +97,7 @@ export interface Glower extends ColouredLight {
  * light, so the hazard still stands out.
  */
 const GLOWING_LOOKS: Readonly<Record<string, ColouredLight & { rise: number }>> = {
-  'crystal cluster': { radius: 85, intensity: 0.5, tint: 'cyan', rise: 6, core: 30 },
+  'crystal cluster': { radius: 60, intensity: 0.5, tint: 'cyan', rise: 6, core: 22 },
   'crystal spire': { radius: 95, intensity: 0.5, tint: 'cyan', rise: 14, core: 34 },
   glowshroom: { radius: 90, intensity: 0.55, tint: 'violet', rise: 6, core: 24 },
   'giant mushroom': { radius: 95, intensity: 0.4, tint: 'plum', rise: 26, core: 30 },
@@ -114,6 +115,25 @@ export const WALL_GEM_GLOW: ColouredLight = { radius: 44, intensity: 0.3, tint: 
 export const lookGlow = (look: string): (ColouredLight & { rise: number }) | undefined => GLOWING_LOOKS[look];
 /** How a decor kind glints, or undefined if it doesn't. */
 export const decorGlow = (kind: string): ColouredLight | undefined => GLOWING_DECOR[kind];
+
+/**
+ * A geode's light at full strength: shut, a faint seep through its seam; open, about a crystal
+ * cluster's pool off its bared core. `glow` is the glow its art draws that strength at.
+ */
+export const GEODE_LIGHT = {
+  shut: { radius: 30, intensity: 0.2, core: 10, glow: geodeLook('idle', 1).glow },
+  open: { radius: 65, intensity: 0.5, core: 22, glow: geodeLook('attack', 1).glow },
+};
+
+/**
+ * The light a geode casts in the frame its art shows (`action`, `frame`): cyan, its strength
+ * following the art's own glow, so it pulses at rest, swells through the charge and flares as it fires.
+ */
+export function geodeLight(action: Action, frame: number): ColouredLight {
+  const { open, glow } = geodeLook(action, frame);
+  const light = open > 0.5 ? GEODE_LIGHT.open : GEODE_LIGHT.shut;
+  return { radius: light.radius, intensity: Math.min(1, (light.intensity * glow) / light.glow), tint: 'cyan', core: light.core };
+}
 
 /** What a room's fixed glowers are read from. */
 export interface GlowRoom {

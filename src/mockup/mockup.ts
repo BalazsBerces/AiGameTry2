@@ -3,7 +3,7 @@ import { hudSvg, HEART_CANVAS, ICON_CANVAS, SHOT_CANVAS, type ShotArt } from '..
 import { PAPER } from '../core/art/palette';
 import { DOWN, LEFT, RIGHT, UP, type Mask } from '../core/art/autotile';
 import { CAVE_FLOOR_CANVAS, CAVE_WALL_CANVAS, DECOR_CANVAS, JOIN_LOOKS, MASKED_LOOKS, TILE, TILE_CANVAS, WALL_JOIN_LOOKS, WALL_STYLES, floorCanvas, floorLooks, hasGround, terrainSvg, wallCanvas, wallGems, type Shell, type WallSide, type WallStyle } from '../core/art/terrain';
-import { BLOOM, CORE_LIFT, FALLOFF, GLOOM, GLOW_COLOR, PLAYER_POOL, SHOT_POOL, TINTED, WALL_GEM_GLOW, decorGlow, lookGlow, type ColouredLight } from '../core/art/gloom';
+import { BLOOM, CORE_LIFT, FALLOFF, GLOOM, GLOW_COLOR, PLAYER_POOL, SHOT_POOL, TINTED, WALL_GEM_GLOW, decorGlow, geodeLight, lookGlow, type ColouredLight } from '../core/art/gloom';
 import { n } from '../core/art/svg';
 import { createRng } from '../core/rng';
 import { SHOT_ART, floorLook } from '../core/art/catalogue';
@@ -200,6 +200,8 @@ function drawRoom(sheet: Sheet, scene: Scene, lit: boolean, id: string): string 
     standing.push({ y: a.y, svg: a.scale ? `<g transform="translate(${a.x} ${a.y}) scale(${a.scale}) translate(${-a.x} ${-a.y})">${placed}</g>` : placed });
   }
   standing.sort((a, b) => a.y - b.y);
+  // Geodes glow as the game lights them: their light following the glow their frame draws.
+  glows.push(...scene.actors.filter((a) => a.kind === 'geode').map((a) => ({ ...geodeLight(a.action, a.frame), x: a.x, y: a.y })));
 
   const shots = scene.shots
     .map((s) => {

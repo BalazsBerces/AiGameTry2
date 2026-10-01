@@ -679,16 +679,27 @@ function prism(x: number, y: number, a: number, len: number, wide: number): stri
   );
 }
 
+/**
+ * How a geode looks in a frame: `open`, how far it has split (its core shows past 0.5), and `glow`,
+ * how bright the light through its seam and off its core burns. Its art and its light pool both read it.
+ */
+export function geodeLook(action: Action, frame: number): { open: number; glow: number } {
+  const charging = action === 'attack';
+  return {
+    // Shut at rest, cracking along its seam as it charges, split open on its core, flung wide as it fires.
+    open: charging ? [0.3, 1, 1.25][frame] : action === 'hurt' ? 0.1 : 0,
+    // A faint pulse at rest, swelling through the charge, flaring as it fires.
+    glow: charging ? [0.9, 1, 1.4][frame] : action === 'hurt' ? 0.2 : action === 'move' ? [0.3, 0.45, 0.38, 0.22][frame] : [0.25, 0.42][frame],
+  };
+}
+
 function drawGeode(action: Action, frame: number, champion: boolean): string {
   const r = (part: string) => pieceRng('geode', part);
   const { x: cx, y: fy } = GEODE.foot;
   const base = fy - 1;
   const top = base - 30;
   const charging = action === 'attack';
-  // Shut at rest, cracking along its seam as it charges, split open on its core, flung wide as it fires.
-  const open = charging ? [0.3, 1, 1.25][frame] : action === 'hurt' ? 0.1 : 0;
-  // How bright the light through its seam (and off its core) burns: a faint pulse at rest.
-  const glow = charging ? [0.9, 1, 1.4][frame] : action === 'hurt' ? 0.2 : action === 'move' ? [0.3, 0.45, 0.38, 0.22][frame] : [0.25, 0.42][frame];
+  const { open, glow } = geodeLook(action, frame);
   // The seam it splits along, zigzagging down its face.
   const seam = [{ x: cx + 1, y: top }, { x: cx - 2, y: top + 7 }, { x: cx + 2, y: top + 14 }, { x: cx - 1.5, y: top + 21 }, { x: cx + 1, y: base - 1 }];
   const half = (s: number) => {

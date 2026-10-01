@@ -51,4 +51,23 @@ describe('autotile', () => {
   it('never joins tiles of different kinds, or kinds that are not joinable', () => {
     expect(joinsBetween(grid(['Tx', '~~']), ['obstacle', 'thorn'])).toEqual([]);
   });
+
+  describe('rubble walls', () => {
+    /** `#` loose rock. */
+    const rubble = (rows: string[]): Tile[][] => rows.map((row) => [...row].map((c) => (c === '#' ? 'rock' : 'floor') as Tile));
+
+    it('joins touching loose rocks into one wall', () => {
+      expect(joinsBetween(rubble(['##', '#.']), ['rock'])).toEqual([
+        { x: 0, y: 0, dir: 'across', tile: 'rock' },
+        { x: 0, y: 0, dir: 'down', tile: 'rock' },
+      ]);
+    });
+
+    it('drops every join touching a loose rock once it breaks to floor', () => {
+      const tiles = rubble(['.#.', '###', '.#.']);
+      expect(joinsBetween(tiles, ['rock'])).toHaveLength(4);
+      tiles[1][1] = 'floor';
+      expect(joinsBetween(tiles, ['rock'])).toEqual([]);
+    });
+  });
 });

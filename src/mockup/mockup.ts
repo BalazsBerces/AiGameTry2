@@ -340,6 +340,19 @@ const RIFT_MAP = [
   '###############',
 ];
 
+/** Rubble walls: runs of loose rock fused into walls, as the worm boss's maze is built, one run broken open. */
+const RUBBLE_MAP = [
+  '#######D#######',
+  '#..b..........#',
+  '#..b..bbbbb...#',
+  '#..b......b...#',
+  'D..bbb.b..b...#',
+  '#......b......#',
+  '#.bbbb.bbb.bb.#',
+  '#.........b...#',
+  '###############',
+];
+
 /** A sub-theme's decor kinds, as the game scatters them. */
 const decorOf = (theme: string) => roomThemeById(theme)!.decor.map((d) => d.id);
 
@@ -375,6 +388,7 @@ const CAVE: Scene = {
 const ALONE: Actor[] = [{ kind: 'player', x: 330, y: 250, action: 'idle', frame: 0 }];
 const CAVE_GROTTO: Scene = { ...CAVE, actors: ALONE, seed: 29, wallStyle: 'veined', map: GROTTO_MAP, looks: GROTTO_LOOK, decor: decorOf('grotto') };
 const CAVE_HOLLOW: Scene = { ...CAVE, actors: ALONE, seed: 37, map: HOLLOW_MAP, looks: HOLLOW_LOOK, decor: decorOf('hollow') };
+const CAVE_RUBBLE: Scene = { ...CAVE, actors: ALONE, shots: [], seed: 53, map: RUBBLE_MAP };
 /**
  * A worm crawling along cells `cells` (head first), each piece where the game would put it: on its
  * cell's centre (its feet 10 px below), facing the way it crawls, its crawl rippling down from the head.
@@ -566,8 +580,8 @@ function caveTerrainSheet(): string {
     ['crystal spire', 'Crystal spires <span>crystal grotto; prisms studding the rock, a rooted cluster at the foot</span>'], ['giant mushroom', 'Giant mushrooms <span>mushroom hollow</span>'], ['mushroom cap', 'Mushroom caps <span>mushroom hollow, breakable</span>'],
   ];
   const tiles = looks.map(([look, title]) => strip(title, variants.map((v) => fig(terrainSvg.tile(look, v, 0), `${look} ${v + 1}`)).join('')));
-  const joins = strip('Joins <span>neighbouring stalagmites fuse, thorn vines reach into each other</span>',
-    ['stalagmite', 'thorn vine'].flatMap((look) => (['across', 'down'] as const).map((d) => fig(terrainSvg.join(look, d), `${look}, ${d}`))).join(''));
+  const joins = strip('Joins <span>neighbouring stalagmites fuse, thorn vines reach into each other, loose rock heaps into rubble walls</span>',
+    ['stalagmite', 'thorn vine', 'loose rock'].flatMap((look) => (['across', 'down'] as const).map((d) => fig(terrainSvg.join(look, d), `${look}, ${d}`))).join(''));
   const maskName = (m: number) => [[UP, 'up'], [RIGHT, 'right'], [DOWN, 'down'], [LEFT, 'left']].filter(([bit]) => m & (bit as number)).map(([, name]) => name).join('+') || 'alone';
   const masked = (['chasm', 'rift'] as const).map((look) =>
     strip(`${look === 'chasm' ? 'Chasm' : 'Rift <span>rift sub-theme</span>'} <span>a piece for every neighbour mask (named: where it carries on)</span>`,
@@ -596,6 +610,8 @@ function cavesSheet(): string {
   const hollowUnlit = roomSvg(hollow, CAVE_HOLLOW, false, 'ch', false);
   const rift = new Sheet('cr');
   const riftUnlit = roomSvg(rift, CAVE_RIFT, false, 'cr', false);
+  const rubble = new Sheet('cw');
+  const rubbleUnlit = roomSvg(rubble, CAVE_RUBBLE, false, 'cw', false);
   const boss = new Sheet('cb');
   const bossUnlit = roomSvg(boss, CAVE_BOSS, false, 'cb', false);
   const defs = (s: Sheet) => `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>${s.defs.join('')}</defs></svg>`;
@@ -606,13 +622,14 @@ function cavesSheet(): string {
   <h1>Papercut Caves</h1>
   <p class="lede">Warm earth, cold light: umber and ochre rock paper, icy cyan-white crystal as the hard accent, violet fungus as the second hue, and deep-teal slime, soft and translucent round a milky core. This sheet covers the room shell (walls, doors, floors), every cave terrain tile and the decor, bones and a dropped miner's pick among it, and the cave cast: the ghoul, the bat, the slime, the geode, the worm, and the worm boss with its eggs.</p>
 </header>
-${defs(lit)}${defs(unlit)}${defs(grotto)}${defs(hollow)}${defs(rift)}${defs(boss)}
+${defs(lit)}${defs(unlit)}${defs(grotto)}${defs(hollow)}${defs(rift)}${defs(rubble)}${defs(boss)}
 <figure class="stage">${caveLit}<figcaption>A sample cave room, lit as in the game: stalagmites fused along the walls, a chasm, thorn vines, a boulder, a crystal cluster and glowshrooms; a ghoul winding up at the player (a champion stalking below), one bat hanging wings-wide for its tell, another swooping; a geode split open and firing red-hot shard shots (one already ricocheting off the wall), a champion geode shut above; a big slime squashed for its jump, a medium one in the air over a rock and a small champion splatting down. The right door is barred while enemies live.</figcaption></figure>
 <div class="pair">
   <figure class="stage small">${caveUnlit}<figcaption>The same room with the lights on.</figcaption></figure>
   <figure class="stage small">${grottoUnlit}<figcaption>A crystal grotto: crystal spires, and crystal enough for veined walls all the way round.</figcaption></figure>
   <figure class="stage small">${hollowUnlit}<figcaption>A mushroom hollow: giant mushrooms, clumps of mushroom caps and glowshrooms.</figcaption></figure>
   <figure class="stage small">${riftUnlit}<figcaption>A rift: the chasm's lip torn red. A worm crawls along the top and turns down the room, its crawl rippling from head to tail; a champion heads off the other way below.</figcaption></figure>
+  <figure class="stage small">${rubbleUnlit}<figcaption>Rubble walls: neighbouring loose rock fuses into continuous walls, the way the worm boss's maze is built. Where a rock has broken (the gap in the long run) its joins are gone and the ends are left ragged.</figcaption></figure>
   <figure class="stage small">${bossUnlit}<figcaption>The worm's room: darker earth broken by burrows, strewn with bones and shards. The worm boss crawls round it, heaving an egg out of its back; another egg is in the air, one rests by the wall and one is splitting open to hatch.</figcaption></figure>
 </div>
 <h2>The cave cast, frame by frame</h2>

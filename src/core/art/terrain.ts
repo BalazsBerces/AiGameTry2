@@ -734,19 +734,51 @@ function stalagmiteJoin(dir: 'across' | 'down') {
   );
 }
 
-/** Loose rock: a crumbly pile of crags with grit spilled round it; breaks after a few shots. */
+/** Crags heaped at x,y over `spread`: the biggest towards the back, front ones drawn last. */
+function cragHeap(r: Rng, x: number, y: number, spread: Pt, count: number, big: number) {
+  return Array.from({ length: count }, (_, i) => ({
+    x: x + (r.next() - 0.5) * spread.x,
+    y: y + (r.next() - 0.5) * spread.y - (i < 2 ? 5 : 0),
+    rad: i < 2 ? big + r.next() * 3 : 5 + r.next() * 6,
+  }))
+    .sort((a, b) => a.y - b.y)
+    .map((s) => crag(r, s.x, s.y, s.rad, r.next() < 0.3 ? OCHRE_ROCK : ROCK))
+    .join('');
+}
+
+/** Grit spilled round a heap of rock. */
+function grit(r: Rng, x: number, y: number, spread: Pt, count: number) {
+  return sheet(Array.from({ length: count }, () => {
+    const p = { x: x + (r.next() - 0.5) * spread.x, y: y + (r.next() - 0.5) * spread.y };
+    return fill(cutPoly(r, ring(p.x, p.y, 1.2 + r.next() * 1.4, 1 + r.next(), 5, r.next() * 3), 0.4), r.next() < 0.5 ? C.rockLight : C.ochre);
+  }).join(''));
+}
+
+/**
+ * Loose rock: a crumbly heap of crags on a dark bed that fills its tile and spills a little past it,
+ * grit round its foot; breaks after a few shots. Neighbours fuse into one rubble wall.
+ */
 function looseRock(variant: number) {
   const r = pieceRng('looseRock', variant);
-  const stones = Array.from({ length: 5 + (variant % 3) }, (_, i) => ({
-    x: AX + (r.next() - 0.5) * 30,
-    y: AY + 2 + (r.next() - 0.5) * 16 - (i === 0 ? 6 : 0),
-    rad: i === 0 ? 11 + r.next() * 3 : 5 + r.next() * 5,
-  })).sort((a, b) => a.y - b.y);
-  const grit = Array.from({ length: 6 }, () => {
-    const p = { x: AX + (r.next() - 0.5) * 42, y: AY + 6 + (r.next() - 0.5) * 18 };
-    return fill(cutPoly(r, ring(p.x, p.y, 1.2 + r.next() * 1.4, 1 + r.next(), 5, r.next() * 3), 0.4), r.next() < 0.5 ? C.rockLight : C.ochre);
-  }).join('');
-  return contact(20, 6, 12) + sheet(grit) + stones.map((s) => crag(r, s.x, s.y, s.rad, r.next() < 0.3 ? OCHRE_ROCK : ROCK)).join('');
+  return (
+    contact(26, 8, 12) +
+    rockBed(r, AX, AY + 2, 27, 17) +
+    grit(r, AX, AY + 10, { x: 54, y: 16 }, 7) +
+    cragHeap(r, AX, AY, { x: 40, y: 24 }, 7 + (variant % 3), 13)
+  );
+}
+
+/**
+ * Where two loose rocks fuse into a rubble wall: a ridge of crags across the seam, on a bed of its
+ * own, so the run reads as one wall; it goes as soon as either rock breaks, leaving ragged ends.
+ */
+function rubbleJoin(dir: 'across' | 'down') {
+  const r = pieceRng('rubbleJoin', dir);
+  const across = dir === 'across';
+  return (
+    rockBed(r, AX, AY + 2, across ? 16 : 22, across ? 15 : 14) +
+    cragHeap(r, AX, AY + (across ? 0 : 2), across ? { x: 14, y: 22 } : { x: 30, y: 20 }, 5, 11)
+  );
 }
 
 /** A boulder: one heavy round rock, lit from up-left, cracked and flecked with lichen; the thing that rolls and crushes. */
@@ -1152,6 +1184,7 @@ const JOIN_ART: Readonly<Record<string, (dir: 'across' | 'down') => string>> = {
   willow: (d) => canopyJoin(WILLOW, d),
   'thorn bush': (d) => vineJoin(d),
   stalagmite: (d) => stalagmiteJoin(d),
+  'loose rock': (d) => rubbleJoin(d),
   'thorn vine': (d) => vineJoin(d, { stem: C.vine, spike: C.thornSpike, key: 'caveVineJoin' }),
 };
 export const JOIN_LOOKS = Object.keys(JOIN_ART);

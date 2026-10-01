@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { artCatalogue, charKey, decorKey, doorKey, floorKey, floorLook, groundKey, joinKey, shotKey, tileKey, wallKey, type DoorSide, type FloorKind } from './catalogue';
 import { CHARACTERS, type Action } from './characters';
 import { PAPER } from './palette';
-import { CAVE_FLOOR_LOOKS, TILE, WALL_STYLES, wallGems, type WallSide } from './terrain';
+import { CAVE_FLOOR_LOOKS, JOIN_LOOKS, TILE, WALL_STYLES, wallGems, type WallSide } from './terrain';
 import { themeForFloor } from '../map/themes';
 import { roomThemesFor } from '../rooms/roomThemes';
 
@@ -141,7 +141,13 @@ describe('the art catalogue', () => {
     ];
     const fitted = ['chasm', 'rift'];
     const tiles = caveArts.flatMap((art) => VARIANTS.flatMap((v) => (fitted.includes(art) ? MASKS : [0]).map((m) => tileKey(art, v, m))));
-    const joins = ['stalagmite', 'thorn vine'].flatMap((art) => (['across', 'down'] as const).map((d) => joinKey(art, d)));
+    const joins = ['stalagmite', 'thorn vine', 'loose rock'].flatMap((art) => (['across', 'down'] as const).map((d) => joinKey(art, d)));
+
+    it('joins loose rock into rubble walls, but never the mushroom hollow\'s caps', () => {
+      for (const d of ['across', 'down'] as const) expect(byKey.has(joinKey('loose rock', d)), d).toBe(true);
+      expect(svgOf(joinKey('loose rock', 'across'))).not.toBe(svgOf(joinKey('loose rock', 'down')));
+      expect(JOIN_LOOKS).not.toContain('mushroom cap');
+    });
 
     it("names art for every look, sub-themes' included", () => {
       expect([...caveArts].sort()).toEqual(
@@ -149,7 +155,7 @@ describe('the art catalogue', () => {
       );
     });
 
-    it('holds every variant of each look, every neighbour mask of chasm and rift, and stalagmite and thorn-vine joins', () => {
+    it('holds every variant of each look, every neighbour mask of chasm and rift, and stalagmite, thorn-vine and loose-rock joins', () => {
       for (const key of [...tiles, ...joins]) expect(byKey.has(key), key).toBe(true);
       expect(new Set(tiles).size).toBe(9 * 4 + 2 * 4 * 16);
     });

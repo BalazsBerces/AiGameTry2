@@ -2168,15 +2168,18 @@ export class GameScene extends Phaser.Scene {
     return shape;
   }
 
-  /** Neighbouring trees' canopies and thorns' vines grow into each other across the seam between them. */
+  /**
+   * Neighbouring trees' canopies and thorns' vines grow into each other across the seam between them,
+   * and neighbouring loose rock fuses into rubble walls (wherever its look has a join: never the hollow's caps).
+   */
   private drawJoins(room: WorldRoom) {
     if (!themeForFloor(room.floorIndex).paper) return;
     const looks = roomLooks(room.floorIndex, room.layout.theme ?? '');
-    const joinable = (['obstacle', 'thorn'] as const).filter((tile) => looks[tile].art && JOIN_LOOKS.includes(looks[tile].art!));
+    const joinable = (['obstacle', 'thorn', 'rock'] as const).filter((tile) => looks[tile].art && JOIN_LOOKS.includes(looks[tile].art!));
     for (const j of joinsBetween(room.layout.tiles, joinable)) {
       const a = tileCenter(room, j.x, j.y);
       const [dx, dy] = j.dir === 'across' ? [TUNING.tile / 2, 0] : [0, TUNING.tile / 2];
-      const art = this.paper.piece(joinKey(looks[j.tile as 'obstacle' | 'thorn'].art!, j.dir), a.x + dx, a.y + dy, TILE_CANVAS, a.y + dy + TERRAIN_FOOT);
+      const art = this.paper.piece(joinKey(looks[j.tile as (typeof joinable)[number]].art!, j.dir), a.x + dx, a.y + dy, TILE_CANVAS, a.y + dy + TERRAIN_FOOT);
       if (!art) continue;
       // Gone as soon as either tile it joins is.
       const b = j.dir === 'across' ? { x: j.x + 1, y: j.y } : { x: j.x, y: j.y + 1 };

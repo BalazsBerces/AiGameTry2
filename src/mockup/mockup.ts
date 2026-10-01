@@ -204,7 +204,9 @@ function drawRoom(sheet: Sheet, scene: Scene, lit: boolean, id: string): string 
   const shots = scene.shots
     .map((s) => {
       const svg = hudSvg.shot(s.kind, SHOT_ART[s.kind]);
-      return `<circle cx="${s.x}" cy="${s.y}" r="18" fill="url(#${id}-glow-${s.kind})"/>` + place(svg, SHOT_CANVAS, SHOT_CANVAS, SHOT_CANVAS / 2, SHOT_CANVAS / 2, s.x, s.y);
+      // Only the player's shots glow; enemy shots carry no halo.
+      const halo = s.kind === 'player' ? `<circle cx="${s.x}" cy="${s.y}" r="18" fill="url(#${id}-glow-${s.kind})"/>` : '';
+      return halo + place(svg, SHOT_CANVAS, SHOT_CANVAS, SHOT_CANVAS / 2, SHOT_CANVAS / 2, s.x, s.y);
     })
     .join('');
 
@@ -243,7 +245,7 @@ function drawRoom(sheet: Sheet, scene: Scene, lit: boolean, id: string): string 
 function caveGloom(id: string, w: number, h: number, scene: Scene, glows: (ColouredLight & { x: number; y: number })[]): string {
   const pools = [
     ...scene.actors.filter((a) => a.kind === 'player').map((a) => ({ x: a.x, y: a.y, ...PLAYER_POOL })),
-    ...scene.shots.map((s) => ({ x: s.x, y: s.y, ...SHOT_POOL })),
+    ...scene.shots.filter((s) => s.kind === 'player').map((s) => ({ x: s.x, y: s.y, ...SHOT_POOL })),
     ...glows,
   ];
   // Coloured light falls off fast from its source, then a long faint tail (as the game's falloff brush).

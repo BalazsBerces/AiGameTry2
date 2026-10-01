@@ -30,7 +30,7 @@ export interface LightPool {
 
 /** The light round the player: modest, so their surroundings are always clear. */
 export const PLAYER_POOL: LightPool = { radius: 140, intensity: 1 };
-/** The light round a shot in flight (the player's or an enemy's), at a shot's usual size. */
+/** The light round one of the player's shots in flight, at a shot's usual size; enemy shots cast none. */
 export const SHOT_POOL: LightPool = { radius: 46, intensity: 0.9 };
 
 /** A room is gloomy when it is in the caves and isn't the worm boss's arena; cleared, item and start rooms too. */

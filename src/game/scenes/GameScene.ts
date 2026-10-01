@@ -750,17 +750,18 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * This frame's light pools in the gloom: round the player, round every shot in flight (scaled with
-   * it), and round the room's fixed glowers, each breathing at its own pace and casting its colour.
+   * This frame's light pools in the gloom: round the player, round each of the player's shots in flight
+   * (scaled with it; enemy shots cast none), and round the room's fixed glowers, each breathing at its
+   * own pace and casting its colour.
    */
   private lightPools(time: number): PlacedPool[] {
     const room = this.currentRoom;
-    const shots = [...this.shots.getChildren(), ...this.enemyShots.getChildren()] as Phaser.GameObjects.Arc[];
+    const shots = this.shots.getChildren() as Phaser.GameObjects.Arc[];
     const origin = tileCenter(room, 0, 0);
     const [ox, oy] = [origin.x - TUNING.tile / 2, origin.y - TUNING.tile / 2];
     return [
       { x: this.player.x, y: this.player.y, ...PLAYER_POOL },
-      ...shots.filter((s) => s.active).map((s) => ({ x: s.x, y: s.y, radius: SHOT_POOL.radius * (s.radius / SHOT_ART.enemy), intensity: SHOT_POOL.intensity })),
+      ...shots.filter((s) => s.active).map((s) => ({ x: s.x, y: s.y, radius: SHOT_POOL.radius * (s.radius / SHOT_ART.player), intensity: SHOT_POOL.intensity })),
       ...this.glowersOf(room).map((g) => ({ x: ox + g.x, y: oy + g.y, radius: g.radius, intensity: g.intensity * pulse(g.seed, time), tint: GLOW_TINT[g.tint], core: g.core })),
     ];
   }

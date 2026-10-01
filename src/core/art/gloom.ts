@@ -11,7 +11,7 @@ import type { Decor } from '../rooms/dressing';
 import type { Tile } from '../rooms/roomGenerator';
 import { decorNudge } from './catalogue';
 import { geodeLook, type Action } from './characters';
-import { TILE, wallGems, type WallSide } from './terrain';
+import { GIANT_LOOKS, TILE, wallGems, type WallSide } from './terrain';
 
 /** How dark the gloom is away from any light: moderate, never hiding the room's layout. */
 export const GLOOM = { color: 0x04070a, alpha: 0.45 };
@@ -99,6 +99,8 @@ export interface Glower extends ColouredLight {
 const GLOWING_LOOKS: Readonly<Record<string, ColouredLight & { rise: number }>> = {
   'crystal cluster': { radius: 60, intensity: 0.5, tint: 'cyan', rise: 6, core: 22 },
   'crystal spire': { radius: 95, intensity: 0.5, tint: 'cyan', rise: 14, core: 34 },
+  // One light for a whole 2x2 block, its rise from the square's middle.
+  'giant crystal': { radius: 150, intensity: 0.6, tint: 'cyan', rise: 22, core: 52 },
   glowshroom: { radius: 90, intensity: 0.55, tint: 'violet', rise: 6, core: 24 },
   'giant mushroom': { radius: 95, intensity: 0.4, tint: 'plum', rise: 26, core: 30 },
   'mushroom cap': { radius: 60, intensity: 0.3, tint: 'plum', rise: 4, core: 18 },
@@ -146,18 +148,32 @@ export interface GlowRoom {
   walls: readonly { cell: Cell; side: WallSide; variant: number }[];
   /** Crystal-veined walls carry wall gems; strata walls carry none. */
   veined?: boolean;
+  /** The 2x2 squares drawn as one giant (autotile's giantSquares), by top-left cell, as the room was laid out. */
+  giants?: readonly Cell[];
 }
 
 /**
  * Every fixed glower in a room: one per crystal cluster, crystal spire, glowshroom, giant mushroom
- * and mushroom cap on its tile, one per glinting decor piece where it is drawn, and one per wall gem where
+ * and mushroom cap on its tile (one per standing giant crystal in place of its four spires), one per glinting decor piece where it is drawn, and one per wall gem where
  * its wall piece sets it. Each has a seed of its own, so neighbours breathe out of step.
  */
 export function glowersOf(room: GlowRoom): Glower[] {
   const centre = (cell: Cell) => ({ x: (cell.x + 0.5) * TILE, y: (cell.y + 0.5) * TILE });
   const seedOf = (cell: Cell, k: number) => Math.imul(cell.x + 101, 73856093) ^ Math.imul(cell.y + 101, 19349663) ^ Math.imul(k + 1, 83492791);
+  // A giant lights its whole square while all four of its tiles stand; once one goes, its spires light themselves.
+  const inGiant = new Set<string>();
+  const giants = (room.giants ?? []).flatMap((g) => {
+    const square = [g, { x: g.x + 1, y: g.y }, { x: g.x, y: g.y + 1 }, { x: g.x + 1, y: g.y + 1 }];
+    const looks = square.map((c) => room.tiles[c.y]?.[c.x]).map((t) => (t ? room.lookOf(t) : undefined));
+    const giant = looks[0] && GIANT_LOOKS[looks[0]];
+    const glow = giant ? lookGlow(giant) : undefined;
+    if (!glow || looks.some((l) => l !== looks[0])) return [];
+    for (const c of square) inGiant.add(`${c.x},${c.y}`);
+    return [{ x: (g.x + 1) * TILE, y: (g.y + 1) * TILE - glow.rise, radius: glow.radius, intensity: glow.intensity, tint: glow.tint, core: glow.core, seed: seedOf(g, 9) }];
+  });
   const tiles = room.tiles.flatMap((row, y) =>
     row.flatMap((tile, x) => {
+      if (inGiant.has(`${x},${y}`)) return [];
       const look = room.lookOf(tile);
       const glow = look ? lookGlow(look) : undefined;
       if (!glow) return [];
@@ -179,5 +195,5 @@ export function glowersOf(room: GlowRoom): Glower[] {
         }),
       )
     : [];
-  return [...tiles, ...decor, ...gems];
+  return [...giants, ...tiles, ...decor, ...gems];
 }

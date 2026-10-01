@@ -1,12 +1,13 @@
 import { CHARACTERS, type Action, type View } from '../core/art/characters';
 import { hudSvg, HEART_CANVAS, ICON_CANVAS, SHOT_CANVAS, type ShotArt } from '../core/art/hud';
 import { PAPER } from '../core/art/palette';
-import { DOWN, LEFT, RIGHT, UP, type Mask } from '../core/art/autotile';
-import { CAVE_FLOOR_CANVAS, CAVE_WALL_CANVAS, DECOR_CANVAS, JOIN_LOOKS, MASKED_LOOKS, TILE, TILE_CANVAS, WALL_JOIN_LOOKS, WALL_STYLES, floorCanvas, floorLooks, hasGround, terrainSvg, wallCanvas, wallGems, type Shell, type WallSide, type WallStyle } from '../core/art/terrain';
+import { DOWN, LEFT, RIGHT, UP, giantSquares, type Mask } from '../core/art/autotile';
+import type { Tile } from '../core/rooms/roomGenerator';
+import { CAVE_FLOOR_CANVAS, CAVE_WALL_CANVAS, DECOR_CANVAS, GIANT_CANVAS, GIANT_LOOKS, JOIN_LOOKS, MASKED_LOOKS, TILE, TILE_CANVAS, WALL_JOIN_LOOKS, WALL_STYLES, floorCanvas, floorLooks, hasGround, terrainSvg, wallCanvas, wallGems, type Shell, type WallSide, type WallStyle } from '../core/art/terrain';
 import { BLOOM, CORE_LIFT, FALLOFF, GLOOM, GLOW_COLOR, PLAYER_POOL, SHOT_POOL, TINTED, WALL_GEM_GLOW, decorGlow, geodeLight, lookGlow, type ColouredLight } from '../core/art/gloom';
 import { n } from '../core/art/svg';
 import { createRng } from '../core/rng';
-import { SHOT_ART, floorLook } from '../core/art/catalogue';
+import { SHOT_ART, floorLook, giantLook } from '../core/art/catalogue';
 import { roomThemeById, roomThemesFor } from '../core/rooms/roomThemes';
 
 /**
@@ -124,6 +125,20 @@ function drawRoom(sheet: Sheet, scene: Scene, lit: boolean, id: string): string 
     return flip ? `<g transform="translate(${2 * x} 0) scale(-1 1)">${use}</g>` : use;
   };
   const tile = (svg: string, x: number, y: number) => place(svg, TILE_CANVAS.w, TILE_CANVAS.h, TILE_CANVAS.anchor.x, TILE_CANVAS.anchor.y, x, y);
+  // A big block of a look that grows giants (crystal spires) stands as giants, one per 2x2 square, as in the game.
+  const inGiant = new Set<string>();
+  const chars = map.map((row) => [...row]) as unknown as Tile[][];
+  for (const [ch, look] of Object.entries(scene.looks ?? LOOK)) {
+    const giant = GIANT_LOOKS[look];
+    if (!giant) continue;
+    for (const g of giantSquares(chars, ch as Tile)) {
+      for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) inGiant.add(`${g.x + dx},${g.y + dy}`);
+      const c = { x: (g.x + 1) * TILE, y: (g.y + 1) * TILE };
+      standing.push({ y: c.y + TILE / 2, svg: place(terrainSvg.giant(giant, giantLook(g.x, g.y)), GIANT_CANVAS.w, GIANT_CANVAS.h, GIANT_CANVAS.anchor.x, GIANT_CANVAS.anchor.y, c.x, c.y) });
+      const glow = lookGlow(giant)!;
+      glows.push({ ...glow, x: c.x, y: c.y - glow.rise });
+    }
+  }
 
   map.forEach((row, gy) =>
     [...row].forEach((ch, gx) => {
@@ -152,7 +167,7 @@ function drawRoom(sheet: Sheet, scene: Scene, lit: boolean, id: string): string 
         return;
       }
       const look = (scene.looks ?? LOOK)[ch];
-      if (!look) return;
+      if (!look || inGiant.has(`${gx},${gy}`)) return;
       const same = (dx: number, dy: number) => cell(gx + dx, gy + dy) === ch;
       const mask: Mask = (same(0, -1) ? UP : 0) | (same(1, 0) ? RIGHT : 0) | (same(0, 1) ? DOWN : 0) | (same(-1, 0) ? LEFT : 0);
       const svg = tile(terrainSvg.tile(look, variant, mask), c.x, c.y);
@@ -360,8 +375,8 @@ const GROTTO_MAP = [
   '#######D#######',
   '#T..M.......TT#',
   '#.....b...M...#',
-  '#..T..........#',
-  'D......MM.....#',
+  '#..TTT........#',
+  'D..TTT.MM.....#',
   '#.............#',
   '#.~~.....b..T.#',
   '#T.~.........M#',

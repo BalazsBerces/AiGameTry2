@@ -64,6 +64,26 @@ export function wallJoins(tiles: readonly (readonly Tile[])[], joinable: readonl
   return joins;
 }
 
+/**
+ * Where a big block of `tile` is drawn as giants (a grotto's crystal spires as giant crystals): each
+ * full 2x2 square of it, by its top-left cell, taken row by row so no tile is in two. The rest stay single.
+ */
+export function giantSquares(tiles: readonly (readonly Tile[])[], tile: Tile): { x: number; y: number }[] {
+  const taken = new Set<string>();
+  const giants: { x: number; y: number }[] = [];
+  const cells = (x: number, y: number) => [[x, y], [x + 1, y], [x, y + 1], [x + 1, y + 1]];
+  tiles.forEach((row, y) =>
+    row.forEach((_, x) => {
+      const square = cells(x, y);
+      if (square.every(([cx, cy]) => tiles[cy]?.[cx] === tile && !taken.has(`${cx},${cy}`))) {
+        for (const [cx, cy] of square) taken.add(`${cx},${cy}`);
+        giants.push({ x, y });
+      }
+    }),
+  );
+  return giants;
+}
+
 /** Every seam where two touching tiles of a `joinable` kind grow into each other (thorn vines, rubble), once each. */
 export function joinsBetween(tiles: readonly (readonly Tile[])[], joinable: readonly Tile[]): Join[] {
   const joins: Join[] = [];

@@ -1,5 +1,5 @@
 import { CHARACTERS, type Action, type View } from './characters';
-import { DECOR_CANVAS, DECOR_KINDS, JOIN_LOOKS, MASKED_LOOKS, TILE_CANVAS, TILE_LOOKS, WALL_JOIN_LOOKS, WALL_JOIN_SIDES, WALL_STYLES, floorCanvas, floorLooks, hasGround, terrainSvg, tileLooks, wallCanvas, type Shell, type WallSide, type WallStyle } from './terrain';
+import { DECOR_CANVAS, DECOR_KINDS, GIANT_CANVAS, GIANT_LOOKS, GIANT_VARIANTS, JOIN_LOOKS, MASKED_LOOKS, TILE_CANVAS, TILE_LOOKS, WALL_JOIN_LOOKS, WALL_JOIN_SIDES, WALL_STYLES, floorCanvas, floorLooks, hasGround, terrainSvg, tileLooks, wallCanvas, type Shell, type WallSide, type WallStyle } from './terrain';
 import type { Mask } from './autotile';
 import type { Direction } from '../map/floorGenerator';
 import { HEART_CANVAS, ICON_CANVAS, PICKUP_ART, PICKUP_CANVAS, SHOT_CANVAS, hudSvg, pickupSvg, type PickupArt, type ShotArt } from './hud';
@@ -50,6 +50,11 @@ export function tileLook(art: string, variant: number, x: number, y: number): nu
   return tileLooks(art) === TILE_VARIANTS ? variant : spread(variant, x, y, tileLooks(art));
 }
 export const joinKey = (art: string, dir: 'across' | 'down') => `j:${art}:${dir}`;
+/** Which look a giant whose square's top-left cell is x,y takes: picked by where it stands. */
+export const giantLook = (x: number, y: number) => spread(0, x, y, GIANT_VARIANTS);
+/** A giant standing on a 2x2 square of tiles (`GIANT_LOOKS`), by its square's top-left cell. */
+export const giantKey = (giant: string, x: number, y: number) => giantEntryKey(giant, giantLook(x, y));
+const giantEntryKey = (giant: string, look: number) => `G:${giant}:${look}`;
 /** Where a tile of `art` grows out of the room's wall on its `side` (a rubble wall into the cave wall). */
 export const wallJoinKey = (art: string, side: Direction) => `j:${art}:wall-${side}`;
 /** The room shell's pieces are keyed by the floor's shell: each floor has walls, doors and floors of its own. */
@@ -100,6 +105,9 @@ function terrainEntries(): ArtEntry[] {
       Array.from({ length: tileLooks(look) }, (_, v) => v).flatMap((v) => (MASKED_LOOKS.includes(look) ? masks : [0]).map((m) => tileEntry(tileKey(look, v, m), () => terrainSvg.tile(look, v, m)))),
     ),
     ...JOIN_LOOKS.flatMap((look) => (['across', 'down'] as const).map((d) => tileEntry(joinKey(look, d), () => terrainSvg.join(look, d)))),
+    ...Object.values(GIANT_LOOKS).flatMap((giant) =>
+      Array.from({ length: GIANT_VARIANTS }, (_, v) => ({ key: giantEntryKey(giant, v), w: GIANT_CANVAS.w, h: GIANT_CANVAS.h, svg: () => terrainSvg.giant(giant, v) })),
+    ),
     ...WALL_JOIN_LOOKS.flatMap((look) => WALL_JOIN_SIDES.map((side) => tileEntry(wallJoinKey(look, side), () => terrainSvg.wallJoin(look, side)))),
     ...SHELLS.flatMap((shell) => [
       ...WALL_STYLES[shell].flatMap((style: WallStyle) =>

@@ -940,6 +940,39 @@ function crystalSpire(variant: number) {
 }
 
 /**
+ * A giant's canvas: a 2x2 square of tiles drawn as one piece, anchored on the square's middle (where
+ * its four tiles meet), with room above for its height.
+ */
+export const GIANT_CANVAS = { w: 140, h: 170, anchor: { x: 70, y: 110 } };
+/** Tile looks that a full 2x2 square of grows into one giant, and the giant's look. */
+export const GIANT_LOOKS: Readonly<Record<string, string>> = { 'crystal spire': 'giant crystal' };
+/** Looks each giant comes in. */
+export const GIANT_VARIANTS = 2;
+
+/**
+ * A giant crystal, standing on a whole 2x2 square: a broad heap of rock heaved up by a few huge
+ * prisms, a rock spire caught among them, smaller clusters breaking out round its foot.
+ */
+function giantCrystal(variant: number) {
+  const r = pieceRng('giantCrystal', variant);
+  const { x: cx, y: cy } = GIANT_CANVAS.anchor;
+  const flip = variant % 2 ? -1 : 1;
+  const foot = cy + 26;
+  return (
+    ellipse(cx + 4, cy + 36, 52, 15, P.shadow, 'opacity="0.42"') +
+    floorCracks(r, cx, foot + 6, 70, 4) +
+    ellipse(cx, cy + 8, 44, 24, C.crystal, 'opacity="0.12"') +
+    sheet(fill(polyPath(jagged(r, cx, cy + 14, 50, 24, 20, 0.16)), C.rockDeep)) +
+    rockSpire(r, cx + flip * 22, cy + 4, 66, 18, ROCK) +
+    sheet(shards(`giantBack${variant}`, cx - flip * 16, cy + 2, 52, 3), 2) +
+    sheet(shards(`giantMain${variant}`, cx + flip * 2, cy + 18, 74, 5), 2) +
+    sheet(shards(`giantSide${variant}`, cx + flip * 30, cy + 26, 32, 3), 2) +
+    sheet(shards(`giantFront${variant}`, cx - flip * 30, cy + 30, 24, 2), 2) +
+    crust(r, cx, foot + 6, 44, 9)
+  );
+}
+
+/**
  * How a mushroom's cap is coloured: dome, highlight, gills, gill ribs and the flecks on top.
  * `droop` (0-1) sags the rim down at its edges (mature fungus) instead of frilling it up. `drain`
  * lays bands of colour over the dome, rim-most first, each smaller and higher, so the colour
@@ -1493,6 +1526,8 @@ const JOIN_ART: Readonly<Record<string, (dir: 'across' | 'down') => string>> = {
   'thorn vine': (d) => vineJoin(d, { stem: C.vine, spike: C.thornSpike, key: 'caveVineJoin' }),
 };
 export const JOIN_LOOKS = Object.keys(JOIN_ART);
+/** How each giant is drawn, by its look. */
+const GIANT_ART: Readonly<Record<string, (variant: number) => string>> = { 'giant crystal': (v) => giantCrystal(v) };
 /** Looks that grow out of the room's wall where they touch it, one join per side the wall is on. */
 const WALL_JOIN_ART: Readonly<Record<string, (side: Direction) => string>> = {
   'loose rock': (side) => rubbleWallJoin(side),
@@ -1538,6 +1573,8 @@ export const TILE_LOOKS = Object.keys(TILE_ART);
 export const terrainSvg = {
   tile: (look: string, variant: number, mask: Mask) => tileDoc(TILE_ART[look](variant, mask), 19 + variant),
   join: (look: string, dir: 'across' | 'down') => tileDoc(JOIN_ART[look](dir), 61),
+  /** A giant standing on a 2x2 square (`GIANT_LOOKS`), on its own canvas. */
+  giant: (look: string, variant: number) => svgDoc(GIANT_CANVAS.w, GIANT_CANVAS.h, GIANT_ART[look](variant), 67 + variant),
   wallJoin: (look: string, side: Direction) => tileDoc(WALL_JOIN_ART[look](side), 63),
   wall: (side: WallSide, variant: number, style: WallStyle = 'hedge') =>
     style === 'hedge'

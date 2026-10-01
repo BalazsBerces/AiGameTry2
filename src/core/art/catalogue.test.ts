@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { artCatalogue, charKey, decorKey, doorKey, floorKey, floorLook, groundKey, joinKey, shotKey, tileKey, tileLook, wallJoinKey, wallKey, type DoorSide, type FloorKind } from './catalogue';
+import { artCatalogue, charKey, decorKey, doorKey, floorKey, floorLook, giantKey, groundKey, joinKey, shotKey, tileKey, tileLook, wallJoinKey, wallKey, type DoorSide, type FloorKind } from './catalogue';
 import { CHARACTERS, type Action } from './characters';
 import { PAPER } from './palette';
-import { CAVE_FLOOR_LOOKS, JOIN_LOOKS, TILE, WALL_JOIN_LOOKS, WALL_JOIN_SIDES, WALL_STYLES, tileLooks, wallGems, type WallSide } from './terrain';
+import { CAVE_FLOOR_LOOKS, GIANT_LOOKS, GIANT_VARIANTS, JOIN_LOOKS, TILE, WALL_JOIN_LOOKS, WALL_JOIN_SIDES, WALL_STYLES, tileLooks, wallGems, type WallSide } from './terrain';
 import { themeForFloor } from '../map/themes';
 import { roomThemesFor } from '../rooms/roomThemes';
 
@@ -182,6 +182,17 @@ describe('the art catalogue', () => {
       }
       expect([...picked].sort()).toEqual([0, 1, 2, 3, 4]);
       for (const v of VARIANTS) expect(tileLook('mushroom cap', v, 5, 3)).toBe(v);
+    });
+
+    it('grows a giant crystal out of a 2x2 square of crystal spires, in looks of its own picked by where the square is', () => {
+      const looks = new Set<string>();
+      for (let y = 0; y < 9; y++) for (let x = 0; x < 15; x++) {
+        const key = giantKey('giant crystal', x, y);
+        expect(key).toBe(giantKey('giant crystal', x, y));
+        looks.add(svgOf(key));
+      }
+      expect(looks.size).toBe(GIANT_VARIANTS);
+      expect(GIANT_LOOKS['crystal spire']).toBe('giant crystal');
     });
 
     it('fits chasm and rift pieces to their neighbours: each mask a piece of its own', () => {

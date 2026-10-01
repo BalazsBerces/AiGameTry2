@@ -88,6 +88,33 @@ describe("a room's glowers", () => {
   });
 });
 
+describe("a giant crystal's light", () => {
+  const spires = (rows: string[], giants: { x: number; y: number }[]) => room(rows, { lookOf: (t) => (t === 'crystal' ? 'crystal spire' : undefined), giants });
+
+  it('lights a giant crystal once, at the middle of its square, in place of its four spires', () => {
+    const lit = glowersOf(spires(['CC.', 'CC.', '..C'], [{ x: 0, y: 0 }]));
+    expect(lit).toHaveLength(2);
+    const giant = lit.find((g) => g.radius > 100)!;
+    expect(giant.tint).toBe('cyan');
+    expect(giant.x).toBe(TILE);
+    expect(giant.y).toBeLessThan(TILE);
+  });
+
+  it('casts more light than one spire, but less than the four it stands for', () => {
+    const [giant] = glowersOf(spires(['CC', 'CC'], [{ x: 0, y: 0 }]));
+    const [spire] = glowersOf(spires(['C'], []));
+    expect(giant.radius).toBeGreaterThan(spire.radius);
+    expect(giant.intensity).toBeLessThan(spire.intensity * 2);
+  });
+
+  it('falls back to its spires once one of its tiles is gone', () => {
+    const tiles = tilesOf(['CC', 'CC']);
+    const lookOf = (t: Tile) => (t === 'crystal' ? 'crystal spire' : undefined);
+    tiles[1][1] = 'floor';
+    expect(glowersOf({ ...room([]), tiles, lookOf, giants: [{ x: 0, y: 0 }] })).toHaveLength(3);
+  });
+});
+
 describe('how dark the gloom is', () => {
   it('is lighter than it was, but still there', () => {
     expect(GLOOM.alpha).toBeGreaterThan(0);

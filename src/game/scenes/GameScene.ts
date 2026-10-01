@@ -93,11 +93,11 @@ import { shakeScreen } from '../effects/shellBurst';
 import { ScrapLayer } from '../art/scrapLayer';
 import { passiveArtKey } from '../art/passiveArt';
 import { PAPER } from '../../core/art/palette';
-import { DECOR_CANVAS, JOIN_LOOKS, TILE_CANVAS, WALL_JOIN_LOOKS, WALL_STYLES, floorCanvas, hasGround, wallCanvas, type Shell, type WallSide } from '../../core/art/terrain';
-import { SHOT_ART, TILE_VARIANTS, decorKey, decorNudge, doorKey, floorKey, floorLook, groundKey, joinKey, pickupKey, shotKey, tileKey, tileLook, wallJoinKey, wallKey, type FloorKind } from '../../core/art/catalogue';
+import { DECOR_CANVAS, GIANT_CANVAS, GIANT_LOOKS, JOIN_LOOKS, TILE_CANVAS, WALL_JOIN_LOOKS, WALL_STYLES, floorCanvas, hasGround, wallCanvas, type Shell, type WallSide } from '../../core/art/terrain';
+import { SHOT_ART, TILE_VARIANTS, decorKey, decorNudge, doorKey, floorKey, floorLook, giantKey, groundKey, joinKey, pickupKey, shotKey, tileKey, tileLook, wallJoinKey, wallKey, type FloorKind } from '../../core/art/catalogue';
 import { PICKUP_CANVAS, SHOT_CANVAS, type PickupArt } from '../../core/art/hud';
 import { ART_SCALE } from '../art/bake';
-import { joinsBetween, neighbourMask, wallJoins } from '../../core/art/autotile';
+import { giantSquares, joinsBetween, neighbourMask, wallJoins } from '../../core/art/autotile';
 import { ARENA_ID, arenaRoom, parseArenaQuery, type ArenaRequest } from '../../core/rooms/testArena';
 import { seedWithRoom, urlStartRoom } from '../../core/map/travel';
 import { run as runCommand, type ConsoleAction } from '../../core/console/console';
@@ -419,6 +419,10 @@ export class GameScene extends Phaser.Scene {
   private wallPieces = new Map<string, { cell: Cell; side: WallSide; variant: number }[]>();
   /** Each room's fixed glowers (core/gloom), worked out when first needed and again once a tile of it breaks. */
   private glowers = new Map<string, Glower[]>();
+  /** Each room's giants (2x2 squares drawn as one piece, autotile's giantSquares), by top-left cell, as drawn. */
+  private giants = new Map<string, Cell[]>();
+  /** The giant standing on each terrain cell (`roomId|x,y`) and the four cells it stands on: it goes once any of them does. */
+  private giantArt = new Map<string, { art: Phaser.GameObjects.Image; cells: Cell[] }>();
   /** Set only in the enemy test arena. */
   private arena?: ArenaTools;
   /** Real time scaled by `speed`: what the game clock (`now`) counts from. */
@@ -494,6 +498,8 @@ export class GameScene extends Phaser.Scene {
     this.joinArt = new Map();
     this.wallPieces = new Map();
     this.glowers = new Map();
+    this.giants = new Map();
+    this.giantArt = new Map();
     this.arena = undefined;
     // The arena is a room of its own, on a map cell clear below every generated floor.
     const lowest = Math.max(0, ...[...this.world.rooms.values()].flatMap((r) => r.floorRoom.cells.map((c) => c.y)));
@@ -790,6 +796,7 @@ export class GameScene extends Phaser.Scene {
         decor: room.layout.decor ?? [],
         walls: this.wallPieces.get(id) ?? [],
         veined: room.layout.wallStyle === 'veined',
+        giants: this.giants.get(id),
       });
       this.glowers.set(id, glowers);
     }
@@ -1595,6 +1602,7 @@ export class GameScene extends Phaser.Scene {
     this.terrain.delete(key);
     for (const art of this.joinArt.get(key) ?? []) art.destroy();
     this.joinArt.delete(key);
+    this.breakGiant(roomId, key);
     // A glower on the broken tile loses its light.
     this.glowers.delete(roomId);
   }
@@ -2147,6 +2155,7 @@ export class GameScene extends Phaser.Scene {
       }),
     );
     this.drawJoins(room);
+    this.drawGiants(room);
     // Over the tiles, so each pit or pond reads as one shape (paper ponds have banks of their own).
     if (!looks.hole.art || !theme.paper) drawRegionRims(this.add.graphics(), room, looks.hole.stroke ?? palette.accent);
   }
@@ -2275,6 +2284,52 @@ export class GameScene extends Phaser.Scene {
       const at = { x: a.x + (step[0] * TUNING.tile) / 2, y: a.y + (step[1] * TUNING.tile) / 2 };
       const art = this.paper.piece(wallJoinKey(looks[j.tile as (typeof joinable)[number]].art!, j.side), at.x, at.y, TILE_CANVAS, at.y + TERRAIN_FOOT);
       if (art) this.trackJoin(room, j, art);
+    }
+  }
+
+  /**
+   * A big block of a look that grows giants (a grotto's crystal spires) is drawn as giants, one per 2x2
+   * square of it, standing in for the four tiles' own pieces. Those stay underneath, unseen (by alpha, as
+   * rooms come and go by visibility), to show again if the giant breaks.
+   */
+  private drawGiants(room: WorldRoom) {
+    if (!themeForFloor(room.floorIndex).paper) return;
+    const id = room.floorRoom.id;
+    const looks = roomLooks(room.floorIndex, room.layout.theme ?? '');
+    const growing = (Object.keys(looks) as (keyof typeof looks)[]).filter((tile) => looks[tile].art && GIANT_LOOKS[looks[tile].art!]);
+    const giants = growing.flatMap((tile) =>
+      giantSquares(room.layout.tiles, tile).map((g) => ({ ...g, giant: GIANT_LOOKS[looks[tile].art!] })),
+    );
+    const t = TUNING.tile;
+    const drawn: Cell[] = [];
+    for (const g of giants) {
+      const c = tileCenter(room, g.x, g.y);
+      const at = { x: c.x + t / 2, y: c.y + t / 2 };
+      const art = this.paper.piece(giantKey(g.giant, g.x, g.y), at.x, at.y, GIANT_CANVAS, at.y + t / 2 + TERRAIN_FOOT);
+      if (!art) continue;
+      drawn.push({ x: g.x, y: g.y });
+      const cells = [{ x: g.x, y: g.y }, { x: g.x + 1, y: g.y }, { x: g.x, y: g.y + 1 }, { x: g.x + 1, y: g.y + 1 }];
+      for (const cell of cells) {
+        const key = `${id}|${cell.x},${cell.y}`;
+        const shape = this.terrain.get(key);
+        if (shape) PaperLayer.artOf(shape)?.setAlpha(0);
+        this.giantArt.set(key, { art, cells });
+      }
+    }
+    this.giants.set(id, drawn);
+    this.glowers.delete(id);
+  }
+
+  /** A giant on the broken cell `key` breaks with it: the tiles it stood on that are left show their own pieces again. */
+  private breakGiant(roomId: string, key: string) {
+    const giant = this.giantArt.get(key);
+    if (!giant) return;
+    giant.art.destroy();
+    for (const cell of giant.cells) {
+      const k = `${roomId}|${cell.x},${cell.y}`;
+      this.giantArt.delete(k);
+      const shape = this.terrain.get(k);
+      if (shape) PaperLayer.artOf(shape)?.setAlpha(1);
     }
   }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Tile } from '../rooms/roomGenerator';
-import { DOWN, LEFT, RIGHT, UP, joinsBetween, neighbourMask, wallJoins } from './autotile';
+import { DOWN, LEFT, RIGHT, UP, giantSquares, joinsBetween, neighbourMask, wallJoins } from './autotile';
 
 /** `~` pond, `T` tree, `x` thorn, `.` floor. */
 const grid = (rows: string[]): Tile[][] =>
@@ -50,6 +50,26 @@ describe('autotile', () => {
 
   it('never joins tiles of different kinds, or kinds that are not joinable', () => {
     expect(joinsBetween(grid(['Tx', '~~']), ['obstacle', 'thorn'])).toEqual([]);
+  });
+
+  describe('giant crystals', () => {
+    it('takes each full 2x2 square of a kind as one giant, its top-left cell', () => {
+      expect(giantSquares(grid(['TT.', 'TT.', '...']), 'obstacle')).toEqual([{ x: 0, y: 0 }]);
+    });
+
+    it('never shares a tile between two giants, and leaves the rest single', () => {
+      // A 3x2 block holds one giant; the third column stays single spires.
+      expect(giantSquares(grid(['TTT', 'TTT']), 'obstacle')).toEqual([{ x: 0, y: 0 }]);
+      // A 4x4 block holds four.
+      const block = giantSquares(grid(['TTTT', 'TTTT', 'TTTT', 'TTTT']), 'obstacle');
+      expect(block).toEqual([{ x: 0, y: 0 }, { x: 2, y: 0 }, { x: 0, y: 2 }, { x: 2, y: 2 }]);
+    });
+
+    it('needs all four tiles of the one kind', () => {
+      expect(giantSquares(grid(['TT', 'T.']), 'obstacle')).toEqual([]);
+      expect(giantSquares(grid(['Tx', 'TT']), 'obstacle')).toEqual([]);
+      expect(giantSquares(grid(['TT', 'TT']), 'thorn')).toEqual([]);
+    });
   });
 
   describe('rubble walls', () => {

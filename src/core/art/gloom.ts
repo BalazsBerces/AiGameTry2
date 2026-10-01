@@ -73,19 +73,19 @@ export interface Glower extends LightPool {
 
 /** Terrain looks that glow, by look: crystal cyan, glowing fungus violet. Mushroom caps stay dull. */
 const GLOWING_LOOKS: Readonly<Record<string, LightPool & { tint: GlowTint; rise: number }>> = {
-  'crystal cluster': { radius: 120, intensity: 0.8, tint: 'cyan', rise: 6 },
-  'crystal spire': { radius: 130, intensity: 0.8, tint: 'cyan', rise: 14 },
+  'crystal cluster': { radius: 85, intensity: 0.5, tint: 'cyan', rise: 6 },
+  'crystal spire': { radius: 95, intensity: 0.5, tint: 'cyan', rise: 14 },
   glowshroom: { radius: 110, intensity: 0.75, tint: 'violet', rise: 6 },
   'giant mushroom': { radius: 130, intensity: 0.7, tint: 'violet', rise: 16 },
 };
 /** Floor decor that glints in the gloom: very faint. */
 const GLOWING_DECOR: Readonly<Record<string, LightPool & { tint: GlowTint }>> = {
-  glints: { radius: 40, intensity: 0.3, tint: 'cyan' },
-  shards: { radius: 36, intensity: 0.25, tint: 'cyan' },
-  spores: { radius: 40, intensity: 0.3, tint: 'violet' },
+  glints: { radius: 36, intensity: 0.22, tint: 'cyan' },
+  shards: { radius: 32, intensity: 0.18, tint: 'cyan' },
+  spores: { radius: 36, intensity: 0.22, tint: 'violet' },
 };
 /** A wall gem's faint light. */
-export const WALL_GEM_GLOW: LightPool & { tint: GlowTint } = { radius: 52, intensity: 0.4, tint: 'cyan' };
+export const WALL_GEM_GLOW: LightPool & { tint: GlowTint } = { radius: 44, intensity: 0.3, tint: 'cyan' };
 /** How a terrain look glows (raised `rise` px off its tile's centre, to the glowing part), or undefined if it stays dull. */
 export const lookGlow = (look: string): (LightPool & { tint: GlowTint; rise: number }) | undefined => GLOWING_LOOKS[look];
 /** How a decor kind glints, or undefined if it doesn't. */

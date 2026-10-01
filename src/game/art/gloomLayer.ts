@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GLOOM, WALL_SHADE, type LightPool } from '../../core/art/gloom';
+import { GLOOM, TINTED, WALL_SHADE, type LightPool } from '../../core/art/gloom';
 import { DARK_DEPTH } from '../entities/bosses/candleWitch';
 
 /** Under the Candle Witch's own, deeper dark (and the HUD, a scene of its own), so her fight works as it always has. */
@@ -8,8 +8,6 @@ export const GLOOM_DEPTH = DARK_DEPTH - 1;
 const BRUSH = 128;
 /** The gloom reaches this far past the view, so the camera never outruns it for a frame. */
 const MARGIN = 64;
-/** How strongly a coloured glower tints its light pool, at full strength. */
-const TINT = 0.17;
 
 /** A soft round brush: solid white in the middle, fading to nothing at the rim. */
 function makeBrush(scene: Phaser.Scene, key: string) {
@@ -67,12 +65,13 @@ export class GloomLayer {
     this.shade.setVisible(!!frame);
     const tinted = pools?.filter((p) => p.tint !== undefined) ?? [];
     while (this.glows.length < tinted.length) {
-      this.glows.push(this.scene.add.image(0, 0, 'gloom-brush').setBlendMode(Phaser.BlendModes.ADD).setDepth(GLOOM_DEPTH - 0.5));
+      // Over the gloom: the pool is lit in the glower's colour, not cut back to white.
+      this.glows.push(this.scene.add.image(0, 0, 'gloom-brush').setBlendMode(Phaser.BlendModes.ADD).setDepth(GLOOM_DEPTH + 0.05));
     }
     this.glows.forEach((g, i) => {
       const p = tinted[i];
       g.setVisible(!!p);
-      if (p) g.setPosition(p.x, p.y).setScale((p.radius * 0.8) / BRUSH).setTint(p.tint!).setAlpha(TINT * p.intensity);
+      if (p) g.setPosition(p.x, p.y).setScale((p.radius * 0.9) / BRUSH).setTint(p.tint!).setAlpha(TINTED.glow * p.intensity);
     });
     if (!pools) return;
     const cam = this.scene.cameras.main;
@@ -80,7 +79,7 @@ export class GloomLayer {
     const top = cam.scrollY - MARGIN;
     this.gloom.setPosition(left, top).clear().fill(GLOOM.color, GLOOM.alpha);
     for (const p of pools) {
-      this.stamp.setScale(p.radius / BRUSH).setAlpha(p.intensity).setPosition(p.x - left, p.y - top);
+      this.stamp.setScale(p.radius / BRUSH).setAlpha(p.intensity * (p.tint === undefined ? 1 : TINTED.lift)).setPosition(p.x - left, p.y - top);
       this.gloom.erase(this.stamp);
     }
     this.shadeWalls(frame!, left, top);

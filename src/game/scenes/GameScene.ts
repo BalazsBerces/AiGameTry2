@@ -86,7 +86,7 @@ import { PaperLayer, type PaperActor } from '../art/paperLayer';
 import { footDepth } from '../../core/art/depth';
 import { AmbientLayer } from '../art/ambientLayer';
 import { GloomLayer, type GloomFrame, type PlacedPool } from '../art/gloomLayer';
-import { PLAYER_POOL, SHOT_POOL, glowersOf, isGloomy, pulse, type Glower, type GlowTint } from '../../core/art/gloom';
+import { GLOW_COLOR, PLAYER_POOL, SHOT_POOL, glowersOf, isGloomy, pulse, type Glower, type GlowTint } from '../../core/art/gloom';
 import { HIT_STOP, createHitStop, type HitStop } from '../../core/juice/hitStop';
 import { createShake, type Shake } from '../../core/juice/shake';
 import { shakeScreen } from '../effects/shellBurst';
@@ -210,7 +210,7 @@ const ENEMY_ART: Partial<Record<EnemyLook, { footOffset: number; fps?: number; o
 
 const hex = (color: string) => parseInt(color.slice(1), 16);
 /** The colours glowers cast into the gloom: crystal cyan, glowing-fungus violet. */
-const GLOW_TINT: Record<GlowTint, number> = { cyan: hex(PAPER.caves.crystal), violet: hex(PAPER.caves.fungusGlow) };
+const GLOW_TINT: Record<GlowTint, number> = { cyan: hex(GLOW_COLOR.cyan), violet: hex(GLOW_COLOR.violet) };
 /** The paper an enemy tears into when it dies; enemies left out tear into their shape's colour. */
 /** Bosses stand their ground: a hit never knocks them back. */
 const BOSSES: ReadonlySet<EnemyType> = new Set<BossType>(['wormBoss', 'ironMaiden', 'candleWitch', 'treantBoss']);
@@ -1534,7 +1534,9 @@ export class GameScene extends Phaser.Scene {
   private releaseStunCloud(roomId: string, cell: Cell) {
     const room = this.world.rooms.get(roomId)!;
     const c = tileCenter(room, cell.x, cell.y);
-    const cloud = this.add.circle(c.x, c.y, GLOWSHROOM_RADIUS * TUNING.tile, COLORS.glowCloud, 0.45).setDepth(DEPTH.player + 1);
+    // In the caves the glowshroom bursts in its own violet; elsewhere (puffballs, grave mould) the cloud keeps its green.
+    const color = themeForFloor(room.floorIndex).shell === 'caves' ? hex(GLOW_COLOR.violet) : COLORS.glowCloud;
+    const cloud = this.add.circle(c.x, c.y, GLOWSHROOM_RADIUS * TUNING.tile, color, 0.45).setDepth(DEPTH.player + 1);
     cloud.setScale(0.3);
     this.tweens.add({ targets: cloud, scale: 1, alpha: 0, duration: TUNING.glowCloud.showMs, ease: 'Quad.easeOut', onComplete: () => cloud.destroy() });
     if (roomId !== this.world.currentRoomId) return;

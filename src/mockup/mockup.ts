@@ -3,7 +3,7 @@ import { hudSvg, HEART_CANVAS, ICON_CANVAS, SHOT_CANVAS, type ShotArt } from '..
 import { PAPER } from '../core/art/palette';
 import { DOWN, LEFT, RIGHT, UP, type Mask } from '../core/art/autotile';
 import { CAVE_FLOOR_CANVAS, CAVE_WALL_CANVAS, DECOR_CANVAS, JOIN_LOOKS, MASKED_LOOKS, TILE, TILE_CANVAS, WALL_JOIN_LOOKS, WALL_STYLES, floorCanvas, floorLooks, hasGround, terrainSvg, wallCanvas, wallGems, type Shell, type WallSide, type WallStyle } from '../core/art/terrain';
-import { GLOOM, PLAYER_POOL, SHOT_POOL, WALL_GEM_GLOW, decorGlow, lookGlow, type GlowTint, type LightPool } from '../core/art/gloom';
+import { GLOOM, GLOW_COLOR, PLAYER_POOL, SHOT_POOL, TINTED, WALL_GEM_GLOW, decorGlow, lookGlow, type GlowTint, type LightPool } from '../core/art/gloom';
 import { n } from '../core/art/svg';
 import { createRng } from '../core/rng';
 import { SHOT_ART, floorLook } from '../core/art/catalogue';
@@ -246,15 +246,16 @@ function caveGloom(id: string, w: number, h: number, scene: Scene, glows: (Light
     ...scene.shots.map((s) => ({ x: s.x, y: s.y, ...SHOT_POOL })),
     ...glows,
   ];
-  const tint = { cyan: PAPER.caves.crystal, violet: PAPER.caves.fungusGlow };
+  const tint = GLOW_COLOR;
   // The game's soft brush: solid to 45% of its reach, fading to nothing at the rim.
   const brush = (key: string, color: string, edge: string) =>
     `<radialGradient id="${id}-${key}"><stop offset="0" stop-color="${color}"/><stop offset="0.45" stop-color="${color}" stop-opacity="0.9"/><stop offset="1" stop-color="${edge}" stop-opacity="${edge === '#fff' ? 1 : 0}"/></radialGradient>`;
-  const holes = pools.map((p) => `<circle cx="${p.x}" cy="${p.y}" r="${p.radius}" fill="url(#${id}-pool)" opacity="${p.intensity}" style="mix-blend-mode:multiply"/>`).join('');
-  const glowing = glows.map((g) => `<circle cx="${g.x}" cy="${g.y}" r="${g.radius * 0.8}" fill="url(#${id}-${g.tint})" opacity="${n(0.17 * g.intensity)}" style="mix-blend-mode:screen"/>`).join('');
+  // A coloured glower lifts less of the gloom and lights its pool in its own colour, laid over the gloom.
+  const holes = pools.map((p) => `<circle cx="${p.x}" cy="${p.y}" r="${p.radius}" fill="url(#${id}-pool)" opacity="${n(p.intensity * ('tint' in p ? TINTED.lift : 1))}" style="mix-blend-mode:multiply"/>`).join('');
+  const glowing = glows.map((g) => `<circle cx="${g.x}" cy="${g.y}" r="${g.radius * 0.9}" fill="url(#${id}-${g.tint})" opacity="${n(TINTED.glow * g.intensity)}" style="mix-blend-mode:screen"/>`).join('');
   return `<defs>${brush('pool', '#000', '#fff')}${brush('cyan', tint.cyan, tint.cyan)}${brush('violet', tint.violet, tint.violet)}` +
     `<mask id="${id}-gloom" maskUnits="userSpaceOnUse" x="0" y="0" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="#fff"/>${holes}</mask></defs>` +
-    glowing + `<rect width="${w}" height="${h}" fill="#${GLOOM.color.toString(16).padStart(6, '0')}" opacity="${GLOOM.alpha}" mask="url(#${id}-gloom)"/>`;
+    `<rect width="${w}" height="${h}" fill="#${GLOOM.color.toString(16).padStart(6, '0')}" opacity="${GLOOM.alpha}" mask="url(#${id}-gloom)"/>` + glowing;
 }
 
 function drawHud(sheet: Sheet, w: number): string {

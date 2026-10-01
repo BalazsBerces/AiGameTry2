@@ -62,6 +62,13 @@ export function pulse(seed: number, time: number): number {
 
 /** The colour a fixed glower casts into its light pool, if any. */
 export type GlowTint = 'cyan' | 'violet';
+/** Each tint's light: crystal a cold blue, fungus a deep purple; deeper than the things themselves, for mood. */
+export const GLOW_COLOR: Record<GlowTint, string> = { cyan: '#3a78f0', violet: '#9a36e0' };
+/**
+ * A coloured glower's light is its colour, not white: it lifts only `lift` of the gloom a white light
+ * would, and lays its colour over the pool at `glow` strength.
+ */
+export const TINTED = { lift: 0.45, glow: 0.42 };
 
 /** Something fixed in a room that casts a light pool: where (px from the room's top-left tile corner), how far and strong, and its pulse's seed. */
 export interface Glower extends LightPool {
@@ -75,8 +82,8 @@ export interface Glower extends LightPool {
 const GLOWING_LOOKS: Readonly<Record<string, LightPool & { tint: GlowTint; rise: number }>> = {
   'crystal cluster': { radius: 85, intensity: 0.5, tint: 'cyan', rise: 6 },
   'crystal spire': { radius: 95, intensity: 0.5, tint: 'cyan', rise: 14 },
-  glowshroom: { radius: 110, intensity: 0.75, tint: 'violet', rise: 6 },
-  'giant mushroom': { radius: 130, intensity: 0.7, tint: 'violet', rise: 16 },
+  glowshroom: { radius: 90, intensity: 0.55, tint: 'violet', rise: 6 },
+  'giant mushroom': { radius: 100, intensity: 0.5, tint: 'violet', rise: 16 },
 };
 /** Floor decor that glints in the gloom: very faint. */
 const GLOWING_DECOR: Readonly<Record<string, LightPool & { tint: GlowTint }>> = {

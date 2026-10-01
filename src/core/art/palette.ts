@@ -185,6 +185,10 @@ export const PAPER = {
     wormBellyShade: '#33221f',
     maw: '#7a2a2c',
     mawDeep: '#2a0a0e',
+    // The worm boss's eggs: pale, leathery pods flecked with crystal.
+    egg: '#d8cdb2',
+    eggLight: '#efe6d0',
+    eggShade: '#a89c80',
 
     earth: '#33271c',
     earthPatch: '#3e3022',

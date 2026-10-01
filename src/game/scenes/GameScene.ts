@@ -50,7 +50,7 @@ import {
   type WorldRoom,
 } from '../../core/map/world';
 import { COLORS, TUNING } from '../config';
-import type { Enemy, EnemyContext, EnemySprite } from '../entities/enemy';
+import type { Enemy, EnemyContext, EnemyLook, EnemySprite } from '../entities/enemy';
 import { createIronMaidenBoss } from '../entities/bosses/ironMaiden';
 import { createCandleWitch, DARK_DEPTH } from '../entities/bosses/candleWitch';
 import { createTurret } from '../entities/turret';
@@ -185,7 +185,7 @@ const FLOOR_COLOR: Record<RoomKind, (p: Palette) => number> = {
 };
 
 /** Enemies drawn in paper: how far below the centre of their body their feet are, and their frame rate if not the usual. */
-const ENEMY_ART: Partial<Record<EnemyType, { footOffset: number; fps?: number; ownShape?: boolean }>> = {
+const ENEMY_ART: Partial<Record<EnemyLook, { footOffset: number; fps?: number; ownShape?: boolean; tilts?: boolean }>> = {
   goblin: { footOffset: 7 },
   treantBoss: { footOffset: 30 },
   seedSpitter: { footOffset: 14 },
@@ -197,8 +197,11 @@ const ENEMY_ART: Partial<Record<EnemyType, { footOffset: number; fps?: number; o
   // The big slime's (each tier is scaled from it); the art squashes and stretches itself.
   slime: { footOffset: 16, ownShape: true },
   crystalTurret: { footOffset: 14 },
-  // Each segment's piece (head, body or tail) stands on its cell's centre, 10 px above its feet.
+  // Each segment's piece (head, body or tail) stands on its cell's centre, 10 px above its feet; the boss's too, grown to its size.
   worm: { footOffset: 10 },
+  wormBoss: { footOffset: 10 },
+  // Its eggs rock on their feet as they wobble to hatch.
+  wormEgg: { footOffset: 13, tilts: true },
 };
 
 const hex = (color: string) => parseInt(color.slice(1), 16);
@@ -1321,8 +1324,11 @@ export class GameScene extends Phaser.Scene {
         const shape = this.terrain.get(`${roomId}|${cell.x},${cell.y}`) as Phaser.GameObjects.Rectangle | undefined;
         if (result === 'damaged' && shape) this.fadeTerrain(shape, 0.25 * hits);
       },
-      spawnEnemy: (enemy) => {
+      spawnEnemy: (enemy, look) => {
         if (this.updatingSpawned) this.spawned.add(enemy);
+        // An egg is no enemy type of its own; what hatches from it is.
+        if (look && look !== 'wormEgg') this.enemyTypes.set(enemy, look);
+        if (look) this.dressEnemy(enemy, look, false);
         this.addEnemy(enemy);
       },
       removeEnemy: (enemy) => {
@@ -1558,8 +1564,8 @@ export class GameScene extends Phaser.Scene {
     const where = { x: part.x, y: part.y };
     const color = part.fillColor;
     const replacements = enemy.hit(part, damage);
-    // Torn to paper scraps when it dies (a split into pieces is not a death, but a worm's segment dying is).
-    if (!replacements.length || (enemy.pieceVisual && !part.active)) this.scraps.burst('death', where, SCRAP_COLORS[this.enemyTypes.get(enemy)!] ?? [color, 0x1c140f]);
+    // Torn to paper scraps when it dies (a split into pieces is not a death, but a worm's segment dying is; the worm boss bursts its own way).
+    if (!replacements.length || (enemy.pieceVisual && !enemy.hitGroup && !part.active)) this.scraps.burst('death', where, SCRAP_COLORS[this.enemyTypes.get(enemy)!] ?? [color, 0x1c140f]);
     this.enemies = this.enemies.flatMap((e) => (e === enemy ? replacements : [e]));
     // Newborn enemies (a slime's children) join physics, dressed as their parent was; split pieces keep the parts they had.
     const type = this.enemyTypes.get(enemy);
@@ -1891,7 +1897,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** Gives an enemy with paper art its paper character, standing on its body and animated from what it does. */
-  private dressEnemy(enemy: Enemy, type: EnemyType, champion: boolean) {
+  private dressEnemy(enemy: Enemy, type: EnemyLook, champion: boolean) {
     const look = ENEMY_ART[type];
     if (!look) return;
     const art = enemy.art ?? { champion, scale: champion ? TUNING.champion.scale : 1 };

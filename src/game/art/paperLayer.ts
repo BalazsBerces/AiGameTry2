@@ -21,6 +21,8 @@ export interface ActorOptions {
   fps?: number;
   /** Its art draws its own squash and stretch (a slime's), so the shape's scale is left off it. */
   ownShape?: boolean;
+  /** It rocks on its feet as its shape turns (an egg wobbling to hatch). */
+  tilts?: boolean;
 }
 
 /**
@@ -94,6 +96,7 @@ export class PaperActor {
       .setPosition(shape.x, footY)
       .setScale(scale * stretch.x, scale * stretch.y)
       .setFlipX(f.flip)
+      .setAngle(this.opts.tilts ? shape.angle : 0)
       .setAlpha(shape.alpha)
       .setVisible(shape.visible)
       .setDepth(this.aloft?.() ? shape.depth : footDepth(footY, this.serial));

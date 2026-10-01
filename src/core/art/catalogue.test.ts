@@ -156,6 +156,8 @@ describe('the art catalogue', () => {
   });
 
   describe('the cave cast', () => {
+    /** The worm boss acts out its fight: crawl, roar (rearing), spit, charge, burrow, lob, split and die. */
+    const BOSS_ACTIONS = { idle: 2, move: 4, attack: 3, hurt: 1, spit: 2, charge: 2, burrow: 2, lob: 2, split: 2, die: 2 } as const;
     const CAST = {
       ghoul: { views: ['side'], actions: { idle: 2, move: 4, attack: 3, hurt: 1, recover: 2 } },
       bat: { views: ['side'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 } },
@@ -164,8 +166,13 @@ describe('the art catalogue', () => {
       wormHead: { views: ['side', 'down', 'up'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 } },
       wormBody: { views: ['side', 'down', 'up'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 } },
       wormTail: { views: ['side', 'down', 'up'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 } },
+      wormBossHead: { views: ['side', 'down', 'up'], actions: BOSS_ACTIONS, champion: false },
+      wormBossBody: { views: ['side', 'down', 'up'], actions: BOSS_ACTIONS, champion: false },
+      wormBossTail: { views: ['side', 'down', 'up'], actions: BOSS_ACTIONS, champion: false },
+      wormEgg: { views: ['down'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 }, champion: false },
     } as const;
     const KINDS = Object.keys(CAST) as (keyof typeof CAST)[];
+    const hasChampion = (kind: keyof typeof CAST) => !('champion' in CAST[kind]);
     const keysOf = (kind: keyof typeof CAST, champion: boolean) =>
       CAST[kind].views.flatMap((view) =>
         (Object.entries(CAST[kind].actions) as [Action, number][]).flatMap(([action, count]) =>
@@ -173,7 +180,7 @@ describe('the art catalogue', () => {
         ),
       );
 
-    it("stalks, lunges and recovers as a ghoul; flutters and swoops as a bat; squashes, hops and lands as a slime, all side on; a geode faces the camera; a worm's head, body and tail face every way it crawls", () => {
+    it("stalks, lunges and recovers as a ghoul; flutters and swoops as a bat; squashes, hops and lands as a slime, all side on; a geode faces the camera; a worm's and the worm boss's head, body and tail face every way they crawl; an egg sits facing the camera", () => {
       for (const kind of KINDS) {
         expect(CHARACTERS[kind].actions, kind).toEqual(CAST[kind].actions);
         expect([...CHARACTERS[kind].views], kind).toEqual(CAST[kind].views);
@@ -184,8 +191,12 @@ describe('the art catalogue', () => {
       for (const kind of KINDS) {
         const plain = keysOf(kind, false);
         const champ = keysOf(kind, true);
-        for (const key of [...plain, ...champ]) expect(byKey.has(key), key).toBe(true);
+        for (const key of plain) expect(byKey.has(key), key).toBe(true);
         expect(new Set(plain.map(svgOf)).size, kind).toBe(plain.length);
+        if (!hasChampion(kind)) {
+          for (const key of champ) expect(byKey.has(key), key).toBe(false);
+          continue;
+        }
         plain.forEach((key, i) => expect(svgOf(champ[i]), key).not.toBe(svgOf(key)));
       }
     });
@@ -195,8 +206,20 @@ describe('the art catalogue', () => {
       expect(new Set(['wormHead', 'wormBody', 'wormTail'].map(idle)).size).toBe(3);
     });
 
+    it("draws the worm boss's pieces as its own, apart from the worm's and from each other", () => {
+      const idle = (kind: string) => svgOf(charKey(kind, 'idle', 0, 'side'));
+      expect(new Set(['wormHead', 'wormBody', 'wormTail', 'wormBossHead', 'wormBossBody', 'wormBossTail'].map(idle)).size).toBe(6);
+    });
+
+    it("leaves the worm's own pieces drawn exactly as they were", () => {
+      const entries = artCatalogue().filter((e) => ['wormHead', 'wormBody', 'wormTail'].includes(e.key.split(':')[1]));
+      expect(entries.length).toBe(180);
+      // The fingerprint of the worm's frames before the worm boss got its own.
+      expect(fnv(entries.map((e) => e.key + e.svg()).join('\n'))).toBe('1d114173');
+    });
+
     it('comes out the same when built twice', () => {
-      for (const kind of KINDS) for (const key of [...keysOf(kind, false), ...keysOf(kind, true)]) expect(svgOf(key), key).toBe(svgOf(key));
+      for (const kind of KINDS) for (const key of [...keysOf(kind, false), ...(hasChampion(kind) ? keysOf(kind, true) : [])]) expect(svgOf(key), key).toBe(svgOf(key));
     });
 
     it('leaves the rest of the cast drawn exactly as before', () => {

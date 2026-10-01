@@ -378,24 +378,28 @@ const CAVE_HOLLOW: Scene = { ...CAVE, actors: ALONE, seed: 37, map: HOLLOW_MAP, 
 /**
  * A worm crawling along cells `cells` (head first), each piece where the game would put it: on its
  * cell's centre (its feet 10 px below), facing the way it crawls, its crawl rippling down from the head.
+ * The worm boss (`boss`) is drawn in its own pieces, at its bigger size; `pose` holds one of its segments in another pose.
  */
-function worm(cells: [number, number][], champion = false): Actor[] {
+function worm(cells: [number, number][], champion = false, boss = false, pose?: { segment: number; action: Action; frame: number }): Actor[] {
   const face = (from: [number, number], to: [number, number]) => {
     const [dx, dy] = [to[0] - from[0], to[1] - from[1]];
     return dx ? { view: 'side' as const, flip: dx < 0 } : { view: dy > 0 ? ('down' as const) : ('up' as const), flip: false };
   };
+  const scale = boss ? BOSS_SCALE : champion ? 1.35 : undefined;
   return cells.map((cell, i) => ({
-    kind: i === 0 ? 'wormHead' : i === cells.length - 1 ? 'wormTail' : 'wormBody',
+    kind: `${boss ? 'wormBoss' : 'worm'}${i === 0 ? 'Head' : i === cells.length - 1 ? 'Tail' : 'Body'}`,
     x: cell[0] * TILE + TILE / 2,
-    y: cell[1] * TILE + TILE / 2 + 10,
-    action: 'move' as const,
-    frame: (4 - (i % 4)) % 4,
+    y: cell[1] * TILE + TILE / 2 + 10 * (scale ?? 1),
+    ...(pose?.segment === i ? { action: pose.action, frame: pose.frame } : { action: 'move' as const, frame: (4 - (i % 4)) % 4 }),
     // Each piece faces the way it got to its cell: from the one behind it (the head, its tail, the way it heads).
     ...(i < cells.length - 1 ? face(cells[i + 1], cell) : face(cell, cells[i - 1])),
     champion,
-    scale: champion ? 1.35 : undefined,
+    scale,
   }));
 }
+
+/** The worm boss's segments against the worm's (core/config): its art is the worm's, grown to fit. */
+const BOSS_SCALE = 38 / 30;
 
 const CAVE_RIFT: Scene = {
   ...CAVE,
@@ -409,12 +413,26 @@ const CAVE_RIFT: Scene = {
     ...worm([[3, 7], [4, 7], [5, 7], [6, 7]], true),
   ],
 };
-const CAVE_BOSS: Scene = { ...CAVE, map: BOSS_MAP.map((row) => row.replace(/[Tbx]/g, '.')), floor: 'boss', seed: 31, decor: ['bones', 'shards', 'bones', 'cracks', 'pebbles', 'pick'], actors: [{ kind: 'player', x: 344, y: 330, action: 'idle', frame: 0, view: 'up' }] };
+const CAVE_BOSS: Scene = {
+  ...CAVE,
+  map: BOSS_MAP.map((row) => row.replace(/[Tbx]/g, '.')),
+  floor: 'boss',
+  seed: 31,
+  decor: ['bones', 'shards', 'bones', 'cracks', 'pebbles', 'pick'],
+  actors: [
+    { kind: 'player', x: 344, y: 330, action: 'idle', frame: 0, view: 'up' },
+    // The worm boss crawling round the room, heaving an egg out of its back; one egg in the air, one resting, one about to hatch.
+    ...worm([[4, 3], [5, 3], [6, 3], [7, 3], [8, 3], [9, 3], [10, 3], [10, 4], [10, 5], [11, 5], [12, 5]], false, true, { segment: 5, action: 'lob', frame: 0 }),
+    { kind: 'wormEgg', x: 9 * TILE, y: 2 * TILE, action: 'move', frame: 1 },
+    { kind: 'wormEgg', x: 2.5 * TILE, y: 6.5 * TILE + 13, action: 'idle', frame: 0 },
+    { kind: 'wormEgg', x: 12.5 * TILE, y: 1.5 * TILE + 13, action: 'attack', frame: 2 },
+  ],
+};
 
 const img = (svg: string, w: number, h: number, scale: number, flip = false, alt = '') =>
   `<img src="${uri(svg)}" width="${w * scale}" height="${h * scale}" alt="${alt}"${flip ? ' style="transform:scaleX(-1)"' : ''}>`;
 
-const NAMES: Record<string, string> = { player: 'Player', goblin: 'Goblin', seedSpitter: 'Seed spitter', boar: 'Boar', wasp: 'Wasp', treantBoss: 'Treant', ghoul: 'Ghoul', bat: 'Bat', slime: 'Slime', crystalTurret: 'Geode', wormHead: 'Worm head', wormBody: 'Worm body', wormTail: 'Worm tail' };
+const NAMES: Record<string, string> = { player: 'Player', goblin: 'Goblin', seedSpitter: 'Seed spitter', boar: 'Boar', wasp: 'Wasp', treantBoss: 'Treant', ghoul: 'Ghoul', bat: 'Bat', slime: 'Slime', crystalTurret: 'Geode', wormHead: 'Worm head', wormBody: 'Worm body', wormTail: 'Worm tail', wormBossHead: 'Worm boss head', wormBossBody: 'Worm boss body', wormBossTail: 'Worm boss tail', wormEgg: 'Worm egg' };
 /** What each cave pose is, for the strips' headings. */
 const POSE_NAMES: Record<string, Partial<Record<Action, string>>> = {
   ghoul: { move: 'stalk', attack: 'wind-up, lunge' },
@@ -424,6 +442,10 @@ const POSE_NAMES: Record<string, Partial<Record<Action, string>>> = {
   wormHead: { move: 'crawl', attack: 'rear, maw splayed (for the boss)' },
   wormBody: { move: 'crawl', attack: 'rear, crystals flaring (for the boss)' },
   wormTail: { move: 'crawl', attack: 'rear (for the boss)' },
+  wormBossHead: { move: 'crawl', attack: 'roar: maw splayed, crystals flaring', spit: 'maw pulsing', charge: 'head tucked, shards forward', burrow: 'diving in, climbing out', lob: 'heave, let go', split: 'torn open on its crystal core', die: 'cracking, bursting' },
+  wormBossBody: { move: 'crawl', attack: 'roar: crystals flaring', spit: 'ready, firing', charge: 'shards forward', burrow: 'diving in, climbing out', lob: 'heave, let go', split: 'torn open', die: 'cracking, bursting' },
+  wormBossTail: { move: 'crawl', attack: 'roar', spit: 'ready, firing', charge: 'shards forward', burrow: 'diving in, climbing out', lob: 'heave, let go', split: 'torn open on its crystal core', die: 'cracking, bursting' },
+  wormEgg: { idle: 'resting', move: 'tumbling through the air', attack: 'wobbling: hairline, spreading, splitting' },
 };
 
 /** Every frame of `kinds`' art, view by view, then their champions' gold-trimmed frames. */
@@ -447,6 +469,7 @@ function frameStrips(kinds: string[], champs: string[]): string {
       rows.push(`<section class="strip"><h3>${label}</h3><div class="actions">${cells}</div></section>`);
     }
   }
+  if (!champs.length) return rows.join('');
   const champFigs = champs
     .map((k) => `<figure>${img(CHARACTERS[k].draw('idle', 0, CHARACTERS[k].views[0], true), CHARACTERS[k].w, CHARACTERS[k].h, 2, false, `Champion ${names[k]}`)}<figcaption>${names[k]}</figcaption></figure>`)
     .join('');
@@ -581,7 +604,7 @@ function cavesSheet(): string {
 <header class="masthead">
   <p class="eyebrow">Floor 2 · room shell and terrain</p>
   <h1>Papercut Caves</h1>
-  <p class="lede">Warm earth, cold light: umber and ochre rock paper, icy cyan-white crystal as the hard accent, violet fungus as the second hue, and deep-teal slime, soft and translucent round a milky core. This sheet covers the room shell (walls, doors, floors), every cave terrain tile and the decor, bones and a dropped miner's pick among it, and the cave cast: the ghoul, the bat, the slime, the geode and the worm.</p>
+  <p class="lede">Warm earth, cold light: umber and ochre rock paper, icy cyan-white crystal as the hard accent, violet fungus as the second hue, and deep-teal slime, soft and translucent round a milky core. This sheet covers the room shell (walls, doors, floors), every cave terrain tile and the decor, bones and a dropped miner's pick among it, and the cave cast: the ghoul, the bat, the slime, the geode, the worm, and the worm boss with its eggs.</p>
 </header>
 ${defs(lit)}${defs(unlit)}${defs(grotto)}${defs(hollow)}${defs(rift)}${defs(boss)}
 <figure class="stage">${caveLit}<figcaption>A sample cave room, lit as in the game: stalagmites fused along the walls, a chasm, thorn vines, a boulder, a crystal cluster and glowshrooms; a ghoul winding up at the player (a champion stalking below), one bat hanging wings-wide for its tell, another swooping; a geode split open and firing cyan shards (one already ricocheting off the wall), a champion geode shut above; a big slime squashed for its jump, a medium one in the air over a rock and a small champion splatting down. The right door is barred while enemies live.</figcaption></figure>
@@ -590,13 +613,17 @@ ${defs(lit)}${defs(unlit)}${defs(grotto)}${defs(hollow)}${defs(rift)}${defs(boss
   <figure class="stage small">${grottoUnlit}<figcaption>A crystal grotto: crystal spires, and crystal enough for veined walls all the way round.</figcaption></figure>
   <figure class="stage small">${hollowUnlit}<figcaption>A mushroom hollow: giant mushrooms, clumps of mushroom caps and glowshrooms.</figcaption></figure>
   <figure class="stage small">${riftUnlit}<figcaption>A rift: the chasm's lip torn red. A worm crawls along the top and turns down the room, its crawl rippling from head to tail; a champion heads off the other way below.</figcaption></figure>
-  <figure class="stage small">${bossUnlit}<figcaption>The worm's room: darker earth broken by burrows, strewn with bones and shards.</figcaption></figure>
+  <figure class="stage small">${bossUnlit}<figcaption>The worm's room: darker earth broken by burrows, strewn with bones and shards. The worm boss crawls round it, heaving an egg out of its back; another egg is in the air, one rests by the wall and one is splitting open to hatch.</figcaption></figure>
 </div>
 <h2>The cave cast, frame by frame</h2>
 <p class="note">The ghoul's wind-up (eyes flared cyan) is held for its whole tell, then the lunge frames play while it lunges; it loops recover while it catches its breath. The bat beats its wings at twice the usual frame rate, hangs with them spread wide for its tell, and holds the swoop frames while it swoops.</p>
 <p class="note">The slime squashes ever lower through its tell, then plays its hop frame by frame through the jump and splats where it lands; the medium and small slimes are the same art, smaller. The geode cracks along its seam as its shot charges, splits open on its crystal core (held open while it waits for a clear shot) and flares as it fires. Its shots are cyan crystal shards, the only enemy shots that ricochet; every other enemy shot stays red.</p>
 <p class="note">The worm is drawn piece by piece, each over its own segment's cell: a head, body pieces and a tail, armoured in dark chitin plates that lap toward the front, cyan crystal shards growing from the spine, and a lamprey maw ringed with bone teeth. Each piece faces the way it crawls (side on, toward the camera or away), so the chain bends round each turn as it gets there; the head points where the worm is heading. The crawl ripples from the head down to the tail, a frame behind segment by segment. Its rearing frames (the maw splayed wide, the crystals flaring) wait for the worm boss.</p>
 ${frameStrips(['ghoul', 'bat', 'slime', 'crystalTurret', 'wormHead', 'wormBody', 'wormTail'], ['ghoul', 'bat', 'slime', 'crystalTurret', 'wormHead', 'wormBody', 'wormTail'])}
+<h2>The worm boss, acting out its fight</h2>
+<p class="note">The worm boss is the worm grown huge, its crystals bigger still, drawn piece by piece like the worm, each pose held exactly as long as the moment of the fight it acts out. It crawls; it rears up and roars (the maw splayed, the crystals flaring) through the stop at its split and through its last stand's roar; its maw pulses as a spit wave runs down its body, each segment flaring as its shot leaves; it tucks its head and points its shards forward as it charges up and between lunges; it dives into the walls and climbs out of them; a segment heaves as it lobs an egg; at the split its torn ends show a raw crystal core; and a dying half cracks through, each segment's crystals blazing just before it bursts into crystal shards, tail to head along the death chain.</p>
+<p class="note">Its eggs are pale, leathery pods flecked with crystal: tumbling through the air, resting where they land, then cracking ever wider as they wobble to hatch into a worm.</p>
+${frameStrips(['wormBossHead', 'wormBossBody', 'wormBossTail', 'wormEgg'], [])}
 <section class="strip"><h3>Shots <span>the geode's ricocheting shard, beside the red enemy shot</span></h3><div class="frames"><figure>${img(hudSvg.shot('crystal', SHOT_ART.crystal), SHOT_CANVAS, SHOT_CANVAS, 2.5, false, 'crystal shard shot')}<figcaption>crystal shard</figcaption></figure><figure>${img(hudSvg.shot('enemy', SHOT_ART.enemy), SHOT_CANVAS, SHOT_CANVAS, 2.5, false, 'enemy shot')}<figcaption>enemy shot</figcaption></figure></div></section>
 <h2>Terrain</h2>
 ${caveTerrainSheet()}

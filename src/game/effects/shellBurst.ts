@@ -43,10 +43,11 @@ function fling(scene: Phaser.Scene, at: Point, piece: Phaser.GameObjects.Shape, 
 }
 
 /**
- * The worm boss's shell bursting at `at`: shards of it (`color`) fly, spin and bounce, orange ichor
- * sprays, and a splat of it is left on `marks` (the fight's floor decals), if given, for good.
+ * The worm boss's shell bursting at `at`: shards of it (`color`, or each in turn of a palette of
+ * them, its crystal and chitin) fly, spin and bounce, orange ichor sprays, and a splat of it is
+ * left on `marks` (the fight's floor decals), if given, for good.
  */
-export function shellBurst(scene: Phaser.Scene, at: Point, size: BurstSize, color: number, marks?: Phaser.GameObjects.Graphics) {
+export function shellBurst(scene: Phaser.Scene, at: Point, size: BurstSize, color: number | readonly number[], marks?: Phaser.GameObjects.Graphics) {
   const spec = TUNING.shellBurst[size];
   const reach = spec.reachTiles * TUNING.tile;
   if (marks) splat(marks, at, (spec.splatTiles * TUNING.tile) / 2);
@@ -54,8 +55,9 @@ export function shellBurst(scene: Phaser.Scene, at: Point, size: BurstSize, colo
     const w = rand(spec.chunkPx[0], spec.chunkPx[1]);
     // A jagged shard of its shell, some in its colour and some in its shadow, with a pale rim.
     const tip = rand(-0.3, 0.3) * w;
+    const fill = typeof color === 'number' ? (i % 3 === 2 ? shade(color, 0.6) : color) : color[i % color.length];
     const shard = scene.add
-      .triangle(at.x, at.y, 0, 0, w, rand(-0.15, 0.15) * w, w / 2 + tip, w * rand(0.45, 0.8), i % 3 === 2 ? shade(color, 0.6) : color)
+      .triangle(at.x, at.y, 0, 0, w, rand(-0.15, 0.15) * w, w / 2 + tip, w * rand(0.45, 0.8), fill)
       .setDepth(DEPTH);
     shard.setStrokeStyle(1, COLORS.wormChitinEdge, 0.7);
     fling(scene, at, shard, reach, true);

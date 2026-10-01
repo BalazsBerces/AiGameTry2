@@ -31,7 +31,11 @@ import {
 } from '../../../core/bosses/wormBossAttack';
 import type { BarHalf, BossBarSnapshot } from '../../../core/bosses/bossBar';
 import { hitsToBreak } from '../../../core/map/tiles';
-import { wormPose } from '../../../core/art/castPoses';
+import { eggPose, wormBossPose, wormPose } from '../../../core/art/castPoses';
+import { charKey } from '../../../core/art/catalogue';
+import { CHARACTERS } from '../../../core/art/characters';
+import { PAPER } from '../../../core/art/palette';
+import { ART_SCALE, bakedArt } from '../../art/bake';
 import { COLORS, TUNING } from '../../config';
 import { shellBurst, shakeScreen, spray } from '../../effects/shellBurst';
 import { championBoost, championColor, flash, gameNow, singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from '../enemy';
@@ -73,6 +77,11 @@ export function championWorm(style: WormStyle): WormStyle {
   };
 }
 
+/** What the worm boss bursts into, at its split and as it blows apart: its crystal, and its chitin. */
+const CRYSTAL_SHARDS = [PAPER.caves.crystal, PAPER.caves.crystalLight, PAPER.caves.chitin].map((c) => parseInt(c.slice(1), 16));
+/** How far below an egg's centre its paper art's feet are (core/art/characters). */
+const EGG_FOOT = 13;
+
 const sameCell = (a: Cell, b: Cell) => a.x === b.x && a.y === b.y;
 const OPPOSITE: Record<Direction, Direction> = { up: 'down', down: 'up', left: 'right', right: 'left' };
 const inRoom = (ctx: EnemyContext, c: Cell) => c.y >= 0 && c.x >= 0 && c.y < ctx.tiles.length && c.x < ctx.tiles[0].length;
@@ -105,12 +114,14 @@ interface WormBossShared {
   holeCells: Cell[];
   /** The parts of each egg and hatchling from before its split; one counts while any of its parts lives. */
   brood: EnemySprite[][];
-  /** Eggs in the air, each lobbed at `start` from where one of its segments was; they count toward the brood. */
-  lobs: { eggs: { from: { x: number; y: number }; cell: Cell }[]; start: number }[];
+  /** Eggs in the air, each lobbed at `start` from where one of its segments was, in paper if it is baked; they count toward the brood. */
+  lobs: { eggs: { from: { x: number; y: number }; cell: Cell; art?: Phaser.GameObjects.Image }[]; start: number }[];
   /** Eggs in flight, over everything, redrawn every frame. */
   air: Phaser.GameObjects.Graphics;
   /** Its health bar (core/bossBar), kept up to date in place: the scene shows this very object. */
   bar: BossBarSnapshot;
+  /** The room's size in cells, for its paper puppet to tell which segments are in the walls. */
+  room?: { w: number; h: number };
   tickedAt: number;
   rng: Rng;
   scene: Phaser.Scene;
@@ -120,8 +131,12 @@ interface BossPiece {
   shared: WormBossShared;
   /** Its last stand: a wave of spit running down the body, from where each segment lies as it fires. */
   spit?: { start: number; shots: SpitShot[]; fired: number };
+  /** Its last spit wave, kept for its paper puppet to flare each segment as it fires, the last one too. */
+  spat?: { start: number; shots: SpitShot[] };
   /** When it next drops an egg (core/wormBrood); off while it can't. */
   nextEggAt?: number;
+  /** The segments it last lobbed eggs from, and when: its paper puppet heaves them. */
+  heave?: { segments: number[]; start: number };
   /** A half of the split boss: its own pool of hit points; it dies whole once this is empty. */
   pool?: number;
   /** A half's piece of the health bar. */
@@ -176,6 +191,7 @@ interface WormState {
 function tickGround(scene: Phaser.Scene, ctx: EnemyContext, shared: WormBossShared) {
   if (shared.tickedAt === ctx.time) return;
   shared.tickedAt = ctx.time;
+  shared.room ??= { w: ctx.tiles[0].length, h: ctx.tiles.length };
   const t = TUNING.tile;
   const g = shared.ground.clear();
   flyEggs(scene, ctx, shared);
@@ -197,22 +213,35 @@ function tickGround(scene: Phaser.Scene, ctx: EnemyContext, shared: WormBossShar
 
 /**
  * Eggs arc from the segments that threw them to their cells like a Treant's seed pods, each
- * landing spot shadowed until it comes down; there it lands, harmless, as an egg.
+ * landing spot shadowed until it comes down; there it lands, harmless, as an egg. In paper they
+ * tumble end over end on their way.
  */
 function flyEggs(scene: Phaser.Scene, ctx: EnemyContext, shared: WormBossShared) {
   const air = shared.air.clear();
   shared.lobs = shared.lobs.filter((lob) => {
     const k = (ctx.time - lob.start) / WORM_BROOD.flightMs;
     if (k >= 1) {
-      for (const { cell } of lob.eggs) ctx.spawnEnemy(wormEgg(scene, ctx, shared, cell));
+      for (const egg of lob.eggs) {
+        egg.art?.destroy();
+        ctx.spawnEnemy(wormEgg(scene, ctx, shared, egg.cell), 'wormEgg');
+      }
       return false;
     }
-    for (const { from, cell } of lob.eggs) {
+    for (const egg of lob.eggs) {
+      const { from, cell } = egg;
       const p = ctx.tileCenter(cell);
       shared.ground.fillStyle(COLORS.podShadow, 0.2 + 0.4 * k).fillEllipse(p.x, p.y + 6, 12 + 26 * k, 6 + 12 * k);
       const lift = Math.sin(Math.PI * k) * TUNING.tile * 2.5;
       const x = from.x + (p.x - from.x) * k;
       const y = from.y + (p.y - from.y) * k - lift;
+      const key = charKey('wormEgg', 'move', Math.floor(k * 6) % 4, 'down');
+      const art = bakedArt(key);
+      if (art) {
+        const { anchor, w, h } = CHARACTERS.wormEgg;
+        egg.art ??= scene.add.image(x, y, art.texture, key).setOrigin(anchor.x / w, anchor.y / h).setScale(1 / ART_SCALE).setDepth(shared.air.depth);
+        egg.art.setTexture(art.texture, key).setPosition(x, y + EGG_FOOT);
+        continue;
+      }
       air.fillStyle(COLORS.wormEgg, 1).fillEllipse(x, y, 16, 20);
       air.lineStyle(2, COLORS.wormBossBody, 1).strokeEllipse(x, y, 16, 20);
     }
@@ -302,11 +331,15 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
     if (!tick.eggs) return;
     // Never onto an egg on its way down, or anything of the brood already there.
     const taken = [...inFlight, ...living.flat().filter((p) => p.active).map((p) => ctx.tileOf(p.x, p.y))];
-    const eggs = planEggLob(ctx.tiles, ctx.doors, state.worm.segments, ctx.playerTile, taken, tick.eggs, shared.rng).map(({ from, cell }) => {
-      const part = state.parts[state.worm.segments.findIndex((c) => sameCell(c, from))];
+    const lobbed = planEggLob(ctx.tiles, ctx.doors, state.worm.segments, ctx.playerTile, taken, tick.eggs, shared.rng);
+    const segments = lobbed.map(({ from }) => state.worm.segments.findIndex((c) => sameCell(c, from)));
+    const eggs = lobbed.map(({ cell }, i) => {
+      const part = state.parts[segments[i]];
       return { from: { x: part.x, y: part.y }, cell };
     });
-    if (eggs.length) shared.lobs.push({ eggs, start: ctx.time });
+    if (!eggs.length) return;
+    shared.lobs.push({ eggs, start: ctx.time });
+    b.heave = { segments, start: ctx.time };
   };
 
   /** Starts a rampage round on the shared clock; this piece joins it if it is long enough. */
@@ -386,6 +419,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
       // Its last stand: out of the walls and stretched along its lane, it spits down its whole length.
       if (r.lunge!.wrap && r.endless) {
         b.spit = { start: ctx.time, shots: spitWave(state.worm.segments, state.worm.heading), fired: 0 };
+        b.spat = b.spit;
       }
       endLunge(ctx, b, r);
     }
@@ -553,8 +587,8 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
     const { popped, over } = chainAt(state.parts.length, ctx.time - dying.at);
     for (const { segment, big } of deathChain(state.parts.length).pops.slice(dying.popped, popped.length)) {
       const part = state.parts[segment];
-      // Out of sight in a wall, it goes quietly.
-      if (part.visible) shellBurst(scene, part, big ? 'head' : 'pop', big ? style.headColor : style.bodyColor, b.shared.marks);
+      // It bursts into crystal shards; out of sight in a wall, it goes quietly.
+      if (part.visible) shellBurst(scene, part, big ? 'head' : 'pop', CRYSTAL_SHARDS, b.shared.marks);
       part.setVisible(false);
       part.body.enable = false;
       shakeScreen(scene, big ? 'head' : 'pop');
@@ -662,11 +696,30 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
         part.body.setVelocity((to.x - part.x) / seconds, (to.y - part.y) / seconds);
       });
     },
-    // Drawn piece by piece: head, body and tail, the head facing the way it heads (the boss is drawn its own way).
-    pieceVisual: state.boss ? undefined : (part, time) => {
-      const { piece: kind, ...look } = wormPose(state.worm, Math.max(0, state.parts.indexOf(part)), time);
+    // Drawn piece by piece: head, body and tail, the head facing the way it heads; the boss's acting out its fight.
+    pieceVisual(part, time) {
+      const index = Math.max(0, state.parts.indexOf(part));
+      const b = state.boss;
+      const { piece: kind, ...look } = b
+        ? wormBossPose(
+            {
+              worm: state.worm,
+              room: b.shared.room ?? { w: Infinity, h: Infinity },
+              moment: b.moment,
+              rawEnd: b.rawEnd,
+              rampage: b.rampage?.phase,
+              spit: b.spat,
+              heave: b.heave,
+              dying: b.dying,
+            },
+            index,
+            time,
+          )
+        : wormPose(state.worm, index, time);
       return { kind, ...look };
     },
+    // The boss is the worm's art grown to its size.
+    art: state.boss ? { scale: style.segmentSize / REGULAR_WORM.segmentSize, champion: false } : undefined,
     hit(part, damage) {
       const index = state.parts.indexOf(part);
       if (index < 0) return [enemy];
@@ -718,7 +771,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
       return [enemy];
     }
     // It tears apart: the segment hit bursts, and the screen shakes.
-    shellBurst(scene, part, 'split', style.bodyColor, shared.marks);
+    shellBurst(scene, part, 'split', CRYSTAL_SHARDS, shared.marks);
     shakeScreen(scene, 'split');
     part.destroy();
     shared.bodies.delete(state);
@@ -786,12 +839,14 @@ function wormEgg(scene: Phaser.Scene, ctx: EnemyContext, shared: WormBossShared,
       // The egg's place in the brood passes to what hatched from it.
       parts.splice(0, parts.length, ...hatchling.parts);
       ctx.removeEnemy(egg);
-      ctx.spawnEnemy(tethered(hatchling, shared));
+      ctx.spawnEnemy(tethered(hatchling, shared), 'worm');
     }),
     shared,
   );
   // Eggs only get in the way: bumping one doesn't hurt.
   egg.harmless = () => true;
+  // In paper it rests, then cracks ever wider as it wobbles to hatch.
+  egg.visual = (time) => eggPose(laidAt, time);
   return egg;
 }
 
@@ -801,6 +856,7 @@ const fightOver = (shared: WormBossShared) => shared.pieces === 0 && shared.corp
 function endFight(shared: WormBossShared) {
   shared.ground.destroy();
   shared.air.destroy();
+  for (const lob of shared.lobs) for (const egg of lob.eggs) egg.art?.destroy();
   shared.scene.tweens.add({ targets: shared.marks, alpha: 0, delay: TUNING.shellBurst.restMs, duration: 1200, onComplete: () => shared.marks.destroy() });
 }
 

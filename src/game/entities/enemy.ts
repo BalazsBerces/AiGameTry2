@@ -2,7 +2,7 @@ import type Phaser from 'phaser';
 import type { Cell } from '../../core/map/floorGenerator';
 import type { BossBarSnapshot } from '../../core/bosses/bossBar';
 import type { PackDecision, PackMember } from '../../core/enemies/forestCast';
-import type { Door, Tile } from '../../core/rooms/roomGenerator';
+import type { Door, EnemyType, Tile } from '../../core/rooms/roomGenerator';
 import type { Stunnable } from '../../core/enemies/stun';
 import type { Motion } from '../../core/art/animator';
 import { COLORS, TUNING } from '../config';
@@ -52,8 +52,11 @@ export interface EnemyContext {
   pushPlayerOut(from: { x: number; y: number }, distance: number): void;
   /** Something heavy (a lunging worm boss) slammed into the rock at `tile`: it takes `hits` shots' worth of damage. */
   chipRock(tile: Cell, hits: number): void;
-  /** Brings a new enemy into the fight (the worm boss's eggs, and what hatches from them). */
-  spawnEnemy(enemy: Enemy): void;
+  /**
+   * Brings a new enemy into the fight (the worm boss's eggs, and what hatches from them), drawn in
+   * paper as `look` says (a hatchling as a worm), if it says.
+   */
+  spawnEnemy(enemy: Enemy, look?: EnemyLook): void;
   /** Takes an enemy out of the fight without killing it (an egg that hatched, a brood outliving its boss). */
   removeEnemy(enemy: Enemy): void;
   /** Shows a boss's health bar in the strip under the playfield (core/bossBar); the scene keeps the snapshot, which the boss updates in place. */
@@ -121,6 +124,9 @@ export interface Enemy extends Stunnable {
   /** Shapes drawn along with its parts purely as decoration (the Treant's face), hidden when paper art stands in for it. */
   trim?: Phaser.GameObjects.GameObject[];
 }
+
+/** What an enemy is drawn as in paper: its type's art, or something that is no spawnable enemy (the worm boss's eggs). */
+export type EnemyLook = EnemyType | 'wormEgg';
 
 /** What an enemy reports about how it looks: its paper art otherwise animates from its velocity. */
 export type Visual = Pick<Motion, 'loop' | 'hold' | 'aim'>;

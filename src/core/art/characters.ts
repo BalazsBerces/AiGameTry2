@@ -3,15 +3,19 @@ import { blob, cutPoly, fill, group, n, pieceRng, polyPath, ragged, sheet, smoot
 
 /** What every character does, each drawn as a short stop-motion loop. */
 export type BaseAction = 'idle' | 'move' | 'attack' | 'hurt';
-/** Base actions plus the ones only some characters have: a goblin healing its partner, being healed, a ghoul catching its breath, a slime splatting down. */
-export type Action = BaseAction | 'heal' | 'healed' | 'recover' | 'land';
+/**
+ * Base actions plus the ones only some characters have: a goblin healing its partner, being
+ * healed, a ghoul catching its breath, a slime splatting down; the worm boss spitting, charging
+ * up a lunge, burrowing, lobbing an egg, torn open at its split and blowing apart as it dies.
+ */
+export type Action = BaseAction | 'heal' | 'healed' | 'recover' | 'land' | 'spit' | 'charge' | 'burrow' | 'lob' | 'split' | 'die';
 /** The way a character faces: `side` looks right (left is the mirror image), `down` at the camera, `up` away. */
 export type View = 'side' | 'down' | 'up';
 
 /** Frames per base action, the same for every character. */
 export const FRAMES: Readonly<Record<BaseAction, number>> = { idle: 2, move: 4, attack: 3, hurt: 1 };
 /** Frames of the extra actions a character may add. */
-const EXTRA_FRAMES: Readonly<Record<Exclude<Action, BaseAction>, number>> = { heal: 2, healed: 2, recover: 2, land: 2 };
+const EXTRA_FRAMES: Readonly<Record<Exclude<Action, BaseAction>, number>> = { heal: 2, healed: 2, recover: 2, land: 2, spit: 2, charge: 2, burrow: 2, lob: 2, split: 2, die: 2 };
 
 export interface CharacterArt {
   /** Canvas size in game px. */
@@ -82,6 +86,9 @@ function pose(action: Action, frame: number): Pose {
       return { ...base, bob: frame ? 1 : 0.4, squash: frame ? 0.95 : 0.97, lean: 6 };
     case 'land':
       return { ...base, squash: frame ? 0.92 : 0.8 };
+    default:
+      // The worm boss's own actions: it is drawn its own way (drawWorm).
+      return base;
   }
 }
 
@@ -770,6 +777,12 @@ interface Crawl {
   maw: number;
   glow: number;
   hurt: boolean;
+  /** How far its spine's crystals lean forward, in degrees (back if negative). */
+  tilt?: number;
+  /** How big its crystals grow: the worm boss's are bigger. */
+  crystals?: number;
+  /** How strongly their glow shows round them as they kindle (none round the boss's big crystals, where it would read as a bubble). */
+  halo?: number;
 }
 
 function crawl(action: Action, frame: number): Crawl {
@@ -781,6 +794,24 @@ function crawl(action: Action, frame: number): Crawl {
       return { bob: [-1, -2, 0][frame], stretch: [0.94, 1.06, 1][frame], arch: [2, 3, 0.5][frame], maw: [0.8, 1.35, 0.9][frame], glow: [0.8, 1.3, 0.6][frame], hurt: false };
     case 'hurt':
       return { bob: 1, stretch: 0.95, arch: -1, maw: 0.1, glow: 0.05, hurt: true };
+    case 'spit':
+      // Ready, then its flanks puffing and its crystals flaring as the spit leaves (the head's maw pulsing).
+      return { bob: [0, -1][frame], stretch: [1, 0.96][frame], arch: [0.6, 1.8][frame], maw: [0.9, 1.45][frame], glow: [0.6, 1.15][frame], hurt: false };
+    case 'charge':
+      // Head tucked, hunched and shuddering, maw clamped shut, its shards pointing forward.
+      return { bob: [0.6, 1.2][frame], stretch: [0.9, 0.88][frame], arch: [2.5, 3][frame], maw: 0, glow: [0.7, 0.9][frame], hurt: false, tilt: [52, 60][frame] };
+    case 'burrow':
+      // Diving in, low with its crystals swept back; coming out, rising with them shaking loose.
+      return { bob: [1.5, -1][frame], stretch: [1.04, 1][frame], arch: [-1, 1.5][frame], maw: [0.7, 0.9][frame], glow: [0.3, 0.5][frame], hurt: false, tilt: [-25, 10][frame] };
+    case 'lob':
+      // Heaving up an egg, then letting go.
+      return { bob: [-3, 0.8][frame], stretch: [0.92, 1.05][frame], arch: [5, -0.5][frame], maw: [0.6, 0.5][frame], glow: [0.9, 0.45][frame], hurt: false };
+    case 'split':
+      // Torn open, twitching.
+      return { bob: [0, 1][frame], stretch: [0.97, 1][frame], arch: [1, 0][frame], maw: [0.3, 0.2][frame], glow: [0.9, 0.7][frame], hurt: false };
+    case 'die':
+      // Cracked through, its crystals burning ever brighter until it bursts.
+      return { bob: [0.5, 0][frame], stretch: [0.98, 1.02][frame], arch: [-0.5, 0.5][frame], maw: [0.15, 0.1][frame], glow: [0.9, 1.4][frame], hurt: false };
     default:
       return { bob: frame ? 0.6 : 0, stretch: 1, arch: 0, maw: [0.4, 0.5][frame], glow: [0.25, 0.4][frame], hurt: false };
   }
@@ -791,11 +822,11 @@ const wormPts = (list: readonly (readonly [number, number])[], sx = 1, sy = 1): 
 
 /**
  * A cluster of crystal shards growing out of the spine at x,y, fanned about `a` degrees off
- * straight up, `size` times full height, in a halo as bright as `glow` (flaring past 1).
+ * straight up, `size` times full height, in a halo as bright as `glow` (flaring past 1), `haloK` as strong.
  */
-function spineShards(x: number, y: number, a: number, size: number, glow: number): string {
+function spineShards(x: number, y: number, a: number, size: number, glow: number, haloK = 1): string {
   // A cold glow round them only as they kindle; a faint one otherwise would read as a bubble.
-  const halo = glow > 0.5 ? ellipse(x + Math.sin((a * Math.PI) / 180) * 6 * size, y - 8 * size, 8 * size, 10 * size, C.crystal, `opacity="${n(Math.min(0.4, 0.2 * glow))}"`) : '';
+  const halo = glow > 0.5 && haloK > 0 ? ellipse(x + Math.sin((a * Math.PI) / 180) * 6 * size, y - 8 * size, 8 * size, 10 * size, C.crystal, `opacity="${n(Math.min(0.4, 0.2 * glow) * haloK)}"`) : '';
   const flare =
     glow > 1
       ? [-40, 0, 40]
@@ -854,7 +885,7 @@ const chitinChips = (r: PieceRng) =>
  * plates along its back, crystals growing out of its spine; the head ends in a lamprey maw, the
  * tail tapers off behind to a spike.
  */
-function wormSide(piece: WormPieceArt, c: Crawl, champion: boolean, r: PieceRng): string {
+function wormSide(piece: WormPieceArt, c: Crawl, champion: boolean, r: PieceRng, torn = false): string {
   const s = c.stretch;
   const { x: mx, y: my } = WORM_MID;
   const top = -14 - c.arch;
@@ -875,15 +906,22 @@ function wormSide(piece: WormPieceArt, c: Crawl, champion: boolean, r: PieceRng)
   const sheen = `<path d="M${n(mx - 14 * s)} ${n(my - 10)}Q${n(mx)} ${n(my + top - 1)} ${n(mx + 12 * s)} ${n(my - 10)}" stroke="${C.chitinLight}" stroke-width="1.4" fill="none" opacity="0.8"/>`;
   // The pale rim of its front plate, lapped over the piece ahead.
   const lip = piece === 'head' ? '' : `<path d="M${n(mx + 16 * s)} ${n(my - 11)}Q${n(mx + 26 * s)} ${n(my - 3)} ${n(mx + 25 * s)} ${n(my + 7)}" stroke="${C.chitinEdge}" stroke-width="1.6" fill="none"/>`;
-  const end =
-    piece === 'head'
+  const end = torn
+    ? // Torn open at the split: its raw crystal core where its maw or its tail was.
+      piece === 'head'
+      ? rawCore(r('wound'), mx + 19 * s, my - 1, 7, 11, c.glow)
+      : rawCore(r('wound'), mx - 25 * s, my + 1, 7, 10.5, c.glow)
+    : piece === 'head'
       ? // The maw seen edge on, and a row of pale pits behind it where eyes should be.
         lampreyMaw(mx + 20 * s, my - 1, 3 + 2.5 * c.maw, 9 + 2 * c.maw, c.maw) + [[8, -5], [11, -3], [13, 0]].map(([x, y]) => ellipse(mx + x * s, my + y, 0.7, 0.7, C.crystalLight, 'opacity="0.6"')).join('')
       : piece === 'tail'
         ? fill(cutPoly(r('spike'), wormPts([[-27, 6], [-34, 3.5], [-26, 1.5]], s), 0.3), C.chitinEdge)
         : '';
+  const k = c.crystals ?? 1;
+  const tilt = c.tilt ?? 0;
+  const spine = (x: number, y: number, a: number, size: number) => spineShards(x, y, a + tilt, size * k, c.glow, c.halo);
   const shards =
-    piece === 'head' ? spineShards(mx - 8 * s, my + top + 1, -18, 0.75, c.glow) : piece === 'tail' ? spineShards(mx + 4 * s, my + top + 3, -20, 0.55, c.glow) : spineShards(mx - 2 * s, my + top + 1, -12, 1.15, c.glow) + spineShards(mx + 12 * s, my - 10, 18, 0.45, c.glow);
+    piece === 'head' ? spine(mx - 8 * s, my + top + 1, -18, 0.75) : piece === 'tail' ? spine(mx + 4 * s, my + top + 3, -20, 0.55) : spine(mx - 2 * s, my + top + 1, -12, 1.15) + spine(mx + 12 * s, my - 10, 18, 0.45);
   const plate = trim(plateD, champion) + fill(plateD, C.chitin) + shade + seams + sheen + lip;
   return contact(mx, my + 9, 25 * s, 3) + group(sheet(belly) + sheet(plate + end, 2) + sheet(shards), `translate(0 ${n(c.bob)})`);
 }
@@ -894,7 +932,7 @@ function wormSide(piece: WormPieceArt, c: Crawl, champion: boolean, r: PieceRng)
  * its spine. Toward the camera the head shows its maw under the lip of its hood; away, just the
  * maw's rim past the back of the hood. The tail tapers off behind to a spike.
  */
-function wormEnd(piece: WormPieceArt, dir: 1 | -1, c: Crawl, champion: boolean, r: PieceRng): string {
+function wormEnd(piece: WormPieceArt, dir: 1 | -1, c: Crawl, champion: boolean, r: PieceRng, torn = false): string {
   const sy = c.stretch * dir;
   // Seen from above it reaches past its cell at both ends, lapping its neighbours, and under a piece turning side on at a corner.
   const reach = sy * 1.3;
@@ -920,20 +958,30 @@ function wormEnd(piece: WormPieceArt, dir: 1 | -1, c: Crawl, champion: boolean, 
   const spine = `<path d="M${n(mx)} ${n(my - 26 * c.stretch)}L${n(mx)} ${n(my + 26 * c.stretch)}" stroke="${C.chitinLight}" stroke-width="1.2" opacity="0.6"/>`;
   const lip = facing ? '' : `<path d="M${n(mx - 9)} ${n(my + 23 * reach)}Q${n(mx)} ${n(my + 27.5 * reach)} ${n(mx + 9)} ${n(my + 23 * reach)}" stroke="${C.chitinEdge}" stroke-width="1.6" fill="none"/>`;
   const pits = facing ? [[6, -1], [9, -3], [11, -6]].flatMap(([x, y]) => [circle(mx + x, my + y, 0.8, C.crystalLight), circle(mx - x, my + y, 0.8, C.crystalLight)]).join('') : '';
-  const end =
-    piece === 'head'
+  const end = torn
+    ? // Torn open at the split: its raw crystal core where its maw or its tail was.
+      piece === 'head'
+      ? facing
+        ? rawCore(r('wound'), mx, my + 12, 12, 9, c.glow)
+        : rawCore(r('wound'), mx, my + 25 * reach, 10, 4.5, c.glow)
+      : rawCore(r('wound'), mx, my - 25 * reach, 10, 4.5, c.glow)
+    : piece === 'head'
       ? facing
         ? lampreyMaw(mx, my + 12, 11 + 2 * c.maw, 9 + 2 * c.maw, c.maw)
         : ellipse(mx, my + 25.5 * reach, 9 + c.maw, 3.2, C.maw) + teeth(mx, my + 25.5 * reach, 8 + c.maw, 3, 10, 0.4)
       : piece === 'tail'
         ? fill(cutPoly(r('spike'), wormPts([[-2.5, -27], [0, -35], [2.5, -27]], 1, reach), 0.3), C.chitinEdge)
         : '';
+  const k = c.crystals ?? 1;
+  // Seen from above, crystals leaning forward or back stand nearer its front or its back.
+  const lean = (c.tilt ?? 0) * 0.12 * dir;
+  const spineAt = (y: number, a: number, size: number) => spineShards(mx, y + lean, a, size * k, c.glow, c.halo);
   const shards =
     piece === 'head'
-      ? spineShards(mx, my - (facing ? 10 : 2), 0, 0.8, c.glow)
+      ? spineAt(my - (facing ? 10 : 2), 0, 0.8)
       : piece === 'tail'
-        ? spineShards(mx, my + 3 * dir, 0, 0.55, c.glow)
-        : spineShards(mx, my - 2, 0, 0.9, c.glow) + spineShards(mx, my + 13, 8, 0.45, c.glow);
+        ? spineAt(my + 3 * dir, 0, 0.55)
+        : spineAt(my - 2, 0, 0.9) + spineAt(my + 13, 8, 0.45);
   const plate = trim(plateD, champion) + fill(plateD, C.chitin) + shade + seams + spine + lip + pits;
   const body = facing ? sheet(belly) + sheet(end) + sheet(plate, 2) : sheet(belly) + sheet(plate + end, 2);
   return contact(mx, my + 1, 16, 30) + group(body + sheet(shards), `translate(0 ${n(c.bob)})`);
@@ -945,6 +993,154 @@ function drawWorm(piece: WormPieceArt, action: Action, frame: number, view: View
   const drawn = view === 'side' ? wormSide(piece, c, champion, r) : wormEnd(piece, view === 'down' ? 1 : -1, c, champion, r);
   // A hit jolts it and knocks chips off its plates.
   return c.hurt ? group(drawn, `rotate(-4 ${WORM_MID.x} ${WORM_MID.y})`) + chitinChips(r) : drawn;
+}
+
+/**
+ * Its raw crystal core, bared where it was torn open at the split: a ragged red wound round a
+ * dark hollow, faceted crystal jutting out of it, glowing as bright as `glow`.
+ */
+function rawCore(r: ReturnType<typeof pieceRng>, x: number, y: number, rx: number, ry: number, glow: number): string {
+  const a = Math.min(rx, ry);
+  return (
+    fill(ragged(r, x, y, rx, ry, 9, 0.35), C.maw) +
+    ellipse(x, y, rx * 0.72, ry * 0.72, C.mawDeep) +
+    ellipse(x, y, rx * 0.9, ry * 0.9, C.crystal, `opacity="${n(0.25 * glow)}"`) +
+    prism(x - a * 0.35, y + a * 0.3, -35, a * 1.1, a * 0.5) +
+    prism(x + a * 0.35, y + a * 0.3, 30, a * 0.9, a * 0.45) +
+    prism(x, y + a * 0.4, 0, a * 1.4, a * 0.6)
+  );
+}
+
+/** The worm boss: the worm grown huge, its crystals bigger still. Each piece is drawn over its segment's cell. */
+const WORM_BOSS = { w: 80, h: 112, foot: { x: 40, y: 82 } };
+/** Where the worm's own canvas sits on the boss's: crystals that big need the room above. */
+const WORM_BOSS_OFFSET = { x: 8, y: 26 };
+
+/** Rock chips round x,y, `spread` px across: rubble thrown up as it burrows. */
+const rubble = (r: PieceRng, x: number, y: number, spread: number) =>
+  [[-0.9, -0.2, 2.6, 20], [-0.5, 0.6, 2, -35], [0.1, 0.9, 2.8, 60], [0.7, 0.5, 2.2, -10], [0.95, -0.3, 1.8, 45], [0.3, -0.85, 2.1, -60], [-0.4, -0.8, 1.6, 80]]
+    .map(([dx, dy, size, a], i) =>
+      group(
+        fill(cutPoly(r(`rubble${i}`), [{ x: -size, y: -size * 0.7 }, { x: size, y: -size * 0.8 }, { x: size * 0.8, y: size * 0.7 }, { x: -size * 0.7, y: size * 0.9 }], 0.3), i % 3 ? C.rock : C.rockLight),
+        `translate(${n(x + dx * spread)} ${n(y + dy * spread * 0.7)}) rotate(${a})`,
+      ),
+    )
+    .join('');
+
+/** The hole it burrows into or out of at x,y, `rx` by `ry`, with its rubble round the rim. */
+const burrowHole = (r: PieceRng, x: number, y: number, rx: number, ry: number) =>
+  sheet(fill(ragged(r('hole'), x, y, rx, ry, 10, 0.25), C.rockDeep) + ellipse(x, y, rx * 0.6, ry * 0.6, C.mawDeep, 'opacity="0.7"')) + sheet(rubble(r, x, y, Math.max(rx, ry) * 1.1));
+
+/** Cracks of light through its plates as it dies, more of them as it is about to burst. */
+function deathCracks(side: boolean, frame: number): string {
+  // Jagged, forking runs across the plates, as rock splits.
+  const lines = side
+    ? [[[-18, -6], [-13, -4], [-11, 1], [-6, 3], [-4, 7]], [[3, -12], [5, -7], [2, -3], [6, 1], [5, 6]], [[12, -9], [15, -5], [20, -4]], [[-13, -4], [-15, 2], [-19, 4]], [[5, -7], [10, -6], [12, -1]]]
+    : [[[-9, -16], [-6, -11], [-8, -6], [-3, -3], [-4, 2]], [[7, 2], [4, 7], [7, 11], [3, 16], [5, 21]], [[-8, -6], [-12, -2], [-11, 3]], [[4, -18], [7, -13], [5, -9]], [[4, 7], [-2, 9], [-5, 14]]];
+  return lines
+    .slice(0, frame ? 5 : 3)
+    .map((line) => {
+      const d = `M${line.map(([x, y]) => `${n(WORM_MID.x + x)} ${n(WORM_MID.y + y)}`).join('L')}`;
+      return `<path d="${d}" stroke="${C.crystal}" stroke-width="3.5" fill="none" opacity="0.35" stroke-linejoin="round"/>` + `<path d="${d}" stroke="${C.crystalLight}" stroke-width="1.3" fill="none" stroke-linejoin="round"/>`;
+    })
+    .join('');
+}
+
+/** Splinters of crystal breaking off it as it is about to burst. */
+const splinters = () =>
+  [[-24, -26, -30], [22, -30, 35], [-28, 6, -80], [27, 4, 75], [2, -38, 5]].map(([x, y, a]) => prism(WORM_MID.x + x, WORM_MID.y + y, a, 6, 2.5)).join('');
+
+/**
+ * A piece of the worm boss acting out its fight: the worm's own pieces, bigger-crystalled, and
+ * what each moment adds: rubble round the hole it dives into or climbs out of, an egg cresting
+ * its back as it heaves, its raw core where it was torn open, cracks of light as it dies.
+ */
+function drawWormBoss(piece: WormPieceArt, action: Action, frame: number, view: View): string {
+  const r: PieceRng = (part) => pieceRng('wormBoss', piece, view, part);
+  const c = { ...crawl(action, frame), crystals: 1.45, halo: 0 };
+  const side = view === 'side';
+  const dir = view === 'down' ? 1 : -1;
+  const torn = action === 'split';
+  const body = side ? wormSide(piece, c, false, r, torn) : wormEnd(piece, dir, c, false, r, torn);
+  const { x: mx, y: my } = WORM_MID;
+  // Its front and its back, where it crawls toward and away from.
+  const front = side ? { x: mx + 21 * c.stretch, y: my + 1 } : { x: mx, y: my + 24 * dir };
+  const back = side ? { x: mx - 24 * c.stretch, y: my + 2 } : { x: mx, y: my - 24 * dir };
+  let drawn = body;
+  if (action === 'burrow') {
+    // Diving in, front first, the hole over its front; climbing out, its back still down the hole.
+    drawn = frame ? burrowHole(r, back.x, back.y, side ? 10 : 15, side ? 12 : 8) + body : body + burrowHole(r, front.x, front.y, side ? 11 : 16, side ? 13 : 9);
+  }
+  // Heaving, an egg crests its back.
+  if (action === 'lob' && frame === 0) drawn += sheet(eggPod((part) => pieceRng('wormBoss', 'egg', part), mx + (side ? 2 : 0), my - 22 - c.arch + c.bob, 0.55, 0));
+  if (action === 'die') drawn += deathCracks(side, frame) + (frame ? splinters() : '');
+  if (c.hurt) drawn = group(drawn, `rotate(-4 ${mx} ${my})`) + chitinChips(r);
+  return group(drawn, `translate(${WORM_BOSS_OFFSET.x} ${WORM_BOSS_OFFSET.y})`);
+}
+
+// ---------------------------------------------------------------------------------------------
+// The worm boss's eggs
+// ---------------------------------------------------------------------------------------------
+
+const EGG = { w: 40, h: 50, foot: { x: 20, y: 40 } };
+const EGG_MID = { x: 20, y: 27 };
+
+/**
+ * A pale leathery pod at x,y, `size` times full size, flecked with crystal, cracked as far as
+ * `crack` (0 whole; 1 a hairline; 2 spreading, light leaking through; 3 splitting open on the
+ * hatchling's teeth), squashed by `squash` as it breathes.
+ */
+function eggPod(r: PieceRng, x: number, y: number, size: number, crack: number, squash = 1): string {
+  const rx = 11 * size * (2 - squash);
+  const ry = 13.5 * size * squash;
+  const at = (dx: number, dy: number) => `${n(x + dx * rx)} ${n(y + dy * ry)}`;
+  const shell = fill(blob(r('shell'), x, y, rx, ry, 11, 0.04), C.egg);
+  const shade = `<path d="M${at(0.95, -0.2)}Q${at(0.9, 0.85)} ${at(-0.1, 0.98)}Q${at(0.55, 0.55)} ${at(0.95, -0.2)}Z" fill="${C.eggShade}" opacity="0.7"/>`;
+  const shine = ellipse(x - rx * 0.38, y - ry * 0.4, rx * 0.22, ry * 0.3, C.eggLight, 'opacity="0.85"');
+  const veins = [[[-0.5, 0.1], [-0.2, 0.35], [-0.35, 0.7]], [[0.4, -0.55], [0.15, -0.2]]]
+    .map((line) => `<path d="M${line.map(([dx, dy]) => at(dx, dy)).join('L')}" stroke="${C.eggShade}" stroke-width="${n(0.8 * size)}" fill="none" opacity="0.8"/>`)
+    .join('');
+  const flecks = [[-0.45, -0.05, 0], [0.35, 0.2, 40], [0.05, 0.6, -30], [0.5, -0.45, 20], [-0.2, -0.65, -50]]
+    .map(([dx, dy, a]) => group(fill('M0 -2L1 0L0 2L-1 0Z', C.crystal), `translate(${at(dx, dy)}) rotate(${a}) scale(${n(size)})`))
+    .join('');
+  const crackLine = [[0, -1], [0.18, -0.72], [-0.1, -0.48], [0.14, -0.22], [-0.05, 0.05], [0.2, 0.3]].slice(0, crack ? 2 + crack : 0);
+  const crackD = crackLine.length ? `M${crackLine.map(([dx, dy]) => at(dx, dy)).join('L')}` : '';
+  const branch = crack >= 2 ? `M${at(-0.1, -0.48)}L${at(-0.45, -0.35)}L${at(-0.6, -0.15)}` : '';
+  // Light leaking through as the crack spreads.
+  const glow = crack >= 2 ? `<path d="${crackD}${branch}" stroke="${C.crystal}" stroke-width="${n(3 * size)}" fill="none" opacity="0.45"/>` : '';
+  const lines = crackD ? `<path d="${crackD}${branch}" stroke="${C.mawDeep}" stroke-width="${n(1.1 * size)}" fill="none" stroke-linejoin="round"/>` : '';
+  // Splitting: a dark gap across its top, the hatchling's bone teeth showing in it.
+  const gap =
+    crack >= 3
+      ? fill(`M${at(-0.75, -0.42)}L${at(-0.3, -0.3)}L${at(0, -0.48)}L${at(0.35, -0.28)}L${at(0.8, -0.4)}L${at(0.7, -0.2)}L${at(0.3, -0.12)}L${at(0, -0.26)}L${at(-0.3, -0.1)}L${at(-0.72, -0.24)}Z`, C.mawDeep) +
+        [-0.45, -0.15, 0.15, 0.45].map((dx) => fill(`M${at(dx - 0.07, -0.22)}L${at(dx + 0.07, -0.22)}L${at(dx, -0.36)}Z`, C.bone)).join('')
+      : '';
+  return shell + shade + shine + veins + flecks + glow + lines + gap;
+}
+
+/**
+ * An egg the worm boss lobbed: resting, squashing a little as it breathes; tumbling end over end
+ * through the air; cracking ever wider as it wobbles to hatch; chipped by a hit.
+ */
+function drawEgg(action: Action, frame: number): string {
+  const r: PieceRng = (part) => pieceRng('wormEgg', part);
+  const { x, y } = EGG_MID;
+  const ground = contact(x, EGG.foot.y, 10, 3);
+  switch (action) {
+    case 'move':
+      // In flight its shadow is on the floor below, not under it.
+      return sheet(group(eggPod(r, x, y, 1, 0), `rotate(${frame * 90} ${x} ${y})`));
+    case 'attack':
+      return ground + sheet(eggPod(r, x, y, 1, frame + 1));
+    case 'hurt': {
+      const chips = [[-14, -12, 30], [13, -16, -50]]
+        .map(([dx, dy, a], i) => group(fill(cutPoly(r(`chip${i}`), [{ x: -2, y: -1.2 }, { x: 2, y: -1 }, { x: 1, y: 1.6 }, { x: -1.4, y: 1 }], 0.3), C.eggLight), `translate(${x + dx} ${y + dy}) rotate(${a})`))
+        .join('');
+      return ground + group(sheet(eggPod(r, x, y, 1, 1, 0.94) + fill(ragged(r('dent'), x + 4, y - 6, 3, 2.5, 7, 0.3), C.eggShade)), `rotate(-6 ${x} ${EGG.foot.y})`) + chips;
+    }
+    default:
+      return ground + sheet(eggPod(r, x, y + (frame ? 0.4 : 0), 1, 0, frame ? 0.97 : 1));
+  }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1080,6 +1276,9 @@ const art = (
   draw: (action, frame, view, champion) => svgDoc(size.w, size.h, draw(action, frame, view, champion), grainSeed),
 });
 
+/** What the worm boss acts out besides crawling, rearing (its roar) and flinching. */
+const BOSS_ACTIONS = ['spit', 'charge', 'burrow', 'lob', 'split', 'die'] as const;
+
 /** Every character with paper art, by entity kind. */
 export const CHARACTERS: Readonly<Record<string, CharacterArt>> = {
   player: art(PLAYER, ['side', 'down', 'up'], (a, f, v) => drawPlayer(a, f, v), 3),
@@ -1094,5 +1293,9 @@ export const CHARACTERS: Readonly<Record<string, CharacterArt>> = {
   wormHead: art(WORM, ['side', 'down', 'up'], (a, f, v, c) => drawWorm('head', a, f, v, c), 37),
   wormBody: art(WORM, ['side', 'down', 'up'], (a, f, v, c) => drawWorm('body', a, f, v, c), 37),
   wormTail: art(WORM, ['side', 'down', 'up'], (a, f, v, c) => drawWorm('tail', a, f, v, c), 37),
+  wormBossHead: art(WORM_BOSS, ['side', 'down', 'up'], (a, f, v) => drawWormBoss('head', a, f, v), 41, BOSS_ACTIONS),
+  wormBossBody: art(WORM_BOSS, ['side', 'down', 'up'], (a, f, v) => drawWormBoss('body', a, f, v), 41, BOSS_ACTIONS),
+  wormBossTail: art(WORM_BOSS, ['side', 'down', 'up'], (a, f, v) => drawWormBoss('tail', a, f, v), 41, BOSS_ACTIONS),
+  wormEgg: art(EGG, ['down'], (a, f) => drawEgg(a, f), 43),
   treantBoss: art(TREANT, ['down'], (a, f) => drawTreant(a, f), 17),
 };

@@ -15,7 +15,7 @@ export interface ArtEntry {
 }
 
 /** Kinds whose champions get their own gold-trimmed frames. */
-const CHAMPION_KINDS = new Set(['goblin', 'seedSpitter', 'boar', 'wasp', 'ghoul', 'bat', 'slime', 'crystalTurret', 'wormHead', 'wormBody', 'wormTail']);
+const CHAMPION_KINDS = new Set(['goblin', 'seedSpitter', 'boar', 'wasp', 'ghoul', 'bat', 'slime', 'geode', 'wormHead', 'wormBody', 'wormTail']);
 
 export const charKey = (kind: string, action: Action, frame: number, view: View, champion = false) =>
   `c:${kind}:${action}:${frame}:${view}${champion ? ':champ' : ''}`;
@@ -94,8 +94,8 @@ function terrainEntries(): ArtEntry[] {
   ];
 }
 
-/** A glowing paper shot, drawn at the size of a player shot (7 px) or an enemy's (6 px, a geode's crystal shard too); other sizes scale it. */
-export const SHOT_ART = { player: 7, enemy: 6, crystal: 6 } as const satisfies Record<ShotArt, number>;
+/** A glowing paper shot, drawn at the size of a player shot (7 px) or an enemy's (6 px, a geode's shard shot too); other sizes scale it. */
+export const SHOT_ART = { player: 7, enemy: 6, shard: 6 } as const satisfies Record<ShotArt, number>;
 export const shotKey = (kind: keyof typeof SHOT_ART) => `s:${kind}`;
 
 function shotEntries(): ArtEntry[] {

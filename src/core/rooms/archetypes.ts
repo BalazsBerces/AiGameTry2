@@ -274,7 +274,7 @@ const sentryIsland: Archetype = {
   },
 };
 
-/** The caves' own walker (ghouls) and turret (crystal turrets), from floor 2's theme. */
+/** The caves' own walker (ghouls) and turret (geodes), from floor 2's theme. */
 const caveWalkers = (cells: Cell[]): EnemySpawn[] => cells.map((cell) => ({ type: themeForFloor(1).walker, cell }));
 const caveTurret = (cell: Cell): EnemySpawn => ({ type: themeForFloor(1).turret, cell });
 
@@ -338,7 +338,7 @@ const twinJars: Archetype = {
 };
 
 /**
- * Floor 2: a firing line of crystal turrets along one wall, behind a moat of holes, facing open
+ * Floor 2: a firing line of geodes along one wall, behind a moat of holes, facing open
  * floor with a few rocks to duck behind (which the turrets slowly force you out of). Their shots
  * ricochet off the stone walls, so the far wall is no refuge, and three ghouls stalk the open floor
  * to flush the player out of cover. The line sits on a wall with no door.
@@ -411,7 +411,7 @@ const courtyard: Archetype = {
 
 /**
  * Floor 2 puzzle: a locked chest in a stone alcove set into a doorless wall, its mouth plugged
- * with a rock and a crystal turret standing guard on either side, while 2-3 ghouls prowl the floor
+ * with a rock and a geode standing guard on either side, while 2-3 ghouls prowl the floor
  * in front of it.
  */
 const vault: Archetype = {
@@ -803,7 +803,7 @@ const hauntedHall: Archetype = {
 
 /**
  * Floor 2: a hall of mirrors built around bank shots. Crystals, mirrored into all four quarters,
- * bounce every shot, so each crystal turret sits straight in line with one: its shots come back
+ * bounce every shot, so each geode sits straight in line with one: its shots come back
  * off it at angles, and the player can bank their own shots off it back at the turret. Ghouls
  * roam the open middle. Nothing touches a door approach, so it fits every door set.
  */
@@ -958,7 +958,7 @@ const glowshroomCave: Archetype = {
     const canvas = new Canvas(width, height, axes);
     // A top-left quarter of glowshrooms, and a ghoul's spot beside one (mirrored to the others).
     const layout = rng.pick([
-      // Ring: caps round a crystal turret in the middle, ghouls roaming the corners.
+      // Ring: caps round a geode in the middle, ghouls roaming the corners.
       { shrooms: [{ x: 5, y: 2 }], ghoul: { x: 2, y: 1 }, ringed: true },
       // Bars: a short bar of caps in each quarter, a ghoul waiting at its foot.
       { shrooms: [{ x: 3, y: 1 }, { x: 3, y: 2 }], ghoul: { x: 4, y: 2 }, ringed: false },

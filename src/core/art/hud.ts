@@ -48,12 +48,13 @@ function bomb() {
   );
 }
 
-/** What a shot is drawn as: the player's, an enemy's, or a geode's ricocheting crystal shard. */
-export type ShotArt = 'player' | 'enemy' | 'crystal';
+/** What a shot is drawn as: the player's, an enemy's, or a geode's ricocheting shard shot. */
+export type ShotArt = 'player' | 'enemy' | 'shard';
 
 /**
  * A glowing paper shot: the player's a pale blue four-point star, an enemy's an orange seed, a
- * geode's a cyan crystal shard, cut in hard facets so a shot that will bounce reads at a glance.
+ * geode's shard shot a crystal splinter cut in hard facets (so a shot that will bounce reads at a
+ * glance) round a red-hot core and outlined dark, so it reads as hostile like every enemy shot.
  */
 function shot(kind: ShotArt, radius: number) {
   const s = SHOT_CANVAS / 2;
@@ -66,22 +67,22 @@ function shot(kind: ShotArt, radius: number) {
     });
     return sheet(fill(cutPoly(r, pts, 0.3), P.shot) + `<circle cx="${s}" cy="${s}" r="${n(radius * 0.4)}" fill="${P.shotCore}"/>`);
   }
-  if (kind === 'crystal') {
-    // A long splinter tipped up and to the right, split down its length into a lit face and a shaded one, a chip trailing it.
+  if (kind === 'shard') {
+    // A long splinter tipped up and to the right, split down its length into a lit face and a shaded one,
+    // a red-hot core burning through its middle, the whole cut out of a dark outline.
     const tip = { x: s + radius * 0.9, y: s - radius * 1.45 };
     const tail = { x: s - radius * 0.85, y: s + radius * 1.35 };
     const left = { x: s - radius * 0.7, y: s - radius * 0.35 };
     const right = { x: s + radius * 0.75, y: s + radius * 0.3 };
-    const chip = [{ x: s - radius * 1.5, y: s + radius * 0.2 }, { x: s - radius * 1.05, y: s - radius * 0.15 }, { x: s - radius * 1.1, y: s + radius * 0.55 }];
-    return (
-      `<circle cx="${s}" cy="${s}" r="${n(radius * 1.5)}" fill="${P.caves.crystal}" opacity="0.28"/>` +
-      sheet(
+    const mid = { x: s + radius * 0.05, y: s };
+    const outline = polyPath([tip, right, tail, left]);
+    return sheet(
+      `<path d="${outline}" fill="${P.ink}" stroke="${P.ink}" stroke-width="${n(radius * 0.65)}" stroke-linejoin="round"/>` +
         fill(cutPoly(r, [tip, right, tail, left], 0.15), P.caves.crystalShade) +
-          fill(polyPath([tip, { x: s + radius * 0.05, y: s }, tail, left]), P.caves.crystal) +
-          fill(polyPath([tip, { x: s + radius * 0.05, y: s }, { x: s - radius * 0.2, y: s - radius * 0.5 }]), P.caves.crystalLight) +
-          `<path d="M${n(tip.x)} ${n(tip.y)}L${n(tail.x)} ${n(tail.y)}" stroke="${P.caves.crystalLight}" stroke-width="0.7" opacity="0.8"/>` +
-          fill(polyPath(chip), P.caves.crystal),
-      )
+        fill(polyPath([tip, mid, tail, left]), P.caves.crystal) +
+        fill(polyPath([tip, mid, { x: s - radius * 0.2, y: s - radius * 0.5 }]), P.caves.crystalLight) +
+        fill(blob(r, s, s, radius * 0.5, radius * 0.62, 7, 0.08, -0.6), P.enemyShot) +
+        fill(blob(r, s - radius * 0.05, s - radius * 0.1, radius * 0.24, radius * 0.3, 6, 0.1, -0.6), P.enemyShotCore),
     );
   }
   return sheet(fill(blob(r, s, s, radius * 1.1, radius * 0.85, 8, 0.05), P.enemyShot) + fill(blob(r, s - radius * 0.3, s - radius * 0.3, radius * 0.45, radius * 0.3, 7, 0.1), P.enemyShotCore));

@@ -32,7 +32,7 @@ Name any enemy to start in a small hand-made arena with just those enemies.
 | `?slime=small:3` | Three small slimes. |
 | `?slime=2` | Two big slimes. |
 
-**Enemy names:** `zombie`, `turret`, `worm`, `goblin`, `seedSpitter`, `ghoul`, `crystalTurret`, `gargoyle`, `knight`, `wasp`, `boar`, `ghost`, `bat`, `slime`
+**Enemy names:** `zombie`, `turret`, `worm`, `goblin`, `seedSpitter`, `ghoul`, `geode`, `gargoyle`, `knight`, `wasp`, `boar`, `ghost`, `bat`, `slime`
 
 **Bosses** (spawn in the arena, not their own room): `wormBoss`, `ironMaiden`, `candleWitch`, `treantBoss`
 

@@ -657,7 +657,7 @@ function drawSlime(action: Action, frame: number, champion: boolean): string {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Geode (the crystal turret)
+// Geode
 // ---------------------------------------------------------------------------------------------
 
 const GEODE = { w: 66, h: 64, foot: { x: 33, y: 52 } };
@@ -1289,7 +1289,7 @@ export const CHARACTERS: Readonly<Record<string, CharacterArt>> = {
   ghoul: art(GHOUL, ['side'], (a, f, _v, c) => drawGhoul(a, f, c), 19, ['recover']),
   bat: art(BAT, ['side'], (a, f, _v, c) => drawBat(a, f, c), 23),
   slime: art(SLIME, ['side'], (a, f, _v, c) => drawSlime(a, f, c), 29, ['land']),
-  crystalTurret: art(GEODE, ['down'], (a, f, _v, c) => drawGeode(a, f, c), 31),
+  geode: art(GEODE, ['down'], (a, f, _v, c) => drawGeode(a, f, c), 31),
   wormHead: art(WORM, ['side', 'down', 'up'], (a, f, v, c) => drawWorm('head', a, f, v, c), 37),
   wormBody: art(WORM, ['side', 'down', 'up'], (a, f, v, c) => drawWorm('body', a, f, v, c), 37),
   wormTail: art(WORM, ['side', 'down', 'up'], (a, f, v, c) => drawWorm('tail', a, f, v, c), 37),

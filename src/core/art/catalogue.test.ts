@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { artCatalogue, charKey, decorKey, doorKey, floorKey, floorLook, groundKey, joinKey, shotKey, tileKey, wallKey, type DoorSide, type FloorKind } from './catalogue';
 import { CHARACTERS, type Action } from './characters';
+import { PAPER } from './palette';
 import { CAVE_FLOOR_LOOKS, WALL_STYLES, type WallSide } from './terrain';
 import { themeForFloor } from '../map/themes';
 import { roomThemesFor } from '../rooms/roomThemes';
@@ -162,7 +163,7 @@ describe('the art catalogue', () => {
       ghoul: { views: ['side'], actions: { idle: 2, move: 4, attack: 3, hurt: 1, recover: 2 } },
       bat: { views: ['side'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 } },
       slime: { views: ['side'], actions: { idle: 2, move: 4, attack: 3, hurt: 1, land: 2 } },
-      crystalTurret: { views: ['down'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 } },
+      geode: { views: ['down'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 } },
       wormHead: { views: ['side', 'down', 'up'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 } },
       wormBody: { views: ['side', 'down', 'up'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 } },
       wormTail: { views: ['side', 'down', 'up'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 } },
@@ -231,10 +232,17 @@ describe('the art catalogue', () => {
   });
 
   describe('the shots', () => {
-    it("draws the geode's ricocheting shots as a crystal shard of their own", () => {
-      expect(byKey.has(shotKey('crystal'))).toBe(true);
-      expect(svgOf(shotKey('crystal'))).not.toBe(svgOf(shotKey('enemy')));
-      expect(svgOf(shotKey('crystal'))).toBe(svgOf(shotKey('crystal')));
+    it("draws the geode's shard shot as a hostile crystal shard of its own", () => {
+      expect(byKey.has(shotKey('shard'))).toBe(true);
+      expect(svgOf(shotKey('shard'))).not.toBe(svgOf(shotKey('enemy')));
+      expect(svgOf(shotKey('shard'))).not.toBe(svgOf(shotKey('player')));
+      expect(svgOf(shotKey('shard'))).toBe(svgOf(shotKey('shard')));
+    });
+
+    it('outlines the shard shot dark round a red-hot core, like every enemy shot', () => {
+      const shard = svgOf(shotKey('shard'));
+      expect(shard).toContain(PAPER.ink);
+      expect(shard).toContain(PAPER.enemyShotCore);
     });
 
     it("leaves the player's and every other enemy shot drawn exactly as before", () => {

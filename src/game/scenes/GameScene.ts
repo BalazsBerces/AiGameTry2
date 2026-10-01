@@ -57,7 +57,7 @@ import { createTurret } from '../entities/turret';
 import { BOSS_WORM, championWorm, REGULAR_WORM, spawnWorm } from '../entities/bosses/worm';
 import { createZombie } from '../entities/zombie';
 import { createGhoul } from '../entities/ghoul';
-import { createCrystalTurret } from '../entities/crystalTurret';
+import { createGeode } from '../entities/geode';
 import { reflectOff, ricochet } from '../../core/player/ricochet';
 import { createGargoyle } from '../entities/gargoyle';
 import { createTreant } from '../entities/bosses/treant';
@@ -110,6 +110,8 @@ const KILL_DAMAGE = 1e4;
 const KILL_ROUNDS = 30;
 /** The player's feet are this far below the centre of its round body. */
 const PLAYER_FOOT = 9;
+/** One full turn of a shard shot tumbling in flight. */
+const SHARD_SPIN_MS = 420;
 
 /** How a player projectile flies, stored on it: its passives (core/shotFlight), whom it hit, its age. */
 interface Flight {
@@ -140,7 +142,7 @@ const ENEMY_FACTORIES: Record<EnemyType, (scene: Phaser.Scene, spawn: EnemySpawn
   goblin: (scene, s, at) => createGoblin(scene, at(s.cell).x, at(s.cell).y, !!s.champion),
   seedSpitter: (scene, s, at) => createSeedSpitter(scene, at(s.cell).x, at(s.cell).y, !!s.champion),
   ghoul: (scene, s, at) => createGhoul(scene, at(s.cell).x, at(s.cell).y, !!s.champion),
-  crystalTurret: (scene, s, at) => createCrystalTurret(scene, at(s.cell).x, at(s.cell).y, !!s.champion),
+  geode: (scene, s, at) => createGeode(scene, at(s.cell).x, at(s.cell).y, !!s.champion),
   gargoyle: (scene, s, at) => createGargoyle(scene, at(s.cell).x, at(s.cell).y, !!s.champion),
   treantBoss: (scene, s, at) => createTreant(scene, at(s.cell).x, at(s.cell).y, s.cell),
   knight: (scene, s, at) => createKnight(scene, at(s.cell).x, at(s.cell).y, !!s.champion),
@@ -196,7 +198,7 @@ const ENEMY_ART: Partial<Record<EnemyLook, { footOffset: number; fps?: number; o
   ghoul: { footOffset: 9 },
   // The big slime's (each tier is scaled from it); the art squashes and stretches itself.
   slime: { footOffset: 16, ownShape: true },
-  crystalTurret: { footOffset: 14 },
+  geode: { footOffset: 14 },
   // Each segment's piece (head, body or tail) stands on its cell's centre, 10 px above its feet; the boss's too, grown to its size.
   worm: { footOffset: 10 },
   wormBoss: { footOffset: 10 },
@@ -217,7 +219,7 @@ const SCRAP_COLORS: Partial<Record<EnemyType, number[]>> = {
   ghoul: [PAPER.caves.ghoul, PAPER.caves.ghoulShade, PAPER.caves.ghoulDark].map(hex),
   bat: [PAPER.caves.bat, PAPER.caves.batWing, PAPER.caves.batEar].map(hex),
   slime: [PAPER.caves.slime, PAPER.caves.slimeLight, PAPER.caves.slimeCore].map(hex),
-  crystalTurret: [PAPER.caves.rock, PAPER.caves.rockLight, PAPER.caves.crystal].map(hex),
+  geode: [PAPER.caves.rock, PAPER.caves.rockLight, PAPER.caves.crystal].map(hex),
   worm: [PAPER.caves.chitin, PAPER.caves.chitinEdge, PAPER.caves.crystal].map(hex),
   treantBoss: [PAPER.bark, PAPER.canopy, PAPER.eyeGlow].map(hex),
 };
@@ -717,16 +719,20 @@ export class GameScene extends Phaser.Scene {
 
   /**
    * A shot is drawn as a paper shape (enemy shots in the usual red, a geode's ricocheting ones as
-   * cyan crystal shards, and every player shot tinted as before); anything else keeps its plain shape.
+   * shard shots tumbling as they fly, and every player shot tinted as before); anything else keeps its plain shape.
    */
   private dressShot(shot: Phaser.GameObjects.Arc, kind: 'player' | 'enemy', color: number, radius: number) {
-    const look = kind === 'player' ? 'player' : color === COLORS.enemyShot ? 'enemy' : color === COLORS.crystalShot ? 'crystal' : undefined;
+    const look = kind === 'player' ? 'player' : color === COLORS.enemyShot ? 'enemy' : color === COLORS.shardShot ? 'shard' : undefined;
     if (!look) return;
     const size = radius / SHOT_ART[look];
     const art = this.paper.piece(shotKey(look), shot.x, shot.y, { w: SHOT_CANVAS, h: SHOT_CANVAS, anchor: { x: SHOT_CANVAS / 2, y: SHOT_CANVAS / 2 } });
     if (!art) return;
     art.setDepth(kind === 'enemy' ? shot.depth : DEPTH.player + 0.9);
     if (kind === 'player') art.setTint(color);
+    if (look === 'shard') {
+      const spin = this.tweens.add({ targets: art, angle: 360, duration: SHARD_SPIN_MS, repeat: -1 });
+      art.once('destroy', () => spin.remove());
+    }
     this.paper.standIn(shot, art);
     this.paper.follow(shot, art, undefined, size);
   }
@@ -1291,7 +1297,7 @@ export class GameScene extends Phaser.Scene {
       canSeePlayer: (from) =>
         lineOfSight(room.layout.tiles, this.toTileUnits(room, from), this.toTileUnits(room, this.player), blocksSight),
       fireEnemyShot: (x, y, vx, vy, homing = false, bounces = 0, radius = TUNING.enemyShotRadius) => {
-        const color = bounces > 0 ? COLORS.crystalShot : COLORS.enemyShot;
+        const color = bounces > 0 ? COLORS.shardShot : COLORS.enemyShot;
         // Drawn over the Candle Witch's dark, so shots can always be dodged.
         const shot = this.add.circle(x, y, radius, color).setData({ homing, bounces }).setDepth(DARK_DEPTH + 2);
         this.enemyShots.add(shot);

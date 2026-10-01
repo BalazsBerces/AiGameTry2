@@ -11,8 +11,8 @@ export interface RicochetShot {
   bouncesLeft: number;
 }
 
-/** How often a crystal turret's shot may bounce off stone; other shots have none. */
-export const CRYSTAL_TURRET_BOUNCES = 1;
+/** How often a geode's shard shot may bounce off stone; other shots have none. */
+export const GEODE_BOUNCES = 1;
 
 /** Offsets closer than this to equal count as hitting a corner. */
 const CORNER_EPSILON = 1e-6;

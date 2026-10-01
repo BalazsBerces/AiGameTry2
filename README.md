@@ -44,7 +44,7 @@ The two can be combined, e.g. `?boss&seed=42`.
 
 **Enemies.** Every floor has its own cast, and anything that looks different behaves differently:
 - **Forest:** goblins, which fall back and heal each other when hurt; seed-spitters; charging boars; wasp swarms.
-- **Caves:** lunging ghouls, ricocheting crystal turrets, erratic bats and worms.
+- **Caves:** lunging ghouls, ricocheting geodes, erratic bats and worms.
 - **Dungeon:** tough zombies, gargoyles, skeleton knights whose shields block from the front, and ghosts that drift through walls.
 
 About one room in seven has a **champion**: a bigger, tougher enemy that drops extra loot.

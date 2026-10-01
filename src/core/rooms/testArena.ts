@@ -21,7 +21,7 @@ const ENEMY_NAMES: Record<EnemyType, true> = {
   goblin: true,
   seedSpitter: true,
   ghoul: true,
-  crystalTurret: true,
+  geode: true,
   gargoyle: true,
   knight: true,
   wasp: true,

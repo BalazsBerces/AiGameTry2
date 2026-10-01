@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CRYSTAL_TURRET_BOUNCES, ricochet } from './ricochet';
+import { GEODE_BOUNCES, ricochet } from './ricochet';
 
 // A stone tile at cell (5, 5): it spans x 5..6 and y 5..6 in tile units.
 const STONE = { x: 5, y: 5 };
@@ -29,8 +29,8 @@ describe('ricochet', () => {
     expect(Math.hypot(out.vx, out.vy)).toBeCloseTo(5);
   });
 
-  it('bounces a crystal-turret shot off stone exactly once', () => {
-    const shot = { x: 4.8, y: 5.5, vx: 3, vy: 0, bouncesLeft: CRYSTAL_TURRET_BOUNCES };
+  it('bounces a shard shot off stone exactly once', () => {
+    const shot = { x: 4.8, y: 5.5, vx: 3, vy: 0, bouncesLeft: GEODE_BOUNCES };
     const first = ricochet(shot, 'obstacle', STONE);
     expect(first).toBeDefined();
     // It flies back and hits stone on the other side of the room.
@@ -51,10 +51,10 @@ describe('ricochet', () => {
     expect(ricochet({ x: 5.5, y: 6.2, vx: 1, vy: -3, bouncesLeft: 0 }, 'crystal', STONE)).toMatchObject({ vx: 1, vy: 3 });
   });
 
-  it('does not use up a bounce on a crystal, so a crystal-turret shot can still bounce off stone after', () => {
-    const shot = { x: 4.8, y: 5.5, vx: 3, vy: 0, bouncesLeft: CRYSTAL_TURRET_BOUNCES };
+  it('does not use up a bounce on a crystal, so a shard shot can still bounce off stone after', () => {
+    const shot = { x: 4.8, y: 5.5, vx: 3, vy: 0, bouncesLeft: GEODE_BOUNCES };
     const offCrystal = ricochet(shot, 'crystal', STONE)!;
-    expect(offCrystal.bouncesLeft).toBe(CRYSTAL_TURRET_BOUNCES);
+    expect(offCrystal.bouncesLeft).toBe(GEODE_BOUNCES);
     expect(ricochet({ x: 2.2, y: 5.5, ...offCrystal }, 'obstacle', { x: 1, y: 5 })).toBeDefined();
   });
 

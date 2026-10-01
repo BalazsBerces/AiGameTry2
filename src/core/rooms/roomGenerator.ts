@@ -173,7 +173,7 @@ export type EnemyType =
   | 'goblin'
   | 'seedSpitter'
   | 'ghoul'
-  | 'crystalTurret'
+  | 'geode'
   | 'gargoyle'
   | 'knight'
   | 'wasp'

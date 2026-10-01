@@ -206,7 +206,7 @@ function drawRoom(sheet: Sheet, scene: Scene, lit: boolean, id: string): string 
     `<radialGradient id="${id}-hole"><stop offset="0" stop-color="#000"/><stop offset="0.45" stop-color="#000"/><stop offset="1" stop-color="#fff"/></radialGradient>` +
     `<radialGradient id="${id}-warm"><stop offset="0" stop-color="${PAPER.warmLight}" stop-opacity="0.9"/><stop offset="1" stop-color="${PAPER.warmLight}" stop-opacity="0"/></radialGradient>` +
     `<radialGradient id="${id}-vignette" cx="0.5" cy="0.5" r="0.75"><stop offset="0.55" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.75"/></radialGradient>` +
-    ([['player', PAPER.shot], ['enemy', PAPER.enemyShot], ['crystal', PAPER.caves.crystal]] as const)
+    ([['player', PAPER.shot], ['enemy', PAPER.enemyShot], ['shard', PAPER.enemyShot]] as const)
       .map(([k, c]) => `<radialGradient id="${id}-glow-${k}"><stop offset="0" stop-color="${c}" stop-opacity="0.75"/><stop offset="1" stop-color="${c}" stop-opacity="0"/></radialGradient>`)
       .join('') +
     `<mask id="${id}-dark" maskUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${Hh}"><rect width="${W}" height="${Hh}" fill="#fff"/>${holes}</mask>`;
@@ -359,15 +359,15 @@ const CAVE: Scene = {
     { kind: 'bat', x: 380, y: 130, action: 'move', frame: 0 },
     { kind: 'bat', x: 520, y: 150, action: 'attack', frame: 0, flip: true },
     { kind: 'bat', x: 150, y: 215, action: 'attack', frame: 1 },
-    { kind: 'crystalTurret', x: 600, y: 182, action: 'attack', frame: 2 },
-    { kind: 'crystalTurret', x: 264, y: 86, action: 'idle', frame: 0, champion: true },
+    { kind: 'geode', x: 600, y: 182, action: 'attack', frame: 2 },
+    { kind: 'geode', x: 264, y: 86, action: 'idle', frame: 0, champion: true },
     { kind: 'slime', x: 396, y: 330, action: 'attack', frame: 2 },
     { kind: 'slime', x: 456, y: 292, action: 'move', frame: 2, flip: true, scale: 23 / 32 },
     { kind: 'slime', x: 520, y: 354, action: 'land', frame: 0, scale: 15 / 32, champion: true },
   ],
   shots: [
-    { kind: 'crystal', x: 520, y: 202 },
-    { kind: 'crystal', x: 668, y: 236 },
+    { kind: 'shard', x: 520, y: 202 },
+    { kind: 'shard', x: 668, y: 236 },
   ],
 };
 
@@ -432,13 +432,13 @@ const CAVE_BOSS: Scene = {
 const img = (svg: string, w: number, h: number, scale: number, flip = false, alt = '') =>
   `<img src="${uri(svg)}" width="${w * scale}" height="${h * scale}" alt="${alt}"${flip ? ' style="transform:scaleX(-1)"' : ''}>`;
 
-const NAMES: Record<string, string> = { player: 'Player', goblin: 'Goblin', seedSpitter: 'Seed spitter', boar: 'Boar', wasp: 'Wasp', treantBoss: 'Treant', ghoul: 'Ghoul', bat: 'Bat', slime: 'Slime', crystalTurret: 'Geode', wormHead: 'Worm head', wormBody: 'Worm body', wormTail: 'Worm tail', wormBossHead: 'Worm boss head', wormBossBody: 'Worm boss body', wormBossTail: 'Worm boss tail', wormEgg: 'Worm egg' };
+const NAMES: Record<string, string> = { player: 'Player', goblin: 'Goblin', seedSpitter: 'Seed spitter', boar: 'Boar', wasp: 'Wasp', treantBoss: 'Treant', ghoul: 'Ghoul', bat: 'Bat', slime: 'Slime', geode: 'Geode', wormHead: 'Worm head', wormBody: 'Worm body', wormTail: 'Worm tail', wormBossHead: 'Worm boss head', wormBossBody: 'Worm boss body', wormBossTail: 'Worm boss tail', wormEgg: 'Worm egg' };
 /** What each cave pose is, for the strips' headings. */
 const POSE_NAMES: Record<string, Partial<Record<Action, string>>> = {
   ghoul: { move: 'stalk', attack: 'wind-up, lunge' },
   bat: { idle: 'flutter in place', move: 'flutter', attack: 'telegraph, swoop' },
   slime: { idle: 'rest', move: 'hop: take-off, rise, top, drop', attack: 'squash', land: 'splat, settle' },
-  crystalTurret: { idle: 'shut', move: 'shut (it never moves)', attack: 'crack, split open, fire' },
+  geode: { idle: 'shut', move: 'shut (it never moves)', attack: 'crack, split open, fire' },
   wormHead: { move: 'crawl', attack: 'rear, maw splayed (for the boss)' },
   wormBody: { move: 'crawl', attack: 'rear, crystals flaring (for the boss)' },
   wormTail: { move: 'crawl', attack: 'rear (for the boss)' },
@@ -607,7 +607,7 @@ function cavesSheet(): string {
   <p class="lede">Warm earth, cold light: umber and ochre rock paper, icy cyan-white crystal as the hard accent, violet fungus as the second hue, and deep-teal slime, soft and translucent round a milky core. This sheet covers the room shell (walls, doors, floors), every cave terrain tile and the decor, bones and a dropped miner's pick among it, and the cave cast: the ghoul, the bat, the slime, the geode, the worm, and the worm boss with its eggs.</p>
 </header>
 ${defs(lit)}${defs(unlit)}${defs(grotto)}${defs(hollow)}${defs(rift)}${defs(boss)}
-<figure class="stage">${caveLit}<figcaption>A sample cave room, lit as in the game: stalagmites fused along the walls, a chasm, thorn vines, a boulder, a crystal cluster and glowshrooms; a ghoul winding up at the player (a champion stalking below), one bat hanging wings-wide for its tell, another swooping; a geode split open and firing cyan shards (one already ricocheting off the wall), a champion geode shut above; a big slime squashed for its jump, a medium one in the air over a rock and a small champion splatting down. The right door is barred while enemies live.</figcaption></figure>
+<figure class="stage">${caveLit}<figcaption>A sample cave room, lit as in the game: stalagmites fused along the walls, a chasm, thorn vines, a boulder, a crystal cluster and glowshrooms; a ghoul winding up at the player (a champion stalking below), one bat hanging wings-wide for its tell, another swooping; a geode split open and firing red-hot shard shots (one already ricocheting off the wall), a champion geode shut above; a big slime squashed for its jump, a medium one in the air over a rock and a small champion splatting down. The right door is barred while enemies live.</figcaption></figure>
 <div class="pair">
   <figure class="stage small">${caveUnlit}<figcaption>The same room with the lights on.</figcaption></figure>
   <figure class="stage small">${grottoUnlit}<figcaption>A crystal grotto: crystal spires, and crystal enough for veined walls all the way round.</figcaption></figure>
@@ -617,14 +617,14 @@ ${defs(lit)}${defs(unlit)}${defs(grotto)}${defs(hollow)}${defs(rift)}${defs(boss
 </div>
 <h2>The cave cast, frame by frame</h2>
 <p class="note">The ghoul's wind-up (eyes flared cyan) is held for its whole tell, then the lunge frames play while it lunges; it loops recover while it catches its breath. The bat beats its wings at twice the usual frame rate, hangs with them spread wide for its tell, and holds the swoop frames while it swoops.</p>
-<p class="note">The slime squashes ever lower through its tell, then plays its hop frame by frame through the jump and splats where it lands; the medium and small slimes are the same art, smaller. The geode cracks along its seam as its shot charges, splits open on its crystal core (held open while it waits for a clear shot) and flares as it fires. Its shots are cyan crystal shards, the only enemy shots that ricochet; every other enemy shot stays red.</p>
+<p class="note">The slime squashes ever lower through its tell, then plays its hop frame by frame through the jump and splats where it lands; the medium and small slimes are the same art, smaller. The geode cracks along its seam as its shot charges, splits open on its crystal core (held open while it waits for a clear shot) and flares as it fires. Its shard shots are crystal splinters with a red-hot core and a dark outline, tumbling as they fly: hostile like every enemy shot, and the only ones that ricochet.</p>
 <p class="note">The worm is drawn piece by piece, each over its own segment's cell: a head, body pieces and a tail, armoured in dark chitin plates that lap toward the front, cyan crystal shards growing from the spine, and a lamprey maw ringed with bone teeth. Each piece faces the way it crawls (side on, toward the camera or away), so the chain bends round each turn as it gets there; the head points where the worm is heading. The crawl ripples from the head down to the tail, a frame behind segment by segment. Its rearing frames (the maw splayed wide, the crystals flaring) wait for the worm boss.</p>
-${frameStrips(['ghoul', 'bat', 'slime', 'crystalTurret', 'wormHead', 'wormBody', 'wormTail'], ['ghoul', 'bat', 'slime', 'crystalTurret', 'wormHead', 'wormBody', 'wormTail'])}
+${frameStrips(['ghoul', 'bat', 'slime', 'geode', 'wormHead', 'wormBody', 'wormTail'], ['ghoul', 'bat', 'slime', 'geode', 'wormHead', 'wormBody', 'wormTail'])}
 <h2>The worm boss, acting out its fight</h2>
 <p class="note">The worm boss is the worm grown huge, its crystals bigger still, drawn piece by piece like the worm, each pose held exactly as long as the moment of the fight it acts out. It crawls; it rears up and roars (the maw splayed, the crystals flaring) through the stop at its split and through its last stand's roar; its maw pulses as a spit wave runs down its body, each segment flaring as its shot leaves; it tucks its head and points its shards forward as it charges up and between lunges; it dives into the walls and climbs out of them; a segment heaves as it lobs an egg; at the split its torn ends show a raw crystal core; and a dying half cracks through, each segment's crystals blazing just before it bursts into crystal shards, tail to head along the death chain.</p>
 <p class="note">Its eggs are pale, leathery pods flecked with crystal: tumbling through the air, resting where they land, then cracking ever wider as they wobble to hatch into a worm.</p>
 ${frameStrips(['wormBossHead', 'wormBossBody', 'wormBossTail', 'wormEgg'], [])}
-<section class="strip"><h3>Shots <span>the geode's ricocheting shard, beside the red enemy shot</span></h3><div class="frames"><figure>${img(hudSvg.shot('crystal', SHOT_ART.crystal), SHOT_CANVAS, SHOT_CANVAS, 2.5, false, 'crystal shard shot')}<figcaption>crystal shard</figcaption></figure><figure>${img(hudSvg.shot('enemy', SHOT_ART.enemy), SHOT_CANVAS, SHOT_CANVAS, 2.5, false, 'enemy shot')}<figcaption>enemy shot</figcaption></figure></div></section>
+<section class="strip"><h3>Shots <span>the geode's ricocheting shard shot, red-hot and outlined like the enemy shot beside it</span></h3><div class="frames"><figure>${img(hudSvg.shot('shard', SHOT_ART.shard), SHOT_CANVAS, SHOT_CANVAS, 2.5, false, 'shard shot')}<figcaption>shard shot (tumbles in flight)</figcaption></figure><figure>${img(hudSvg.shot('enemy', SHOT_ART.enemy), SHOT_CANVAS, SHOT_CANVAS, 2.5, false, 'enemy shot')}<figcaption>enemy shot</figcaption></figure></div></section>
 <h2>Terrain</h2>
 ${caveTerrainSheet()}
 <h2>Dressing</h2>

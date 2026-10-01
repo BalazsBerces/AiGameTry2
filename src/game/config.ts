@@ -94,7 +94,7 @@ export const TUNING = {
   seedSpitter: { hp: 4, radius: 17, fireDelayMs: 2000, shotSpeed: 200 },
   /** Slow stalker; `lungeSpeed` while lunging (range and timing live in core/ghoul). */
   ghoul: { hp: 4, speed: 55, lungeSpeed: 330, size: 28 },
-  crystalTurret: { hp: 4, size: 34, fireDelayMs: 1700, shotSpeed: 220 },
+  geode: { hp: 4, size: 34, fireDelayMs: 1700, shotSpeed: 220 },
   /** Wake range and burst timing live in core/gargoyle. */
   gargoyle: { hp: 5, size: 34, shotSpeed: 250 },
   /** Touching a thorn bush: half a heart to the player; walker damage and i-frames are placeholders. */
@@ -202,9 +202,9 @@ export const COLORS = {
   seedSpitterEdge: 0xf0d27a,
   ghoul: 0x9aa89c,
   ghoulEye: 0xe8f06a,
-  crystalTurret: 0x5fc8d8,
-  crystalTurretEdge: 0xd8f6ff,
-  crystalShot: 0x9ff0ff,
+  geode: 0x5fc8d8,
+  geodeEdge: 0xd8f6ff,
+  shardShot: 0x9ff0ff,
   gargoyle: 0x5e5a66,
   gargoyleEyes: 0xff3b2a,
   treantBark: 0x5a3a1e,

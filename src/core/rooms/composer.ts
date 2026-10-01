@@ -486,7 +486,7 @@ const wormNest: Encounter = {
   ],
 };
 
-/** Floor 2: big slimes wobble across the open floor, each one a crowd once split; a crystal turret may watch. */
+/** Floor 2: big slimes wobble across the open floor, each one a crowd once split; a geode may watch. */
 const slimePit: Encounter = {
   id: 'slimePit',
   floor: 1,

@@ -20,7 +20,7 @@ export const ENEMY_CLASS: Record<EnemyType, EnemyClass> = {
   goblin: 'walker',
   seedSpitter: 'stationary',
   ghoul: 'walker',
-  crystalTurret: 'stationary',
+  geode: 'stationary',
   gargoyle: 'stationary',
   /** Rooted in place: it only has to be shootable. */
   treantBoss: 'stationary',
@@ -53,7 +53,7 @@ export const ENEMY_CHASE_SPEED: Record<EnemyType, number> = {
   goblin: 130 / 48,
   seedSpitter: 0,
   ghoul: 55 / 48,
-  crystalTurret: 0,
+  geode: 0,
   gargoyle: 0,
   treantBoss: 35 / 48,
   knight: 70 / 48,

@@ -72,9 +72,9 @@ export const TINTED = { lift: 0.6, glow: 0.6, reach: 1.35 };
 /** How coloured light falls off from its source ([share of its reach, strength]): bright, dropping fast, then a long faint tail. */
 export const FALLOFF: [number, number][] = [[0, 1], [0.1, 0.75], [0.25, 0.45], [0.5, 0.2], [0.75, 0.07], [1, 0]];
 /** How bright a coloured glower's bloom is: a small glow of its colour right on the thing itself. */
-export const BLOOM = 0.2;
+export const BLOOM = 0.28;
 /** How far the glowing thing itself is lifted out of the gloom: most of the way, so it stands out without glaring. */
-export const CORE_LIFT = 0.8;
+export const CORE_LIFT = 0.9;
 
 /** A coloured light: its pool, its colour, and `core`, the reach in px of the glowing thing itself (lifted out of the gloom by `CORE_LIFT`). */
 export type ColouredLight = LightPool & { tint: GlowTint; core: number };

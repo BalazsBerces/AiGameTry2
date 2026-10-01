@@ -349,22 +349,40 @@ const CAVE: Scene = {
   wallStyle: 'strata',
   decor: decorOf('rift'),
   looks: CAVE_LOOK,
-  actors: [{ kind: 'player', x: 330, y: 250, action: 'idle', frame: 0 }],
+  actors: [
+    { kind: 'player', x: 330, y: 250, action: 'idle', frame: 0 },
+    { kind: 'ghoul', x: 440, y: 236, action: 'attack', frame: 0, flip: true },
+    { kind: 'ghoul', x: 290, y: 350, action: 'move', frame: 1, champion: true },
+    { kind: 'bat', x: 380, y: 130, action: 'move', frame: 0 },
+    { kind: 'bat', x: 520, y: 150, action: 'attack', frame: 0, flip: true },
+    { kind: 'bat', x: 150, y: 215, action: 'attack', frame: 1 },
+  ],
   shots: [],
 };
 
-const CAVE_GROTTO: Scene = { ...CAVE, seed: 29, wallStyle: 'veined', map: GROTTO_MAP, looks: GROTTO_LOOK, decor: decorOf('grotto') };
-const CAVE_HOLLOW: Scene = { ...CAVE, seed: 37, map: HOLLOW_MAP, looks: HOLLOW_LOOK, decor: decorOf('hollow') };
+/** The sub-theme rooms show off their terrain: just the player in them. */
+const ALONE: Actor[] = [{ kind: 'player', x: 330, y: 250, action: 'idle', frame: 0 }];
+const CAVE_GROTTO: Scene = { ...CAVE, actors: ALONE, seed: 29, wallStyle: 'veined', map: GROTTO_MAP, looks: GROTTO_LOOK, decor: decorOf('grotto') };
+const CAVE_HOLLOW: Scene = { ...CAVE, actors: ALONE, seed: 37, map: HOLLOW_MAP, looks: HOLLOW_LOOK, decor: decorOf('hollow') };
 const CAVE_RIFT: Scene = { ...CAVE, seed: 41, map: RIFT_MAP, looks: RIFT_LOOK, actors: [{ kind: 'player', x: 250, y: 200, action: 'idle', frame: 0 }] };
 const CAVE_BOSS: Scene = { ...CAVE, map: BOSS_MAP.map((row) => row.replace(/[Tbx]/g, '.')), floor: 'boss', seed: 31, decor: ['bones', 'shards', 'bones', 'cracks', 'pebbles', 'pick'], actors: [{ kind: 'player', x: 344, y: 330, action: 'idle', frame: 0, view: 'up' }] };
 
 const img = (svg: string, w: number, h: number, scale: number, flip = false, alt = '') =>
   `<img src="${uri(svg)}" width="${w * scale}" height="${h * scale}" alt="${alt}"${flip ? ' style="transform:scaleX(-1)"' : ''}>`;
 
-function frameStrips(): string {
+const NAMES: Record<string, string> = { player: 'Player', goblin: 'Goblin', seedSpitter: 'Seed spitter', boar: 'Boar', wasp: 'Wasp', treantBoss: 'Treant', ghoul: 'Ghoul', bat: 'Bat' };
+/** What each cave pose is, for the strips' headings. */
+const POSE_NAMES: Record<string, Partial<Record<Action, string>>> = {
+  ghoul: { move: 'stalk', attack: 'wind-up, lunge' },
+  bat: { idle: 'flutter in place', move: 'flutter', attack: 'telegraph, swoop' },
+};
+
+/** Every frame of `kinds`' art, view by view, then their champions' gold-trimmed frames. */
+function frameStrips(kinds: string[], champs: string[]): string {
   const rows: string[] = [];
-  const names: Record<string, string> = { player: 'Player', goblin: 'Goblin', seedSpitter: 'Seed spitter', boar: 'Boar', wasp: 'Wasp', treantBoss: 'Treant' };
-  for (const [kind, art] of Object.entries(CHARACTERS)) {
+  const names = NAMES;
+  for (const kind of kinds) {
+    const art = CHARACTERS[kind];
     const scale = kind === 'treantBoss' ? 1 : 2;
     for (const view of art.views) {
       const cells = (Object.entries(art.actions) as [Action, number][])
@@ -372,17 +390,18 @@ function frameStrips(): string {
           const frames = Array.from({ length: count }, (_, f) =>
             `<figure>${img(art.draw(action, f, view, false), art.w, art.h, scale, false, `${names[kind]} ${action} frame ${f + 1}`)}<figcaption>${f + 1}</figcaption></figure>`,
           ).join('');
-          return `<div class="action"><h4>${action} <span>${count}</span></h4><div class="frames">${frames}</div></div>`;
+          const what = POSE_NAMES[kind]?.[action];
+          return `<div class="action"><h4>${what ? `${action} (${what})` : action} <span>${count}</span></h4><div class="frames">${frames}</div></div>`;
         })
         .join('');
       const label = art.views.length > 1 ? `${names[kind]} <span>facing ${view === 'side' ? 'right (left is mirrored)' : view}</span>` : names[kind];
       rows.push(`<section class="strip"><h3>${label}</h3><div class="actions">${cells}</div></section>`);
     }
   }
-  const champs = ['goblin', 'seedSpitter', 'boar', 'wasp']
+  const champFigs = champs
     .map((k) => `<figure>${img(CHARACTERS[k].draw('idle', 0, CHARACTERS[k].views[0], true), CHARACTERS[k].w, CHARACTERS[k].h, 2, false, `Champion ${names[k]}`)}<figcaption>${names[k]}</figcaption></figure>`)
     .join('');
-  rows.push(`<section class="strip"><h3>Champions <span>gold paper trim</span></h3><div class="frames">${champs}</div></section>`);
+  rows.push(`<section class="strip"><h3>Champions <span>gold paper trim</span></h3><div class="frames">${champFigs}</div></section>`);
   return rows.join('');
 }
 
@@ -513,10 +532,10 @@ function cavesSheet(): string {
 <header class="masthead">
   <p class="eyebrow">Floor 2 · room shell and terrain</p>
   <h1>Papercut Caves</h1>
-  <p class="lede">Warm earth, cold light: umber and ochre rock paper, icy cyan-white crystal as the hard accent, violet fungus as the second hue (and deep-teal slime to come). This sheet covers the room shell (walls, doors, floors), every cave terrain tile and the decor, bones and a dropped miner's pick among it. The cave cast follows.</p>
+  <p class="lede">Warm earth, cold light: umber and ochre rock paper, icy cyan-white crystal as the hard accent, violet fungus as the second hue (and deep-teal slime to come). This sheet covers the room shell (walls, doors, floors), every cave terrain tile and the decor, bones and a dropped miner's pick among it, and the cave cast so far: the ghoul and the bat.</p>
 </header>
 ${defs(lit)}${defs(unlit)}${defs(grotto)}${defs(hollow)}${defs(rift)}${defs(boss)}
-<figure class="stage">${caveLit}<figcaption>A sample cave room, lit as in the game: stalagmites fused along the walls, a chasm, thorn vines, a boulder, a crystal cluster and glowshrooms; the right door barred while enemies live.</figcaption></figure>
+<figure class="stage">${caveLit}<figcaption>A sample cave room, lit as in the game: stalagmites fused along the walls, a chasm, thorn vines, a boulder, a crystal cluster and glowshrooms; a ghoul winding up at the player (a champion stalking below), one bat hanging wings-wide for its tell, another swooping. The right door is barred while enemies live.</figcaption></figure>
 <div class="pair">
   <figure class="stage small">${caveUnlit}<figcaption>The same room with the lights on.</figcaption></figure>
   <figure class="stage small">${grottoUnlit}<figcaption>A crystal grotto: crystal spires, and crystal enough for veined walls all the way round.</figcaption></figure>
@@ -524,6 +543,9 @@ ${defs(lit)}${defs(unlit)}${defs(grotto)}${defs(hollow)}${defs(rift)}${defs(boss
   <figure class="stage small">${riftUnlit}<figcaption>A rift: the chasm's lip torn red.</figcaption></figure>
   <figure class="stage small">${bossUnlit}<figcaption>The worm's room: darker earth broken by burrows, strewn with bones and shards.</figcaption></figure>
 </div>
+<h2>The cave cast, frame by frame</h2>
+<p class="note">The ghoul's wind-up (eyes flared cyan) is held for its whole tell, then the lunge frames play while it lunges; it loops recover while it catches its breath. The bat beats its wings at twice the usual frame rate, hangs with them spread wide for its tell, and holds the swoop frames while it swoops.</p>
+${frameStrips(['ghoul', 'bat'], ['ghoul', 'bat'])}
 <h2>Terrain</h2>
 ${caveTerrainSheet()}
 <h2>Dressing</h2>
@@ -555,7 +577,7 @@ ${defs(forest)}${defs(boss)}${defs(unlit)}
 </div>
 <h2>Characters, frame by frame</h2>
 <p class="note">Idle 2, move 4, attack 3, hurt 1, played at about 9 frames a second. On a hit the sprite also flashes white; that is done in the game, not drawn here.</p>
-${frameStrips()}
+${frameStrips(['player', 'goblin', 'seedSpitter', 'boar', 'wasp', 'treantBoss'], ['goblin', 'seedSpitter', 'boar', 'wasp'])}
 <h2>Pieces</h2>
 <p class="note">Joined pieces show how neighbouring trees, thorns and pond tiles grow into each other.</p>
 ${pieceSheet()}

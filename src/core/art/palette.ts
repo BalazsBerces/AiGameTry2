@@ -162,6 +162,19 @@ export const PAPER = {
     mossLight: '#5e6a3c',
     iron: '#4a4644',
 
+    // The cave cast: a bone-pale ghoul with milky eyes that flare crystal cyan, and a pale albino bat.
+    ghoul: '#c8c2aa',
+    ghoulShade: '#958e78',
+    ghoulDark: '#5c5648',
+    ghoulMilk: '#e4ece6',
+    bat: '#e2d8cc',
+    batShade: '#b4a698',
+    batWing: '#cbb6ae',
+    batWingShade: '#9c847c',
+    batEar: '#e89aa8',
+    batEarInner: '#c4687e',
+    batEye: '#d8445a',
+
     earth: '#33271c',
     earthPatch: '#3e3022',
     earthDark: '#261c13',

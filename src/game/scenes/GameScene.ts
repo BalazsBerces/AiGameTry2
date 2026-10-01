@@ -190,8 +190,10 @@ const ENEMY_ART: Partial<Record<EnemyType, { footOffset: number; fps?: number }>
   treantBoss: { footOffset: 30 },
   seedSpitter: { footOffset: 14 },
   boar: { footOffset: 8 },
-  // Beating wings: twice the usual frame rate.
+  // Beating wings (the wasp's, the bat's): twice the usual frame rate.
   wasp: { footOffset: 12, fps: 18 },
+  bat: { footOffset: 18, fps: 18 },
+  ghoul: { footOffset: 9 },
 };
 
 const hex = (color: string) => parseInt(color.slice(1), 16);
@@ -204,6 +206,8 @@ const SCRAP_COLORS: Partial<Record<EnemyType, number[]>> = {
   seedSpitter: [PAPER.spitter, PAPER.spitterShade, PAPER.leaf].map(hex),
   boar: [PAPER.boar, PAPER.boarMane, PAPER.tusk].map(hex),
   wasp: [PAPER.wasp, PAPER.waspStripe, PAPER.wing].map(hex),
+  ghoul: [PAPER.caves.ghoul, PAPER.caves.ghoulShade, PAPER.caves.ghoulDark].map(hex),
+  bat: [PAPER.caves.bat, PAPER.caves.batWing, PAPER.caves.batEar].map(hex),
   treantBoss: [PAPER.bark, PAPER.canopy, PAPER.eyeGlow].map(hex),
 };
 /** A bomb's confetti. */

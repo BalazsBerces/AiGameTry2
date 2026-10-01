@@ -104,8 +104,8 @@ export interface Enemy extends Stunnable {
   pack?: { member(ctx: EnemyContext): PackMember; follow(decision: PackDecision): void };
   /**
    * How it looks right now, for its paper art (core/art/animator): a state to loop (a goblin
-   * healing) or a frame to hold (a wind-up, for exactly as long as its telegraph). Read from its
-   * own state, never changing it; plain shapes ignore it.
+   * healing), a frame to hold (a wind-up, for exactly as long as its telegraph) or a way to face
+   * (where it is about to strike). Read from its own state, never changing it; plain shapes ignore it.
    */
   visual?(time: number): Visual;
   /** Shapes drawn along with its parts purely as decoration (the Treant's face), hidden when paper art stands in for it. */
@@ -113,7 +113,7 @@ export interface Enemy extends Stunnable {
 }
 
 /** What an enemy reports about how it looks: its paper art otherwise animates from its velocity. */
-export type Visual = Pick<Motion, 'loop' | 'hold'>;
+export type Visual = Pick<Motion, 'loop' | 'hold' | 'aim'>;
 
 /** Emitted on an enemy part when it takes a hit (with the time), so its paper art can flash and flinch. */
 export const HIT_EVENT = 'enemy-hit';

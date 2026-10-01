@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { artCatalogue, decorKey, doorKey, floorKey, floorLook, groundKey, joinKey, tileKey, wallKey, type DoorSide, type FloorKind } from './catalogue';
+import { artCatalogue, charKey, decorKey, doorKey, floorKey, floorLook, groundKey, joinKey, tileKey, wallKey, type DoorSide, type FloorKind } from './catalogue';
+import { CHARACTERS, type Action } from './characters';
 import { CAVE_FLOOR_LOOKS, WALL_STYLES, type WallSide } from './terrain';
 import { themeForFloor } from '../map/themes';
 import { roomThemesFor } from '../rooms/roomThemes';
@@ -151,6 +152,40 @@ describe('the art catalogue', () => {
 
     it('comes out the same when built twice', () => {
       for (const key of keys) expect(svgOf(key), key).toBe(svgOf(key));
+    });
+  });
+
+  describe('the cave cast', () => {
+    const CAST = { ghoul: { idle: 2, move: 4, attack: 3, hurt: 1, recover: 2 }, bat: { idle: 2, move: 4, attack: 3, hurt: 1 } };
+    const keysOf = (kind: keyof typeof CAST, champion: boolean) =>
+      (Object.entries(CAST[kind]) as [Action, number][]).flatMap(([action, count]) => Array.from({ length: count }, (_, f) => charKey(kind, action, f, 'side', champion)));
+
+    it('stalks, winds up, lunges, recovers and flinches as a ghoul; flutters, telegraphs, swoops and flinches as a bat, side on', () => {
+      for (const kind of ['ghoul', 'bat'] as const) {
+        expect(CHARACTERS[kind].actions, kind).toEqual(CAST[kind]);
+        expect([...CHARACTERS[kind].views], kind).toEqual(['side']);
+      }
+    });
+
+    it('holds every action, frame and view of both, plain and gold-trimmed for champions, each frame a drawing of its own', () => {
+      for (const kind of ['ghoul', 'bat'] as const) {
+        const plain = keysOf(kind, false);
+        const champ = keysOf(kind, true);
+        for (const key of [...plain, ...champ]) expect(byKey.has(key), key).toBe(true);
+        expect(new Set(plain.map(svgOf)).size, kind).toBe(plain.length);
+        plain.forEach((key, i) => expect(svgOf(champ[i]), key).not.toBe(svgOf(key)));
+      }
+    });
+
+    it('comes out the same when built twice', () => {
+      for (const kind of ['ghoul', 'bat'] as const) for (const key of [...keysOf(kind, false), ...keysOf(kind, true)]) expect(svgOf(key), key).toBe(svgOf(key));
+    });
+
+    it('leaves the rest of the cast drawn exactly as before', () => {
+      const entries = artCatalogue().filter((e) => e.key.startsWith('c:') && !['ghoul', 'bat'].includes(e.key.split(':')[1]));
+      expect(entries.length).toBe(128);
+      // The fingerprint of every character's frames before the cave cast got theirs.
+      expect(fnv(entries.map((e) => e.key + e.svg()).join('\n'))).toBe('a573d34');
     });
   });
 

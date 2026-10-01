@@ -15,7 +15,7 @@ export interface ArtEntry {
 }
 
 /** Kinds whose champions get their own gold-trimmed frames. */
-const CHAMPION_KINDS = new Set(['goblin', 'seedSpitter', 'boar', 'wasp']);
+const CHAMPION_KINDS = new Set(['goblin', 'seedSpitter', 'boar', 'wasp', 'ghoul', 'bat']);
 
 export const charKey = (kind: string, action: Action, frame: number, view: View, champion = false) =>
   `c:${kind}:${action}:${frame}:${view}${champion ? ':champ' : ''}`;

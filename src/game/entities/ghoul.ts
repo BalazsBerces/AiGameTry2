@@ -1,5 +1,6 @@
 import type Phaser from 'phaser';
 import { createGhoul as createGhoulState, stepGhoul } from '../../core/enemies/ghoul';
+import { ghoulPose } from '../../core/art/castPoses';
 import { stepDownhill } from '../../core/map/grid';
 import { COLORS, TUNING } from '../config';
 import { championBoost, championColor, singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
@@ -17,7 +18,7 @@ export function createGhoul(scene: Phaser.Scene, x: number, y: number, champion 
   scene.physics.add.existing(sprite);
   sprite.body.setCircle(size / 2);
   let state = createGhoulState();
-  return singlePartEnemy(scene, sprite, hp, (ctx: EnemyContext) => {
+  const enemy = singlePartEnemy(scene, sprite, hp, (ctx: EnemyContext) => {
     state = stepGhoul(state, {
       time: ctx.time,
       toPlayer: { x: (ctx.player.x - sprite.x) / TUNING.tile, y: (ctx.player.y - sprite.y) / TUNING.tile },
@@ -43,4 +44,7 @@ export function createGhoul(scene: Phaser.Scene, x: number, y: number, champion 
     const pace = state.mode === 'recover' ? speed * 0.3 : speed;
     sprite.body.setVelocity((dx / len) * pace, (dy / len) * pace);
   });
+  // Eyes flared and drawn back for the whole wind-up (the tell), flung out through the lunge, winded after.
+  enemy.visual = (time) => ghoulPose(state, time);
+  return enemy;
 }

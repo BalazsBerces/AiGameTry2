@@ -9,6 +9,7 @@ import {
   type Bat,
   type BatFlock,
 } from '../../core/enemies/bat';
+import { batPose } from '../../core/art/castPoses';
 import { createRng } from '../../core/rng';
 import { COLORS, TUNING } from '../config';
 import { championBoost, championColor, markChampion, singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
@@ -50,6 +51,8 @@ export function createBat(scene: Phaser.Scene, x: number, y: number, champion = 
     const v = tile * boost.speed;
     sprite.body.setVelocity(step.velocity.x * v, step.velocity.y * v);
   });
+  // Wings spread wide, hanging still, for the whole tell, then swept back through the swoop.
+  enemy.visual = (time) => (state ? batPose(state, inTiles(sprite), time) : {});
   // Killed or left behind with its room: either way its turn is free.
   sprite.once('destroy', () => leaveFlock(flock, enemy));
   enemy.collidesWithTerrain = false;

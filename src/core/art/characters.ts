@@ -1,17 +1,17 @@
 import { PAPER as P } from './palette';
-import { blob, cutPoly, fill, group, n, pieceRng, ragged, sheet, smoothPath, svgDoc } from './svg';
+import { blob, cutPoly, fill, group, n, pieceRng, polyPath, ragged, sheet, smoothPath, svgDoc } from './svg';
 
 /** What every character does, each drawn as a short stop-motion loop. */
 export type BaseAction = 'idle' | 'move' | 'attack' | 'hurt';
-/** Base actions plus the ones only some characters have: a goblin healing its partner, and being healed. */
-export type Action = BaseAction | 'heal' | 'healed';
+/** Base actions plus the ones only some characters have: a goblin healing its partner, being healed, a ghoul catching its breath. */
+export type Action = BaseAction | 'heal' | 'healed' | 'recover';
 /** The way a character faces: `side` looks right (left is the mirror image), `down` at the camera, `up` away. */
 export type View = 'side' | 'down' | 'up';
 
 /** Frames per base action, the same for every character. */
 export const FRAMES: Readonly<Record<BaseAction, number>> = { idle: 2, move: 4, attack: 3, hurt: 1 };
 /** Frames of the extra actions a character may add. */
-const EXTRA_FRAMES: Readonly<Record<Exclude<Action, BaseAction>, number>> = { heal: 2, healed: 2 };
+const EXTRA_FRAMES: Readonly<Record<Exclude<Action, BaseAction>, number>> = { heal: 2, healed: 2, recover: 2 };
 
 export interface CharacterArt {
   /** Canvas size in game px. */
@@ -78,6 +78,8 @@ function pose(action: Action, frame: number): Pose {
       return { ...base, bob: frame ? -0.8 : 0, lean: -3 };
     case 'healed':
       return { ...base, bob: frame ? -1.2 : 0, squash: frame ? 1.03 : 1, lean: -2 };
+    case 'recover':
+      return { ...base, bob: frame ? 1 : 0.4, squash: frame ? 0.95 : 0.97, lean: 6 };
   }
 }
 
@@ -346,6 +348,200 @@ function drawWasp(action: Action, frame: number, champion: boolean): string {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Ghoul
+// ---------------------------------------------------------------------------------------------
+
+const GHOUL = { w: 76, h: 58, foot: { x: 24, y: 52 } };
+const C = P.caves;
+
+/** A limb cut from `from` through a joint to `to`, the joint pushed `bend` px off the straight line between them. */
+const limb = (from: { x: number; y: number }, to: { x: number; y: number }, bend: number, thick: number, tip: number) => {
+  const len = Math.hypot(to.x - from.x, to.y - from.y) || 1;
+  const joint = { x: (from.x + to.x) / 2 - ((to.y - from.y) / len) * bend, y: (from.y + to.y) / 2 + ((to.x - from.x) / len) * bend };
+  return taper([from, joint, to], thick, tip);
+};
+
+/** Three hooked claws off a hand at x,y, pointing `a` degrees. */
+const claws = (x: number, y: number, a: number, color: string) =>
+  group(
+    [-24, 0, 24].map((d) => group(fill(taper([{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 7, y: 1.6 }], 1.8, 0.3), color), `rotate(${d})`)).join(''),
+    `translate(${n(x)} ${n(y)}) rotate(${n(a)})`,
+  );
+
+function drawGhoul(action: Action, frame: number, champion: boolean): string {
+  const p = pose(action, frame);
+  const r = (part: string) => pieceRng('ghoul', part);
+  const { x: fx, y: fy } = GHOUL.foot;
+  // The attack is the lunge: crouched and drawn back with its eyes flared (the wind-up, held for the tell), then flung forward.
+  const windUp = action === 'attack' && frame === 0;
+  const lunging = action === 'attack' && frame > 0;
+  const winded = action === 'recover';
+  const crouch = windUp ? 4 : winded ? 2.5 : p.hurt ? 1 : 0;
+  const step = action === 'move' ? p.stride * 4 : lunging ? (frame === 1 ? 5 : 7) : 0;
+  const hip = { x: fx - 2, y: fy - 15 + crouch };
+  // Thin legs bent at the knee, feet splayed.
+  const lift = Math.abs(p.stride);
+  const legs =
+    fill(limb(hip, { x: fx - 4 - step, y: fy - 1 }, -3.5, 4.2, 2.4), C.ghoulShade) + ellipse(fx - 3 - step, fy - 1, 3.4, 1.6, C.ghoulShade) +
+    fill(limb({ x: hip.x + 2, y: hip.y }, { x: fx + 4 + step, y: fy - 1 - lift }, -3.5, 4.6, 2.6), C.ghoul) + ellipse(fx + 5 + step, fy - 1 - lift, 3.6, 1.7, C.ghoul);
+  // A hunched, starved torso: the spine bowed high over the hips, the chest sunk forward.
+  const top = fy - 33 + crouch;
+  const torsoD = cutPoly(r('torso'), [
+    { x: hip.x - 4, y: hip.y - 1 }, { x: hip.x - 6, y: top + 10 }, { x: hip.x - 2, y: top + 2 }, { x: hip.x + 5, y: top - 1 },
+    { x: hip.x + 11, y: top + 4 }, { x: hip.x + 9, y: top + 9 }, { x: hip.x + 3, y: top + 13 }, { x: hip.x + 2, y: hip.y - 1 },
+  ], 0.5);
+  const ribs = [0, 1, 2]
+    .map((i) => `<path d="M${n(hip.x + i)} ${n(top + 5 + i * 3)}q${n(3.5 - i)} 1.2 ${n(5.5 - i * 1.5)} -1" stroke="${C.ghoulDark}" stroke-width="1.1" fill="none" stroke-linecap="round" opacity="0.8"/>`)
+    .join('');
+  // Knobs of spine standing out along its back.
+  const spine = [0, 1, 2, 3]
+    .map((i) => {
+      const x = hip.x - 6.5 + i * 3.3;
+      const y = top + 9 - i * 3.2 + (i === 3 ? 1 : 0);
+      return fill(`M${n(x - 1.3)} ${n(y + 0.6)}L${n(x - 1.6)} ${n(y - 2.2)}L${n(x + 1.3)} ${n(y - 0.4)}Z`, C.ghoulMilk);
+    })
+    .join('');
+  const torso =
+    trim(torsoD, champion) +
+    fill(torsoD, C.ghoul) +
+    fill(`M${n(hip.x - 4)} ${n(hip.y - 1)}L${n(hip.x - 5.5)} ${n(top + 10)}L${n(hip.x - 1)} ${n(top + 14)}L${n(hip.x + 1)} ${n(hip.y - 1)}Z`, C.ghoulShade, 'opacity="0.7"') +
+    ribs +
+    spine;
+  // Long arms that drag their knuckles along the ground; pulled back in the wind-up, flung out in the lunge.
+  const shoulder = { x: hip.x + 8, y: top + 4 };
+  // The arms swing a beat behind the legs, so no two steps look alike.
+  const sway = action === 'move' ? [3, 1.2, -3, -1.2][frame] : action === 'idle' ? frame * 1.5 : 0;
+  const hands = windUp
+    ? { near: { x: fx - 12, y: fy - 12 }, far: { x: fx - 9, y: fy - 16 }, a: 150 }
+    : lunging
+      ? frame === 1
+        ? { near: { x: fx + 33, y: fy - 26 }, far: { x: fx + 30, y: fy - 20 }, a: -10 }
+        : { near: { x: fx + 34, y: fy - 16 }, far: { x: fx + 31, y: fy - 11 }, a: 22 }
+      : p.hurt
+        ? { near: { x: fx - 4, y: fy - 10 }, far: { x: fx - 1, y: fy - 13 }, a: 120 }
+        : winded
+          ? { near: { x: fx + 15, y: fy - 1 - frame }, far: { x: fx + 11, y: fy - 1 }, a: 95 }
+          : { near: { x: fx + 13 + sway, y: fy - 2 }, far: { x: fx + 9 - sway, y: fy - 2.5 }, a: 80 };
+  const armBend = lunging ? 2 : windUp ? -4 : 4;
+  const farArm = fill(limb({ x: shoulder.x - 2, y: shoulder.y - 1 }, hands.far, armBend, 4, 2.4), C.ghoulShade) + claws(hands.far.x, hands.far.y, hands.a, C.ghoulDark);
+  const nearArm = fill(limb(shoulder, hands.near, armBend, 4.6, 2.6), C.ghoul) + claws(hands.near.x, hands.near.y, hands.a, C.ghoulShade);
+  // A long, gaunt skull thrust forward on its neck, the jaw hanging open.
+  const hx = shoulder.x + (lunging ? 9 : 7);
+  const hy = top + (windUp ? 4 : winded ? 9 : 6);
+  const gape = lunging ? 4 : winded ? 1.5 + frame * 1.5 : windUp ? 2 : 1;
+  const headD = cutPoly(r('head'), [
+    { x: hx - 5, y: hy - 3 }, { x: hx, y: hy - 6.5 }, { x: hx + 6, y: hy - 5.5 }, { x: hx + 10, y: hy - 2 },
+    { x: hx + 10.5, y: hy + 1.5 }, { x: hx + 5, y: hy + 2 }, { x: hx - 2, y: hy + 4 }, { x: hx - 5, y: hy + 2 },
+  ], 0.35);
+  const jawD = cutPoly(r('jaw'), [{ x: hx - 1, y: hy + 2.5 }, { x: hx + 9, y: hy + 1.5 + gape }, { x: hx + 7, y: hy + 4 + gape }, { x: hx - 1, y: hy + 5 }], 0.25);
+  const maw =
+    fill(`M${n(hx)} ${n(hy + 1.6)}L${n(hx + 10)} ${n(hy + 1)}L${n(hx + 9)} ${n(hy + 1.5 + gape)}L${n(hx)} ${n(hy + 3.5)}Z`, P.ink) +
+    [2, 4.5, 7].map((dx) => fill(`M${n(hx + dx)} ${n(hy + 1.4)}L${n(hx + dx + 1.4)} ${n(hy + 1.3)}L${n(hx + dx + 0.6)} ${n(hy + 3)}Z`, C.ghoulMilk)).join('');
+  // Milky, pupil-less eyes; they flare crystal cyan through the wind-up and the lunge.
+  const eyeAt = { x: hx + 5, y: hy - 2.2 };
+  const eyes = p.hurt
+    ? shutEye(eyeAt.x, eyeAt.y, 1.6)
+    : action === 'attack'
+      ? ellipse(eyeAt.x, eyeAt.y, 4.5, 4.5, C.crystal, 'opacity="0.3"') + slit(eyeAt.x, eyeAt.y, 2.4, 10, C.crystal) + circle(eyeAt.x + 0.3, eyeAt.y - 0.2, 0.8, C.crystalLight)
+      : ellipse(eyeAt.x, eyeAt.y, 1.9, 1.5, C.ghoulMilk) + ellipse(eyeAt.x + 0.4, eyeAt.y + 0.2, 0.9, 0.7, C.ghoulShade, 'opacity="0.5"');
+  const head =
+    trim(headD, champion) +
+    fill(jawD, C.ghoulShade) +
+    maw +
+    fill(headD, C.ghoul) +
+    fill(`M${n(hx + 2)} ${n(hy - 4)}L${n(hx + 8)} ${n(hy - 3.6)}L${n(hx + 7)} ${n(hy - 1.6)}L${n(hx + 3)} ${n(hy - 1.8)}Z`, C.ghoulDark, 'opacity="0.75"') +
+    fill(`M${n(hx - 3)} ${n(hy + 1)}L${n(hx + 1)} ${n(hy - 0.5)}L${n(hx + 1)} ${n(hy + 2.5)}Z`, C.ghoulShade) +
+    eyes;
+  const lean = windUp ? -7 : lunging ? (frame === 1 ? 14 : 18) : p.hurt ? -8 : winded ? 9 : action === 'move' ? 6 : 4;
+  const body = sheet(farArm) + sheet(legs) + sheet(torso) + sheet(head, 2) + sheet(nearArm);
+  return contact(fx + 2, fy, 13, 3.4) + posed({ ...p, lean }, fx, fy, body);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Bat
+// ---------------------------------------------------------------------------------------------
+
+const BAT = { w: 64, h: 46, foot: { x: 32, y: 42 } };
+
+/**
+ * One leathery wing off the shoulder at x,y on side `s` (1 right, -1 left): `lift` radians above
+ * level, `span` px long, its trailing edge scalloped between three finger bones.
+ */
+function batWing(x: number, y: number, s: number, lift: number, span: number, champion: boolean, membrane: string, bone: string): string {
+  const at = (k: number, da: number) => ({ x: x + s * span * k * Math.cos(lift + da), y: y - span * k * Math.sin(lift + da) });
+  const wrist = at(0.45, 0.4);
+  const tip = at(1, 0);
+  const fingers = [at(0.82, -0.55), at(0.6, -1)];
+  const root = { x: x - s, y: y + 4 };
+  /** The membrane sags between two finger ends, pulled back toward the shoulder. */
+  const notch = (a: { x: number; y: number }, b: { x: number; y: number }) => ({ x: (a.x + b.x) / 2 + (x - (a.x + b.x) / 2) * 0.22, y: (a.y + b.y) / 2 + (y - (a.y + b.y) / 2) * 0.22 });
+  const d = polyPath([{ x, y }, wrist, tip, notch(tip, fingers[0]), fingers[0], notch(fingers[0], fingers[1]), fingers[1], notch(fingers[1], root), root]);
+  const bones = [tip, ...fingers].map((q) => `M${n(wrist.x)} ${n(wrist.y)}L${n(q.x)} ${n(q.y)}`).join('');
+  return (
+    trim(d, champion) +
+    fill(d, membrane) +
+    `<path d="M${n(x)} ${n(y)}L${n(wrist.x)} ${n(wrist.y)}${bones}" stroke="${bone}" stroke-width="1" fill="none" stroke-linecap="round"/>` +
+    fill(`M${n(wrist.x)} ${n(wrist.y)}l${n(s * 1.6)} -2.4l${n(s * 0.4)} 2.4Z`, bone)
+  );
+}
+
+function drawBat(action: Action, frame: number, champion: boolean): string {
+  const { x: fx, y: fy } = BAT.foot;
+  // It flies: the body flutters well above its shadow and the wings beat every frame.
+  const hover = action === 'move' ? [0, -1.5, 0, 1][frame] : action === 'idle' ? -frame : 0;
+  const telegraph = action === 'attack' && frame === 0;
+  const swoop = action === 'attack' && frame > 0;
+  const hurt = action === 'hurt';
+  const bx = fx - 1;
+  const by = fy - 20 + hover;
+  // Wing lift and span per frame: a fast beat, spread flat and wide for the tell, swept back in the swoop.
+  const [lift, span] = telegraph
+    ? [0.2, 26]
+    : swoop
+      ? frame === 1 ? [1.05, 14] : [0.75, 13]
+      : hurt
+        ? [-0.35, 12]
+        : action === 'move'
+          ? [[1.1, 17], [0.35, 18], [-0.6, 16], [0.15, 18]][frame]
+          : [[0.9, 17], [-0.4, 16]][frame];
+  const wing = (s: number) => batWing(bx + s * 2.5, by - 1.5, s, lift, span, champion, s < 0 ? C.batWingShade : C.batWing, s < 0 ? C.batShade : C.batWingShade);
+  const bodyD = blob(pieceRng('bat', 'body'), bx, by + 1, 5, 6.2, 9, 0.06);
+  const hx = bx + 2.5;
+  const hy = by - 5.5;
+  // Big pink ears, pricked up taller as it hangs for the tell.
+  const ears = [-1, 1]
+    .map((s) => {
+      const base = hx + s * 2.2;
+      const tipX = base + s * (telegraph ? 3.5 : 2.5);
+      const tipY = hy - (telegraph ? 10.5 : 9);
+      return fill(`M${n(base - 2.2)} ${n(hy - 1.5)}L${n(tipX)} ${n(tipY)}L${n(base + 2.2)} ${n(hy - 1)}Z`, C.batEar) +
+        fill(`M${n(base - 1)} ${n(hy - 2)}L${n(tipX)} ${n(tipY + 2.5)}L${n(base + 1.1)} ${n(hy - 1.8)}Z`, C.batEarInner);
+    })
+    .join('');
+  const face = hurt
+    ? shutEye(hx - 1.6, hy, 1.1) + shutEye(hx + 2, hy, -1.1)
+    : eye(hx - 1.6, hy - 0.2, 0.9, 1.1, C.batEye) + eye(hx + 2, hy - 0.2, 0.9, 1.1, C.batEye);
+  const snout =
+    ellipse(hx + 0.2, hy + 2.4, 1.8, 1.2, C.batEarInner) +
+    [-1, 0.6].map((dx) => fill(`M${n(hx + dx)} ${n(hy + 3)}L${n(hx + dx + 0.6)} ${n(hy + 4.8)}L${n(hx + dx + 1.2)} ${n(hy + 3)}Z`, P.white)).join('');
+  const feet = [-1.5, 1.5]
+    .map((dx) => fill(`M${n(bx + dx - 0.8)} ${n(by + 6)}L${n(bx + dx + (swoop ? 2.5 : 0))} ${n(by + 9.5)}L${n(bx + dx + 0.8)} ${n(by + 6)}Z`, C.batShade))
+    .join('');
+  const body =
+    trim(bodyD, champion) +
+    feet +
+    fill(bodyD, C.bat) +
+    fill(blob(pieceRng('bat', 'belly'), bx + 1, by + 2.5, 3, 3.6, 7, 0.05), C.batShade, 'opacity="0.55"') +
+    ears +
+    fill(blob(pieceRng('bat', 'head'), hx, hy, 4.4, 4, 8, 0.05), C.bat) +
+    face +
+    snout;
+  // The swoop pitches it head-first at its target; a hit knocks it askew.
+  const tilt = swoop ? (frame === 1 ? 24 : 30) : hurt ? -18 : 0;
+  return contact(fx, fy, telegraph ? 9 : 7, 2.2) + group(sheet(wing(-1)) + sheet(body, 2) + sheet(wing(1)), `rotate(${tilt} ${n(bx)} ${n(by)})`);
+}
+
+// ---------------------------------------------------------------------------------------------
 // Treant
 // ---------------------------------------------------------------------------------------------
 
@@ -485,5 +681,7 @@ export const CHARACTERS: Readonly<Record<string, CharacterArt>> = {
   seedSpitter: art(SPITTER, ['down'], (a, f, _v, c) => drawSeedSpitter(a, f, c), 7),
   boar: art(BOAR, ['side'], (a, f, _v, c) => drawBoar(a, f, c), 11),
   wasp: art(WASP, ['side'], (a, f, _v, c) => drawWasp(a, f, c), 13),
+  ghoul: art(GHOUL, ['side'], (a, f, _v, c) => drawGhoul(a, f, c), 19, ['recover']),
+  bat: art(BAT, ['side'], (a, f, _v, c) => drawBat(a, f, c), 23),
   treantBoss: art(TREANT, ['down'], (a, f) => drawTreant(a, f), 17),
 };

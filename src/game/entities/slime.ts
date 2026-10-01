@@ -2,6 +2,7 @@ import type Phaser from 'phaser';
 import { createSlime as createSlimeState, SLIME, splitSlime, updateSlime, type Slime, type SlimeBody } from '../../core/enemies/slime';
 import { createRng } from '../../core/rng';
 import { footDepth, STANDING } from '../../core/art/depth';
+import { slimePose } from '../../core/art/castPoses';
 import { COLORS, TUNING } from '../config';
 import { championBoost, championColor, flash, markChampion, roundBody, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
 
@@ -93,6 +94,10 @@ export function createSlime(scene: Phaser.Scene, x: number, y: number, body: Sli
       sprite.destroy();
       return splitSlime(body, at).map((child) => createSlime(scene, child.at.x * tile, child.at.y * tile, child));
     },
+    // Squashing down through the tell, stretching through the jump, splatting where it lands.
+    visual: (time) => (state ? slimePose(state, inTiles({ x: sprite.x, y: sprite.y + lift }), time) : {}),
+    // Every tier is the big one's art, drawn at its own size.
+    art: { scale: size / TUNING.slime.size.big, champion: body.champion },
   };
   return enemy;
 }

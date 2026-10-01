@@ -3,15 +3,15 @@ import { blob, cutPoly, fill, group, n, pieceRng, polyPath, ragged, sheet, smoot
 
 /** What every character does, each drawn as a short stop-motion loop. */
 export type BaseAction = 'idle' | 'move' | 'attack' | 'hurt';
-/** Base actions plus the ones only some characters have: a goblin healing its partner, being healed, a ghoul catching its breath. */
-export type Action = BaseAction | 'heal' | 'healed' | 'recover';
+/** Base actions plus the ones only some characters have: a goblin healing its partner, being healed, a ghoul catching its breath, a slime splatting down. */
+export type Action = BaseAction | 'heal' | 'healed' | 'recover' | 'land';
 /** The way a character faces: `side` looks right (left is the mirror image), `down` at the camera, `up` away. */
 export type View = 'side' | 'down' | 'up';
 
 /** Frames per base action, the same for every character. */
 export const FRAMES: Readonly<Record<BaseAction, number>> = { idle: 2, move: 4, attack: 3, hurt: 1 };
 /** Frames of the extra actions a character may add. */
-const EXTRA_FRAMES: Readonly<Record<Exclude<Action, BaseAction>, number>> = { heal: 2, healed: 2, recover: 2 };
+const EXTRA_FRAMES: Readonly<Record<Exclude<Action, BaseAction>, number>> = { heal: 2, healed: 2, recover: 2, land: 2 };
 
 export interface CharacterArt {
   /** Canvas size in game px. */
@@ -80,6 +80,8 @@ function pose(action: Action, frame: number): Pose {
       return { ...base, bob: frame ? -1.2 : 0, squash: frame ? 1.03 : 1, lean: -2 };
     case 'recover':
       return { ...base, bob: frame ? 1 : 0.4, squash: frame ? 0.95 : 0.97, lean: 6 };
+    case 'land':
+      return { ...base, squash: frame ? 0.92 : 0.8 };
   }
 }
 
@@ -542,6 +544,209 @@ function drawBat(action: Action, frame: number, champion: boolean): string {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Slime
+// ---------------------------------------------------------------------------------------------
+
+/** Drawn at the big slime's size: the medium and small ones are the same art, scaled down. */
+const SLIME = { w: 58, h: 56, foot: { x: 29, y: 48 } };
+
+/**
+ * How a slime's goo is shaped in one frame: half its width, its height, how far its top draws up
+ * into a point (`peak`) or its bottom down (`sag`), how flat it sits (near 0 spread on the floor,
+ * 1 rounded off underneath in the air), and which way its top leans.
+ */
+interface Goo {
+  w: number;
+  h: number;
+  peak: number;
+  sag: number;
+  flat: number;
+  lean: number;
+}
+
+/** The outline of a body of goo standing on `base`, shaped by `g`. */
+function gooOutline(rng: ReturnType<typeof pieceRng>, cx: number, base: number, g: Goo): string {
+  const cy = base - g.h / 2;
+  const pts = Array.from({ length: 18 }, (_, i) => {
+    const a = (i / 18) * Math.PI * 2;
+    const sin = Math.sin(a);
+    const wobble = 1 + (rng.next() - 0.5) * 0.05;
+    if (sin >= 0) return { x: cx + g.w * Math.cos(a) * (1 - g.sag * sin) * wobble, y: cy + (g.h / 2) * Math.pow(sin, g.flat) };
+    const t = -sin;
+    return { x: cx + g.w * Math.cos(a) * (1 - g.peak * t) * wobble + g.lean * t, y: cy - (g.h / 2) * t };
+  });
+  return smoothPath(pts);
+}
+
+function drawSlime(action: Action, frame: number, champion: boolean): string {
+  const r = (part: string) => pieceRng('slime', action, frame, part);
+  const { x: cx, y: fy } = SLIME.foot;
+  const grounded = action !== 'move';
+  // Squashed down ever lower through the tell (leaning back off where it will jump), stretched
+  // tall through the jump, splatted flat where it lands; at rest it breathes.
+  const g: Goo =
+    action === 'attack'
+      ? [{ w: 19, h: 19, peak: 0, sag: 0, flat: 0.3, lean: -1 }, { w: 20.5, h: 16.5, peak: 0, sag: 0, flat: 0.28, lean: -1.8 }, { w: 22, h: 14, peak: 0, sag: 0, flat: 0.25, lean: -2.6 }][frame]
+      : action === 'move'
+        ? [
+            { w: 12.5, h: 31, peak: 0.35, sag: 0.25, flat: 0.8, lean: 3 },
+            { w: 13.5, h: 29, peak: 0.25, sag: 0.1, flat: 0.9, lean: 2 },
+            { w: 16, h: 25, peak: 0.08, sag: 0, flat: 1, lean: 0.6 },
+            { w: 13, h: 29.5, peak: 0, sag: 0.35, flat: 1, lean: -1 },
+          ][frame]
+        : action === 'land'
+          ? [{ w: 24, h: 12, peak: 0, sag: 0, flat: 0.2, lean: 0 }, { w: 19.5, h: 19.5, peak: 0.05, sag: 0, flat: 0.3, lean: 0.5 }][frame]
+          : action === 'hurt'
+            ? { w: 19, h: 20, peak: 0, sag: 0, flat: 0.3, lean: -2.5 }
+            : [{ w: 17, h: 24, peak: 0.1, sag: 0, flat: 0.35, lean: 0 }, { w: 17.8, h: 22.6, peak: 0.05, sag: 0, flat: 0.32, lean: 0.6 }][frame];
+  const base = grounded ? fy : fy - 2;
+  const bodyD = gooOutline(r('body'), cx, base, g);
+  const top = base - g.h;
+  // The milky core hangs low in the goo; it shrinks and pales when hit.
+  const coreS = action === 'hurt' ? 0.7 : 1;
+  const coreX = cx + g.lean * 0.5 - (action === 'attack' ? 1 : 0);
+  const coreY = base - g.h * (action === 'move' ? 0.5 : 0.4);
+  const core =
+    fill(blob(r('core'), coreX, coreY, g.w * 0.42 * coreS, g.h * 0.24 * coreS, 9, 0.14), C.slimeCore, `opacity="${action === 'hurt' ? 0.45 : 0.55}"`) +
+    fill(blob(r('nucleus'), coreX + 0.8, coreY + 0.4, g.w * 0.24 * coreS, g.h * 0.14 * coreS, 8, 0.12), C.slimeCore, 'opacity="0.85"');
+  // Grit and bubbles held in the goo.
+  const specks = [{ x: -0.5, y: 0.62, s: 1.1 }, { x: 0.42, y: 0.55, s: 0.8 }, { x: 0.15, y: 0.25, s: 0.7 }, { x: -0.3, y: 0.3, s: 0.6 }]
+    .map((q, i) => circle(cx + q.x * g.w + g.lean * (1 - q.y), base - q.y * g.h, q.s, i % 2 ? C.slimeLight : C.slimeDeep))
+    .join('');
+  // A soft wet sheen, never a facet: one curved gleam high on its shoulder.
+  const shine =
+    `<path d="M${n(cx - g.w * 0.62 + g.lean * 0.6)} ${n(base - g.h * 0.55)}Q${n(cx - g.w * 0.5 + g.lean * 0.8)} ${n(top + g.h * 0.12)} ${n(cx - g.w * 0.05 + g.lean)} ${n(top + g.h * 0.1)}" stroke="${C.slimeShine}" stroke-width="1.8" fill="none" stroke-linecap="round" opacity="0.6"/>` +
+    circle(cx + g.w * 0.22 + g.lean, top + g.h * 0.2, 0.9, C.slimeShine);
+  // Drips and droplets: running down its side at rest, flung out as it lands, trailing as it drops.
+  const drop = (x: number, y: number, s: number) => fill(blob(r(`drop${n(x)}:${n(y)}`), x, y, s, s * 1.25, 7, 0.08), C.slime, 'opacity="0.9"');
+  const drips =
+    action === 'idle'
+      ? drop(cx + g.w * 0.72, base - g.h * 0.28 + frame * 2, 1.4)
+      : action === 'land' && frame === 0
+        ? drop(cx - g.w - 3, base - 5, 1.6) + drop(cx + g.w + 3.5, base - 6, 1.4) + drop(cx - g.w + 1, base - 9, 1) + drop(cx + g.w - 1, base - 10, 1.1)
+        : action === 'move' && frame === 3
+          ? drop(cx - 3, top - 4, 1.4) + drop(cx + 2, top - 8, 1.1) + drop(cx - 1, top - 12, 0.8)
+          : action === 'move' && frame === 0
+            ? drop(cx - 6, base + 1.5, 1.6) + drop(cx + 5, base + 1, 1.3)
+            : '';
+  // A hit sends ripples through the goo.
+  const ripples =
+    action === 'hurt'
+      ? [0.35, 0.6]
+          .map((k) => `<path d="M${n(cx - g.w * k)} ${n(base - g.h * 0.5)}Q${n(cx)} ${n(base - g.h * (0.5 + k * 0.4))} ${n(cx + g.w * k)} ${n(base - g.h * 0.5)}" stroke="${C.slimeLight}" stroke-width="1" fill="none" opacity="0.7"/>`)
+          .join('')
+      : '';
+  const body =
+    trim(bodyD, champion) +
+    fill(bodyD, C.slime, 'opacity="0.92"') +
+    fill(blob(r('deep'), cx, base - g.h * 0.2, g.w * 0.8, g.h * 0.16, 9, 0.08), C.slimeDeep, 'opacity="0.55"') +
+    core +
+    specks +
+    ripples +
+    `<path d="${bodyD}" stroke="${C.slimeLight}" stroke-width="1.3" fill="none" opacity="0.7"/>` +
+    shine;
+  // In the air its shadow is the scene's, left on the floor below it.
+  return (grounded ? contact(cx, fy, g.w * 0.92, 2.8) : '') + sheet(body, 2) + sheet(drips);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Geode (the crystal turret)
+// ---------------------------------------------------------------------------------------------
+
+const GEODE = { w: 66, h: 64, foot: { x: 33, y: 52 } };
+
+/** One faceted crystal growing from x,y, `a` degrees off straight up, `len` long and `wide` across: a lit face and a shaded one. */
+function prism(x: number, y: number, a: number, len: number, wide: number): string {
+  const rad = (a * Math.PI) / 180;
+  const ux = Math.sin(rad);
+  const uy = -Math.cos(rad);
+  const at = (along: number, across: number) => ({ x: x + ux * along - uy * across, y: y + uy * along + ux * across });
+  const tip = at(len, 0);
+  const shoulderL = at(len * 0.72, -wide / 2);
+  const shoulderR = at(len * 0.72, wide / 2);
+  const mid = at(len * 0.7, 0);
+  return (
+    fill(polyPath([at(0, -wide / 2), shoulderL, tip, shoulderR, at(0, wide / 2)]), C.crystalShade) +
+    fill(polyPath([at(0, -wide / 2), shoulderL, tip, mid, at(0, 0)]), C.crystal) +
+    fill(polyPath([shoulderL, tip, mid]), C.crystalLight)
+  );
+}
+
+function drawGeode(action: Action, frame: number, champion: boolean): string {
+  const r = (part: string) => pieceRng('geode', part);
+  const { x: cx, y: fy } = GEODE.foot;
+  const base = fy - 1;
+  const top = base - 30;
+  const charging = action === 'attack';
+  // Shut at rest, cracking along its seam as it charges, split open on its core, flung wide as it fires.
+  const open = charging ? [0.3, 1, 1.25][frame] : action === 'hurt' ? 0.1 : 0;
+  // How bright the light through its seam (and off its core) burns: a faint pulse at rest.
+  const glow = charging ? [0.9, 1, 1.4][frame] : action === 'hurt' ? 0.2 : action === 'move' ? [0.3, 0.45, 0.38, 0.22][frame] : [0.25, 0.42][frame];
+  // The seam it splits along, zigzagging down its face.
+  const seam = [{ x: cx + 1, y: top }, { x: cx - 2, y: top + 7 }, { x: cx + 2, y: top + 14 }, { x: cx - 1.5, y: top + 21 }, { x: cx + 1, y: base - 1 }];
+  const half = (s: number) => {
+    const outer = [
+      { x: cx + s * 9, y: base + 1 }, { x: cx + s * 17, y: base - 2 }, { x: cx + s * 20, y: base - 11 }, { x: cx + s * 18.5, y: top + 9 },
+      { x: cx + s * 13, y: top + 2.5 }, { x: cx + s * 6, y: top - 0.5 },
+    ];
+    const d = cutPoly(r(`half${s}`), [...outer, ...seam], 0.5);
+    // Its rough rind: lit facets up top, darker rock low down, bands of ochre strata, a crystal nub poking through.
+    const rind =
+      fill(cutPoly(r(`facet${s}`), [{ x: cx + s * 6, y: top + 0.5 }, { x: cx + s * 13, y: top + 3 }, { x: cx + s * 16, y: top + 9 }, { x: cx + s * 8, y: top + 8 }, { x: cx + s * 2, y: top + 4 }], 0.4), C.rockLight) +
+      fill(cutPoly(r(`low${s}`), [{ x: cx + s * 2, y: base - 7 }, { x: cx + s * 18, y: base - 9 }, { x: cx + s * 17, y: base - 2 }, { x: cx + s * 9, y: base + 0.5 }, { x: cx + s * 1.5, y: base - 1 }], 0.4), C.rockDark, 'opacity="0.85"') +
+      [0, 1]
+        .map((i) => `<path d="M${n(cx + s * 3)} ${n(top + 14 + i * 6)}Q${n(cx + s * 11)} ${n(top + 12 + i * 6)} ${n(cx + s * (18 - i))} ${n(top + 16 + i * 6)}" stroke="${C.ochre}" stroke-width="1.2" fill="none" opacity="0.6"/>`)
+        .join('') +
+      fill(polyPath([{ x: cx + s * 14, y: top + 10 }, { x: cx + s * 16.5, y: top + 6.5 }, { x: cx + s * 16, y: top + 11 }]), C.crystalShade) +
+      circle(cx + s * 15.6, top + 8.6, 0.6, C.crystalLight);
+    // Where it split: crystal teeth lining the broken edge, seen once it opens.
+    const lining =
+      open > 0.5
+        ? seam
+            .slice(0, 4)
+            .map((q, i) => fill(polyPath([{ x: q.x - s * 0.5, y: q.y + 1 }, { x: q.x + s * (3 + (i % 2) * 1.5), y: q.y + 3 }, { x: q.x - s * 0.5, y: q.y + 5 }]), i % 2 ? C.crystal : C.crystalShade))
+            .join('')
+        : '';
+    const pivot = { x: cx + s * 15, y: base };
+    return group(trim(d, champion) + fill(d, C.rock) + rind + lining, `translate(${n(s * open * 3.5)} 0) rotate(${n(s * open * 17)} ${n(pivot.x)} ${n(pivot.y)})`);
+  };
+  // The hollow and its crystal heart, behind the two halves: hidden while they're shut.
+  const k = Math.min(1, open);
+  const heart =
+    open > 0.5
+      ? fill(blob(r('hollow'), cx, base - 13, 6 + open * 7, 13, 9, 0.08), C.rockDeep) +
+        `<ellipse cx="${cx}" cy="${n(base - 12)}" rx="${n(5 + glow * 4)}" ry="${n(7 + glow * 3)}" fill="${C.crystal}" opacity="${n(0.3 * glow)}"/>` +
+        (charging && frame === 2 ? `<ellipse cx="${cx}" cy="${n(top + 8)}" rx="8" ry="6" fill="${C.crystalLight}" opacity="0.5"/>` : '') +
+        prism(cx - 4, base - 6, -28, 13 * k, 5) + prism(cx + 4.5, base - 5, 30, 12 * k, 4.5) + prism(cx, base - 5, 2, 20 * k, 6.5) +
+        prism(cx - 7, base - 3, -55, 8 * k, 3.5) + prism(cx + 7.5, base - 3, 58, 7 * k, 3)
+      : '';
+  // Light leaking through the seam: the first of the tell, and a faint pulse at rest.
+  const seamD = `M${seam.map((q) => `${n(q.x)} ${n(q.y)}`).join('L')}`;
+  const leak =
+    open <= 0.5
+      ? (charging ? `<ellipse cx="${cx}" cy="${n(top + 15)}" rx="9" ry="16" fill="${C.crystal}" opacity="0.22"/>` : '') +
+        `<path d="${seamD}" stroke="${C.crystal}" stroke-width="${n(2 + glow * 3)}" fill="none" opacity="${n(glow * 0.45)}" stroke-linejoin="round"/>` +
+        `<path d="${seamD}" stroke="${action === 'hurt' ? P.ink : C.crystalLight}" stroke-width="1.1" fill="none" opacity="${n(Math.min(1, 0.3 + glow))}" stroke-linejoin="round"/>`
+      : '';
+  // Firing: the core flares and splinters of light fly off it.
+  const flare =
+    charging && frame === 2
+      ? [-50, -20, 15, 45]
+          .map((a, i) => group(fill(polyPath([{ x: 0, y: -2 }, { x: 1.3, y: -7 - (i % 2) * 2 }, { x: -1.3, y: -7 - (i % 2) * 2 }]), C.crystalLight), `translate(${cx} ${n(top + 4)}) rotate(${a}) translate(0 -6)`))
+          .join('')
+      : '';
+  // A hit knocks chips off its rind and jolts it.
+  const chips =
+    action === 'hurt'
+      ? [{ x: -24, y: -18, a: 20 }, { x: 23, y: -22, a: -35 }, { x: 19, y: -8, a: 60 }]
+          .map((c, i) => group(fill(cutPoly(r(`chip${i}`), [{ x: -2, y: -1.5 }, { x: 2, y: -1 }, { x: 1, y: 2 }, { x: -1.5, y: 1.2 }], 0.3), C.rockLight), `translate(${n(cx + c.x)} ${n(base + c.y)}) rotate(${c.a})`))
+          .join('')
+      : '';
+  const body = heart + sheet(half(-1)) + sheet(half(1)) + leak;
+  return contact(cx, fy, 21, 4) + group(sheet(body, 2) + flare + chips, `translate(0 ${action === 'hurt' ? -2 : 0})`);
+}
+
+// ---------------------------------------------------------------------------------------------
 // Treant
 // ---------------------------------------------------------------------------------------------
 
@@ -683,5 +888,7 @@ export const CHARACTERS: Readonly<Record<string, CharacterArt>> = {
   wasp: art(WASP, ['side'], (a, f, _v, c) => drawWasp(a, f, c), 13),
   ghoul: art(GHOUL, ['side'], (a, f, _v, c) => drawGhoul(a, f, c), 19, ['recover']),
   bat: art(BAT, ['side'], (a, f, _v, c) => drawBat(a, f, c), 23),
+  slime: art(SLIME, ['side'], (a, f, _v, c) => drawSlime(a, f, c), 29, ['land']),
+  crystalTurret: art(GEODE, ['down'], (a, f, _v, c) => drawGeode(a, f, c), 31),
   treantBoss: art(TREANT, ['down'], (a, f) => drawTreant(a, f), 17),
 };

@@ -1,5 +1,6 @@
 import type Phaser from 'phaser';
 import { CRYSTAL_TURRET_BOUNCES } from '../../core/player/ricochet';
+import { geodePose } from '../../core/art/castPoses';
 import { COLORS, TUNING } from '../config';
 import { championBoost, championColor, markChampion, singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
 
@@ -20,14 +21,19 @@ export function createCrystalTurret(scene: Phaser.Scene, x: number, y: number, c
   scene.physics.add.existing(sprite);
   sprite.body.setImmovable(true);
   let nextShotAt = 0;
-  return singlePartEnemy(scene, sprite, hp, (ctx: EnemyContext) => {
+  let firedAt: number | undefined;
+  const enemy = singlePartEnemy(scene, sprite, hp, (ctx: EnemyContext) => {
     sprite.body.setVelocity(0, 0);
     if (nextShotAt === 0) nextShotAt = ctx.time + fireDelayMs * (0.5 + Math.random() * 0.5);
     if (ctx.time < nextShotAt || !ctx.canSeePlayer(sprite)) return;
     nextShotAt = ctx.time + fireDelayMs;
+    firedAt = ctx.time;
     const dx = ctx.player.x - sprite.x;
     const dy = ctx.player.y - sprite.y;
     const len = Math.hypot(dx, dy) || 1;
     ctx.fireEnemyShot(sprite.x, sprite.y, (dx / len) * shotSpeed, (dy / len) * shotSpeed, false, CRYSTAL_TURRET_BOUNCES);
   });
+  // A cracked rock geode: it splits open on its crystal core as the shot charges, and flares as it fires.
+  enemy.visual = (time) => geodePose({ nextShotAt, firedAt }, time);
+  return enemy;
 }

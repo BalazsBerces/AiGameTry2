@@ -108,6 +108,11 @@ export interface Enemy extends Stunnable {
    * (where it is about to strike). Read from its own state, never changing it; plain shapes ignore it.
    */
   visual?(time: number): Visual;
+  /**
+   * How its paper art is drawn where its spawn doesn't say: its size against the art (a slime's
+   * tier, champion or not) and whether it wears the gold trim (a champion slime's children).
+   */
+  art?: { scale: number; champion: boolean };
   /** Shapes drawn along with its parts purely as decoration (the Treant's face), hidden when paper art stands in for it. */
   trim?: Phaser.GameObjects.GameObject[];
 }

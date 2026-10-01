@@ -1,10 +1,10 @@
 import { CHARACTERS, type Action, type View } from '../core/art/characters';
-import { hudSvg, HEART_CANVAS, ICON_CANVAS, SHOT_CANVAS } from '../core/art/hud';
+import { hudSvg, HEART_CANVAS, ICON_CANVAS, SHOT_CANVAS, type ShotArt } from '../core/art/hud';
 import { PAPER } from '../core/art/palette';
 import { DOWN, LEFT, RIGHT, UP, type Mask } from '../core/art/autotile';
 import { CAVE_FLOOR_CANVAS, CAVE_WALL_CANVAS, DECOR_CANVAS, JOIN_LOOKS, MASKED_LOOKS, TILE, TILE_CANVAS, WALL_STYLES, floorCanvas, floorLooks, hasGround, terrainSvg, wallCanvas, type Shell, type WallSide, type WallStyle } from '../core/art/terrain';
 import { createRng } from '../core/rng';
-import { floorLook } from '../core/art/catalogue';
+import { SHOT_ART, floorLook } from '../core/art/catalogue';
 import { roomThemeById, roomThemesFor } from '../core/rooms/roomThemes';
 
 /**
@@ -76,6 +76,8 @@ interface Actor {
   view?: View;
   flip?: boolean;
   champion?: boolean;
+  /** Drawn at this size against its art (a smaller slime). */
+  scale?: number;
 }
 
 interface Light {
@@ -89,7 +91,7 @@ interface Scene {
   map: string[];
   floor: 'normal' | 'item' | 'boss';
   actors: Actor[];
-  shots: { kind: 'player' | 'enemy'; x: number; y: number }[];
+  shots: { kind: ShotArt; x: number; y: number }[];
   seed: number;
   /** The room shell it is drawn with (the forest's unless named) and its wall style. */
   shell?: Shell;
@@ -176,13 +178,14 @@ function drawRoom(sheet: Sheet, scene: Scene, lit: boolean, id: string): string 
   for (const a of scene.actors) {
     const art = CHARACTERS[a.kind];
     const svg = art.draw(a.action, a.frame, a.view ?? art.views[0], !!a.champion);
-    standing.push({ y: a.y, svg: place(svg, art.w, art.h, art.anchor.x, art.anchor.y, a.x, a.y, a.flip) });
+    const placed = place(svg, art.w, art.h, art.anchor.x, art.anchor.y, a.x, a.y, a.flip);
+    standing.push({ y: a.y, svg: a.scale ? `<g transform="translate(${a.x} ${a.y}) scale(${a.scale}) translate(${-a.x} ${-a.y})">${placed}</g>` : placed });
   }
   standing.sort((a, b) => a.y - b.y);
 
   const shots = scene.shots
     .map((s) => {
-      const svg = hudSvg.shot(s.kind, s.kind === 'player' ? 7 : 6);
+      const svg = hudSvg.shot(s.kind, SHOT_ART[s.kind]);
       return `<circle cx="${s.x}" cy="${s.y}" r="18" fill="url(#${id}-glow-${s.kind})"/>` + place(svg, SHOT_CANVAS, SHOT_CANVAS, SHOT_CANVAS / 2, SHOT_CANVAS / 2, s.x, s.y);
     })
     .join('');
@@ -203,8 +206,8 @@ function drawRoom(sheet: Sheet, scene: Scene, lit: boolean, id: string): string 
     `<radialGradient id="${id}-hole"><stop offset="0" stop-color="#000"/><stop offset="0.45" stop-color="#000"/><stop offset="1" stop-color="#fff"/></radialGradient>` +
     `<radialGradient id="${id}-warm"><stop offset="0" stop-color="${PAPER.warmLight}" stop-opacity="0.9"/><stop offset="1" stop-color="${PAPER.warmLight}" stop-opacity="0"/></radialGradient>` +
     `<radialGradient id="${id}-vignette" cx="0.5" cy="0.5" r="0.75"><stop offset="0.55" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.75"/></radialGradient>` +
-    (['player', 'enemy'] as const)
-      .map((k) => `<radialGradient id="${id}-glow-${k}"><stop offset="0" stop-color="${k === 'player' ? PAPER.shot : PAPER.enemyShot}" stop-opacity="0.75"/><stop offset="1" stop-color="${k === 'player' ? PAPER.shot : PAPER.enemyShot}" stop-opacity="0"/></radialGradient>`)
+    ([['player', PAPER.shot], ['enemy', PAPER.enemyShot], ['crystal', PAPER.caves.crystal]] as const)
+      .map(([k, c]) => `<radialGradient id="${id}-glow-${k}"><stop offset="0" stop-color="${c}" stop-opacity="0.75"/><stop offset="1" stop-color="${c}" stop-opacity="0"/></radialGradient>`)
       .join('') +
     `<mask id="${id}-dark" maskUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${Hh}"><rect width="${W}" height="${Hh}" fill="#fff"/>${holes}</mask>`;
   const dark = lit
@@ -356,8 +359,16 @@ const CAVE: Scene = {
     { kind: 'bat', x: 380, y: 130, action: 'move', frame: 0 },
     { kind: 'bat', x: 520, y: 150, action: 'attack', frame: 0, flip: true },
     { kind: 'bat', x: 150, y: 215, action: 'attack', frame: 1 },
+    { kind: 'crystalTurret', x: 600, y: 182, action: 'attack', frame: 2 },
+    { kind: 'crystalTurret', x: 264, y: 86, action: 'idle', frame: 0, champion: true },
+    { kind: 'slime', x: 396, y: 330, action: 'attack', frame: 2 },
+    { kind: 'slime', x: 456, y: 292, action: 'move', frame: 2, flip: true, scale: 23 / 32 },
+    { kind: 'slime', x: 520, y: 354, action: 'land', frame: 0, scale: 15 / 32, champion: true },
   ],
-  shots: [],
+  shots: [
+    { kind: 'crystal', x: 520, y: 202 },
+    { kind: 'crystal', x: 668, y: 236 },
+  ],
 };
 
 /** The sub-theme rooms show off their terrain: just the player in them. */
@@ -370,11 +381,13 @@ const CAVE_BOSS: Scene = { ...CAVE, map: BOSS_MAP.map((row) => row.replace(/[Tbx
 const img = (svg: string, w: number, h: number, scale: number, flip = false, alt = '') =>
   `<img src="${uri(svg)}" width="${w * scale}" height="${h * scale}" alt="${alt}"${flip ? ' style="transform:scaleX(-1)"' : ''}>`;
 
-const NAMES: Record<string, string> = { player: 'Player', goblin: 'Goblin', seedSpitter: 'Seed spitter', boar: 'Boar', wasp: 'Wasp', treantBoss: 'Treant', ghoul: 'Ghoul', bat: 'Bat' };
+const NAMES: Record<string, string> = { player: 'Player', goblin: 'Goblin', seedSpitter: 'Seed spitter', boar: 'Boar', wasp: 'Wasp', treantBoss: 'Treant', ghoul: 'Ghoul', bat: 'Bat', slime: 'Slime', crystalTurret: 'Geode' };
 /** What each cave pose is, for the strips' headings. */
 const POSE_NAMES: Record<string, Partial<Record<Action, string>>> = {
   ghoul: { move: 'stalk', attack: 'wind-up, lunge' },
   bat: { idle: 'flutter in place', move: 'flutter', attack: 'telegraph, swoop' },
+  slime: { idle: 'rest', move: 'hop: take-off, rise, top, drop', attack: 'squash', land: 'splat, settle' },
+  crystalTurret: { idle: 'shut', move: 'shut (it never moves)', attack: 'crack, split open, fire' },
 };
 
 /** Every frame of `kinds`' art, view by view, then their champions' gold-trimmed frames. */
@@ -532,10 +545,10 @@ function cavesSheet(): string {
 <header class="masthead">
   <p class="eyebrow">Floor 2 · room shell and terrain</p>
   <h1>Papercut Caves</h1>
-  <p class="lede">Warm earth, cold light: umber and ochre rock paper, icy cyan-white crystal as the hard accent, violet fungus as the second hue (and deep-teal slime to come). This sheet covers the room shell (walls, doors, floors), every cave terrain tile and the decor, bones and a dropped miner's pick among it, and the cave cast so far: the ghoul and the bat.</p>
+  <p class="lede">Warm earth, cold light: umber and ochre rock paper, icy cyan-white crystal as the hard accent, violet fungus as the second hue, and deep-teal slime, soft and translucent round a milky core. This sheet covers the room shell (walls, doors, floors), every cave terrain tile and the decor, bones and a dropped miner's pick among it, and the cave cast so far: the ghoul, the bat, the slime and the geode.</p>
 </header>
 ${defs(lit)}${defs(unlit)}${defs(grotto)}${defs(hollow)}${defs(rift)}${defs(boss)}
-<figure class="stage">${caveLit}<figcaption>A sample cave room, lit as in the game: stalagmites fused along the walls, a chasm, thorn vines, a boulder, a crystal cluster and glowshrooms; a ghoul winding up at the player (a champion stalking below), one bat hanging wings-wide for its tell, another swooping. The right door is barred while enemies live.</figcaption></figure>
+<figure class="stage">${caveLit}<figcaption>A sample cave room, lit as in the game: stalagmites fused along the walls, a chasm, thorn vines, a boulder, a crystal cluster and glowshrooms; a ghoul winding up at the player (a champion stalking below), one bat hanging wings-wide for its tell, another swooping; a geode split open and firing cyan shards (one already ricocheting off the wall), a champion geode shut above; a big slime squashed for its jump, a medium one in the air over a rock and a small champion splatting down. The right door is barred while enemies live.</figcaption></figure>
 <div class="pair">
   <figure class="stage small">${caveUnlit}<figcaption>The same room with the lights on.</figcaption></figure>
   <figure class="stage small">${grottoUnlit}<figcaption>A crystal grotto: crystal spires, and crystal enough for veined walls all the way round.</figcaption></figure>
@@ -545,7 +558,9 @@ ${defs(lit)}${defs(unlit)}${defs(grotto)}${defs(hollow)}${defs(rift)}${defs(boss
 </div>
 <h2>The cave cast, frame by frame</h2>
 <p class="note">The ghoul's wind-up (eyes flared cyan) is held for its whole tell, then the lunge frames play while it lunges; it loops recover while it catches its breath. The bat beats its wings at twice the usual frame rate, hangs with them spread wide for its tell, and holds the swoop frames while it swoops.</p>
-${frameStrips(['ghoul', 'bat'], ['ghoul', 'bat'])}
+<p class="note">The slime squashes ever lower through its tell, then plays its hop frame by frame through the jump and splats where it lands; the medium and small slimes are the same art, smaller. The geode cracks along its seam as its shot charges, splits open on its crystal core (held open while it waits for a clear shot) and flares as it fires. Its shots are cyan crystal shards, the only enemy shots that ricochet; every other enemy shot stays red.</p>
+${frameStrips(['ghoul', 'bat', 'slime', 'crystalTurret'], ['ghoul', 'bat', 'slime', 'crystalTurret'])}
+<section class="strip"><h3>Shots <span>the geode's ricocheting shard, beside the red enemy shot</span></h3><div class="frames"><figure>${img(hudSvg.shot('crystal', SHOT_ART.crystal), SHOT_CANVAS, SHOT_CANVAS, 2.5, false, 'crystal shard shot')}<figcaption>crystal shard</figcaption></figure><figure>${img(hudSvg.shot('enemy', SHOT_ART.enemy), SHOT_CANVAS, SHOT_CANVAS, 2.5, false, 'enemy shot')}<figcaption>enemy shot</figcaption></figure></div></section>
 <h2>Terrain</h2>
 ${caveTerrainSheet()}
 <h2>Dressing</h2>

@@ -185,7 +185,7 @@ const FLOOR_COLOR: Record<RoomKind, (p: Palette) => number> = {
 };
 
 /** Enemies drawn in paper: how far below the centre of their body their feet are, and their frame rate if not the usual. */
-const ENEMY_ART: Partial<Record<EnemyType, { footOffset: number; fps?: number }>> = {
+const ENEMY_ART: Partial<Record<EnemyType, { footOffset: number; fps?: number; ownShape?: boolean }>> = {
   goblin: { footOffset: 7 },
   treantBoss: { footOffset: 30 },
   seedSpitter: { footOffset: 14 },
@@ -194,6 +194,9 @@ const ENEMY_ART: Partial<Record<EnemyType, { footOffset: number; fps?: number }>
   wasp: { footOffset: 12, fps: 18 },
   bat: { footOffset: 18, fps: 18 },
   ghoul: { footOffset: 9 },
+  // The big slime's (each tier is scaled from it); the art squashes and stretches itself.
+  slime: { footOffset: 16, ownShape: true },
+  crystalTurret: { footOffset: 14 },
 };
 
 const hex = (color: string) => parseInt(color.slice(1), 16);
@@ -208,6 +211,8 @@ const SCRAP_COLORS: Partial<Record<EnemyType, number[]>> = {
   wasp: [PAPER.wasp, PAPER.waspStripe, PAPER.wing].map(hex),
   ghoul: [PAPER.caves.ghoul, PAPER.caves.ghoulShade, PAPER.caves.ghoulDark].map(hex),
   bat: [PAPER.caves.bat, PAPER.caves.batWing, PAPER.caves.batEar].map(hex),
+  slime: [PAPER.caves.slime, PAPER.caves.slimeLight, PAPER.caves.slimeCore].map(hex),
+  crystalTurret: [PAPER.caves.rock, PAPER.caves.rockLight, PAPER.caves.crystal].map(hex),
   treantBoss: [PAPER.bark, PAPER.canopy, PAPER.eyeGlow].map(hex),
 };
 /** A bomb's confetti. */
@@ -705,13 +710,14 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * A shot is drawn as a paper shape (enemy shots in the usual red, and every player shot tinted
-   * as before); anything else keeps its plain shape.
+   * A shot is drawn as a paper shape (enemy shots in the usual red, a geode's ricocheting ones as
+   * cyan crystal shards, and every player shot tinted as before); anything else keeps its plain shape.
    */
   private dressShot(shot: Phaser.GameObjects.Arc, kind: 'player' | 'enemy', color: number, radius: number) {
-    const size = radius / SHOT_ART[kind];
-    if (kind === 'enemy' && color !== COLORS.enemyShot) return;
-    const art = this.paper.piece(shotKey(kind), shot.x, shot.y, { w: SHOT_CANVAS, h: SHOT_CANVAS, anchor: { x: SHOT_CANVAS / 2, y: SHOT_CANVAS / 2 } });
+    const look = kind === 'player' ? 'player' : color === COLORS.enemyShot ? 'enemy' : color === COLORS.crystalShot ? 'crystal' : undefined;
+    if (!look) return;
+    const size = radius / SHOT_ART[look];
+    const art = this.paper.piece(shotKey(look), shot.x, shot.y, { w: SHOT_CANVAS, h: SHOT_CANVAS, anchor: { x: SHOT_CANVAS / 2, y: SHOT_CANVAS / 2 } });
     if (!art) return;
     art.setDepth(kind === 'enemy' ? shot.depth : DEPTH.player + 0.9);
     if (kind === 'player') art.setTint(color);
@@ -1552,8 +1558,15 @@ export class GameScene extends Phaser.Scene {
     // Torn to paper scraps when it dies (a split into pieces is not a death).
     if (!replacements.length) this.scraps.burst('death', where, SCRAP_COLORS[this.enemyTypes.get(enemy)!] ?? [color, 0x1c140f]);
     this.enemies = this.enemies.flatMap((e) => (e === enemy ? replacements : [e]));
-    // Newborn enemies (a slime's children) join physics; split pieces keep the parts they had.
-    for (const r of replacements) if (r.parts.some((p) => !this.enemyParts.contains(p))) this.addPhysics(r);
+    // Newborn enemies (a slime's children) join physics, dressed as their parent was; split pieces keep the parts they had.
+    const type = this.enemyTypes.get(enemy);
+    for (const r of replacements) {
+      if (!r.parts.some((p) => !this.enemyParts.contains(p))) continue;
+      this.addPhysics(r);
+      if (!type || this.enemyTypes.has(r)) continue;
+      this.enemyTypes.set(r, type);
+      this.dressEnemy(r, type, false);
+    }
     if (this.spawned.delete(enemy)) for (const r of replacements) this.spawned.add(r);
     const drop = this.lootCarriers.get(enemy);
     if (drop) {
@@ -1872,9 +1885,11 @@ export class GameScene extends Phaser.Scene {
   private dressEnemy(enemy: Enemy, type: EnemyType, champion: boolean) {
     const look = ENEMY_ART[type];
     if (!look) return;
-    const actor = this.paper.actor(enemy.parts[0], type, { ...look, champion, scale: champion ? TUNING.champion.scale : 1 });
+    const art = enemy.art ?? { champion, scale: champion ? TUNING.champion.scale : 1 };
+    const actor = this.paper.actor(enemy.parts[0], type, { ...look, ...art });
     if (!actor) return;
     if (enemy.visual) actor.visual = (time) => enemy.visual!(time);
+    if (enemy.airborne) actor.aloft = () => enemy.airborne!(enemy.parts[0]);
     for (const shape of enemy.trim ?? []) this.cameras.main.ignore(shape);
   }
 

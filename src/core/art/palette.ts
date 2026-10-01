@@ -148,6 +148,8 @@ export const PAPER = {
     slime: '#1a5250',
     slimeLight: '#347e78',
     slimeCore: '#cfe2da',
+    slimeDeep: '#0c3332',
+    slimeShine: '#a8dccf',
 
     timber: '#5a3e22',
     timberLight: '#7a5a34',

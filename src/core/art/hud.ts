@@ -1,5 +1,5 @@
 import { PAPER as P } from './palette';
-import { blob, cutPoly, fill, n, pieceRng, sheet, smoothPath, svgDoc } from './svg';
+import { blob, cutPoly, fill, n, pieceRng, polyPath, sheet, smoothPath, svgDoc } from './svg';
 
 /** A heart outline centred in a `s`-px square. */
 const heartPath = (cx: number, cy: number, s: number) =>
@@ -48,8 +48,14 @@ function bomb() {
   );
 }
 
-/** A glowing paper shot: the player's a pale blue four-point star, an enemy's an orange seed. */
-function shot(kind: 'player' | 'enemy', radius: number) {
+/** What a shot is drawn as: the player's, an enemy's, or a geode's ricocheting crystal shard. */
+export type ShotArt = 'player' | 'enemy' | 'crystal';
+
+/**
+ * A glowing paper shot: the player's a pale blue four-point star, an enemy's an orange seed, a
+ * geode's a cyan crystal shard, cut in hard facets so a shot that will bounce reads at a glance.
+ */
+function shot(kind: ShotArt, radius: number) {
   const s = SHOT_CANVAS / 2;
   const r = pieceRng('shot', kind);
   if (kind === 'player') {
@@ -59,6 +65,24 @@ function shot(kind: 'player' | 'enemy', radius: number) {
       return { x: s + Math.cos(a) * k, y: s + Math.sin(a) * k };
     });
     return sheet(fill(cutPoly(r, pts, 0.3), P.shot) + `<circle cx="${s}" cy="${s}" r="${n(radius * 0.4)}" fill="${P.shotCore}"/>`);
+  }
+  if (kind === 'crystal') {
+    // A long splinter tipped up and to the right, split down its length into a lit face and a shaded one, a chip trailing it.
+    const tip = { x: s + radius * 0.9, y: s - radius * 1.45 };
+    const tail = { x: s - radius * 0.85, y: s + radius * 1.35 };
+    const left = { x: s - radius * 0.7, y: s - radius * 0.35 };
+    const right = { x: s + radius * 0.75, y: s + radius * 0.3 };
+    const chip = [{ x: s - radius * 1.5, y: s + radius * 0.2 }, { x: s - radius * 1.05, y: s - radius * 0.15 }, { x: s - radius * 1.1, y: s + radius * 0.55 }];
+    return (
+      `<circle cx="${s}" cy="${s}" r="${n(radius * 1.5)}" fill="${P.caves.crystal}" opacity="0.28"/>` +
+      sheet(
+        fill(cutPoly(r, [tip, right, tail, left], 0.15), P.caves.crystalShade) +
+          fill(polyPath([tip, { x: s + radius * 0.05, y: s }, tail, left]), P.caves.crystal) +
+          fill(polyPath([tip, { x: s + radius * 0.05, y: s }, { x: s - radius * 0.2, y: s - radius * 0.5 }]), P.caves.crystalLight) +
+          `<path d="M${n(tip.x)} ${n(tip.y)}L${n(tail.x)} ${n(tail.y)}" stroke="${P.caves.crystalLight}" stroke-width="0.7" opacity="0.8"/>` +
+          fill(polyPath(chip), P.caves.crystal),
+      )
+    );
   }
   return sheet(fill(blob(r, s, s, radius * 1.1, radius * 0.85, 8, 0.05), P.enemyShot) + fill(blob(r, s - radius * 0.3, s - radius * 0.3, radius * 0.45, radius * 0.3, 7, 0.1), P.enemyShotCore));
 }
@@ -154,5 +178,5 @@ export const hudSvg = {
   heart: (level: 'full' | 'half' | 'empty') => svgDoc(HEART_CANVAS, HEART_CANVAS, heart(level), 41),
   key: () => svgDoc(ICON_CANVAS, ICON_CANVAS, key(), 43),
   bomb: () => svgDoc(ICON_CANVAS, ICON_CANVAS, bomb(), 47),
-  shot: (kind: 'player' | 'enemy', radius: number) => svgDoc(SHOT_CANVAS, SHOT_CANVAS, shot(kind, radius), 59),
+  shot: (kind: ShotArt, radius: number) => svgDoc(SHOT_CANVAS, SHOT_CANVAS, shot(kind, radius), 59),
 };

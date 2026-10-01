@@ -19,6 +19,8 @@ export interface ActorOptions {
   scale?: number;
   /** Its own stop-motion frame rate (a wasp's wings beat faster). */
   fps?: number;
+  /** Its art draws its own squash and stretch (a slime's), so the shape's scale is left off it. */
+  ownShape?: boolean;
 }
 
 /**
@@ -37,6 +39,8 @@ export class PaperActor {
   motion?: { vx: number; vy: number };
   /** What its owner reports about how it looks (an enemy's `visual`). */
   visual?: (time: number) => Visual;
+  /** Up in the air (a jumping slime): drawn at its shape's depth, over everything standing, not by its feet. */
+  aloft?: () => boolean;
 
   constructor(
     scene: Phaser.Scene,
@@ -83,14 +87,15 @@ export class PaperActor {
     const art = bakedArt(key);
     if (art) sprite.setTexture(art.texture, key);
     const scale = (this.opts.scale ?? 1) / ART_SCALE;
-    const footY = shape.y + this.opts.footOffset * shape.scaleY * (this.opts.scale ?? 1);
+    const stretch = this.opts.ownShape ? { x: 1, y: 1 } : { x: shape.scaleX, y: shape.scaleY };
+    const footY = shape.y + this.opts.footOffset * stretch.y * (this.opts.scale ?? 1);
     sprite
       .setPosition(shape.x, footY)
-      .setScale(scale * shape.scaleX, scale * shape.scaleY)
+      .setScale(scale * stretch.x, scale * stretch.y)
       .setFlipX(f.flip)
       .setAlpha(shape.alpha)
       .setVisible(shape.visible)
-      .setDepth(footDepth(footY, this.serial));
+      .setDepth(this.aloft?.() ? shape.depth : footDepth(footY, this.serial));
     if (time < this.flashUntil) sprite.setTintFill(0xffffff);
     else sprite.clearTint();
     return true;

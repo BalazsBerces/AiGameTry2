@@ -1,7 +1,7 @@
 import { CHARACTERS, type Action, type View } from './characters';
 import { DECOR_CANVAS, DECOR_KINDS, JOIN_LOOKS, MASKED_LOOKS, TILE_CANVAS, TILE_LOOKS, WALL_STYLES, floorCanvas, floorLooks, hasGround, terrainSvg, wallCanvas, type Shell, type WallSide, type WallStyle } from './terrain';
 import type { Mask } from './autotile';
-import { HEART_CANVAS, ICON_CANVAS, PICKUP_ART, PICKUP_CANVAS, SHOT_CANVAS, hudSvg, pickupSvg, type PickupArt } from './hud';
+import { HEART_CANVAS, ICON_CANVAS, PICKUP_ART, PICKUP_CANVAS, SHOT_CANVAS, hudSvg, pickupSvg, type PickupArt, type ShotArt } from './hud';
 
 /**
  * Every piece of paper art the game bakes at boot, by key: what the texture baker draws and the
@@ -15,7 +15,7 @@ export interface ArtEntry {
 }
 
 /** Kinds whose champions get their own gold-trimmed frames. */
-const CHAMPION_KINDS = new Set(['goblin', 'seedSpitter', 'boar', 'wasp', 'ghoul', 'bat']);
+const CHAMPION_KINDS = new Set(['goblin', 'seedSpitter', 'boar', 'wasp', 'ghoul', 'bat', 'slime', 'crystalTurret']);
 
 export const charKey = (kind: string, action: Action, frame: number, view: View, champion = false) =>
   `c:${kind}:${action}:${frame}:${view}${champion ? ':champ' : ''}`;
@@ -94,8 +94,8 @@ function terrainEntries(): ArtEntry[] {
   ];
 }
 
-/** A glowing paper shot, drawn at the size of a player shot (7 px) or an enemy's (6 px); other sizes scale it. */
-export const SHOT_ART = { player: 7, enemy: 6 } as const;
+/** A glowing paper shot, drawn at the size of a player shot (7 px) or an enemy's (6 px, a geode's crystal shard too); other sizes scale it. */
+export const SHOT_ART = { player: 7, enemy: 6, crystal: 6 } as const satisfies Record<ShotArt, number>;
 export const shotKey = (kind: keyof typeof SHOT_ART) => `s:${kind}`;
 
 function shotEntries(): ArtEntry[] {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { artCatalogue, doorKey, floorKey, floorLook, groundKey, joinKey, tileKey, wallKey, type DoorSide, type FloorKind } from './catalogue';
+import { artCatalogue, decorKey, doorKey, floorKey, floorLook, groundKey, joinKey, tileKey, wallKey, type DoorSide, type FloorKind } from './catalogue';
 import { CAVE_FLOOR_LOOKS, WALL_STYLES, type WallSide } from './terrain';
 import { themeForFloor } from '../map/themes';
 import { roomThemesFor } from '../rooms/roomThemes';
@@ -131,6 +131,26 @@ describe('the art catalogue', () => {
 
     it('comes out the same when built twice', () => {
       for (const key of [...tiles, ...joins]) expect(svgOf(key), key).toBe(svgOf(key));
+    });
+  });
+
+  describe('the caves decor', () => {
+    const kinds = [...new Set(roomThemesFor(1).flatMap((theme) => theme.decor.map((d) => d.id)))];
+    const keys = kinds.flatMap((kind) => VARIANTS.map((v) => decorKey(kind, v)));
+
+    it('scatters bones and a dropped miner\'s pick among the shards, spores and cracks', () => {
+      expect([...kinds].sort()).toEqual(['bones', 'caps', 'cracks', 'dust', 'glints', 'moss', 'pebbles', 'pick', 'shards', 'spores']);
+    });
+
+    it('holds paper art for every variant of every kind, each a drawing of its own', () => {
+      for (const key of keys) expect(byKey.has(key), key).toBe(true);
+      const pebbles = svgOf(decorKey('pebbles', 0));
+      for (const kind of kinds.filter((k) => k !== 'pebbles')) expect(svgOf(decorKey(kind, 0)), kind).not.toBe(pebbles);
+      for (const kind of kinds) expect(new Set(VARIANTS.map((v) => svgOf(decorKey(kind, v)))).size, kind).toBe(4);
+    });
+
+    it('comes out the same when built twice', () => {
+      for (const key of keys) expect(svgOf(key), key).toBe(svgOf(key));
     });
   });
 

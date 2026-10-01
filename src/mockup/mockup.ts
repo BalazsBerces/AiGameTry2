@@ -5,6 +5,7 @@ import { DOWN, LEFT, RIGHT, UP, type Mask } from '../core/art/autotile';
 import { CAVE_FLOOR_CANVAS, CAVE_WALL_CANVAS, DECOR_CANVAS, JOIN_LOOKS, MASKED_LOOKS, TILE, TILE_CANVAS, WALL_STYLES, floorCanvas, floorLooks, hasGround, terrainSvg, wallCanvas, type Shell, type WallSide, type WallStyle } from '../core/art/terrain';
 import { createRng } from '../core/rng';
 import { floorLook } from '../core/art/catalogue';
+import { roomThemeById, roomThemesFor } from '../core/rooms/roomThemes';
 
 /**
  * The papercut style mockup: one forest room and the boss room drawn entirely from the paper art
@@ -336,23 +337,26 @@ const RIFT_MAP = [
   '###############',
 ];
 
-/** The caves' rooms: their terrain in paper; the cave cast comes in later passes. */
+/** A sub-theme's decor kinds, as the game scatters them. */
+const decorOf = (theme: string) => roomThemeById(theme)!.decor.map((d) => d.id);
+
+/** The caves' rooms: their terrain and decor in paper; the cave cast comes in later passes. */
 const CAVE: Scene = {
   map: CAVE_MAP,
   floor: 'normal',
   seed: 23,
   shell: 'caves',
   wallStyle: 'strata',
-  decor: ['pebbles'],
+  decor: decorOf('rift'),
   looks: CAVE_LOOK,
   actors: [{ kind: 'player', x: 330, y: 250, action: 'idle', frame: 0 }],
   shots: [],
 };
 
-const CAVE_GROTTO: Scene = { ...CAVE, seed: 29, wallStyle: 'veined', map: GROTTO_MAP, looks: GROTTO_LOOK };
-const CAVE_HOLLOW: Scene = { ...CAVE, seed: 37, map: HOLLOW_MAP, looks: HOLLOW_LOOK };
+const CAVE_GROTTO: Scene = { ...CAVE, seed: 29, wallStyle: 'veined', map: GROTTO_MAP, looks: GROTTO_LOOK, decor: decorOf('grotto') };
+const CAVE_HOLLOW: Scene = { ...CAVE, seed: 37, map: HOLLOW_MAP, looks: HOLLOW_LOOK, decor: decorOf('hollow') };
 const CAVE_RIFT: Scene = { ...CAVE, seed: 41, map: RIFT_MAP, looks: RIFT_LOOK, actors: [{ kind: 'player', x: 250, y: 200, action: 'idle', frame: 0 }] };
-const CAVE_BOSS: Scene = { ...CAVE, map: BOSS_MAP.map((row) => row.replace(/[Tbx]/g, '.')), floor: 'boss', seed: 31, actors: [{ kind: 'player', x: 344, y: 330, action: 'idle', frame: 0, view: 'up' }] };
+const CAVE_BOSS: Scene = { ...CAVE, map: BOSS_MAP.map((row) => row.replace(/[Tbx]/g, '.')), floor: 'boss', seed: 31, decor: ['bones', 'shards', 'bones', 'cracks', 'pebbles', 'pick'], actors: [{ kind: 'player', x: 344, y: 330, action: 'idle', frame: 0, view: 'up' }] };
 
 const img = (svg: string, w: number, h: number, scale: number, flip = false, alt = '') =>
   `<img src="${uri(svg)}" width="${w * scale}" height="${h * scale}" alt="${alt}"${flip ? ' style="transform:scaleX(-1)"' : ''}>`;
@@ -480,6 +484,16 @@ function caveTerrainSheet(): string {
   return tiles.join('') + joins + masked.join('');
 }
 
+/** Every caves decor kind the sub-themes scatter, every variant. */
+function caveDecorSheet(): string {
+  const kinds = [...new Set(roomThemesFor(1).flatMap((t) => t.decor.map((d) => d.id)))];
+  const figs = kinds
+    .flatMap((k) => [0, 1, 2, 3].map((v) => `<figure>${img(terrainSvg.decor(k, v), DECOR_CANVAS.w, DECOR_CANVAS.h, 2.5, false, `${k} ${v + 1}`)}<figcaption>${k} ${v + 1}</figcaption></figure>`))
+    .join('');
+  const themes = roomThemesFor(1).map((t) => `${t.name}: ${t.decor.map((d) => d.id).join(', ')}`).join(' · ');
+  return `<section class="strip"><h3>Dressing <span>${themes}</span></h3><div class="frames">${figs}</div></section>`;
+}
+
 function cavesSheet(): string {
   const lit = new Sheet('c');
   const caveLit = roomSvg(lit, CAVE, true, 'c', false);
@@ -499,7 +513,7 @@ function cavesSheet(): string {
 <header class="masthead">
   <p class="eyebrow">Floor 2 · room shell and terrain</p>
   <h1>Papercut Caves</h1>
-  <p class="lede">Warm earth, cold light: umber and ochre rock paper, icy cyan-white crystal as the hard accent, violet fungus as the second hue (and deep-teal slime to come). This sheet covers the room shell (walls, doors, floors) and every cave terrain tile. Decor and the cave cast follow.</p>
+  <p class="lede">Warm earth, cold light: umber and ochre rock paper, icy cyan-white crystal as the hard accent, violet fungus as the second hue (and deep-teal slime to come). This sheet covers the room shell (walls, doors, floors), every cave terrain tile and the decor, bones and a dropped miner's pick among it. The cave cast follows.</p>
 </header>
 ${defs(lit)}${defs(unlit)}${defs(grotto)}${defs(hollow)}${defs(rift)}${defs(boss)}
 <figure class="stage">${caveLit}<figcaption>A sample cave room, lit as in the game: stalagmites fused along the walls, a chasm, thorn vines, a boulder, a crystal cluster and glowshrooms; the right door barred while enemies live.</figcaption></figure>
@@ -508,10 +522,12 @@ ${defs(lit)}${defs(unlit)}${defs(grotto)}${defs(hollow)}${defs(rift)}${defs(boss
   <figure class="stage small">${grottoUnlit}<figcaption>A crystal grotto: crystal spires, and crystal enough for veined walls all the way round.</figcaption></figure>
   <figure class="stage small">${hollowUnlit}<figcaption>A mushroom hollow: giant mushrooms, clumps of mushroom caps and glowshrooms.</figcaption></figure>
   <figure class="stage small">${riftUnlit}<figcaption>A rift: the chasm's lip torn red.</figcaption></figure>
-  <figure class="stage small">${bossUnlit}<figcaption>The worm's room: darker earth broken by burrows (bones and shards come as decor).</figcaption></figure>
+  <figure class="stage small">${bossUnlit}<figcaption>The worm's room: darker earth broken by burrows, strewn with bones and shards.</figcaption></figure>
 </div>
 <h2>Terrain</h2>
 ${caveTerrainSheet()}
+<h2>Dressing</h2>
+${caveDecorSheet()}
 <h2>Room shell pieces</h2>
 ${caveShellSheet()}
 </div>`;

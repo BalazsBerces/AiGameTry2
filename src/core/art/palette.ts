@@ -157,6 +157,10 @@ export const PAPER = {
     rustDark: '#46200e',
     bone: '#d8ccb0',
     boneShade: '#a89a7a',
+    boneHollow: '#2a2018',
+    moss: '#46502e',
+    mossLight: '#5e6a3c',
+    iron: '#4a4644',
 
     earth: '#33271c',
     earthPatch: '#3e3022',

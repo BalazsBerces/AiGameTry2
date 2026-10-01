@@ -1,6 +1,6 @@
 import { PAPER as P } from './palette';
 import { DOWN, LEFT, RIGHT, UP, type Mask } from './autotile';
-import { blob, cutPoly, fill, n, pieceRng, polyPath, ragged, ring, sheet, svgDoc, type Pt } from './svg';
+import { blob, cutPoly, fill, group, n, pieceRng, polyPath, ragged, ring, sheet, svgDoc, type Pt } from './svg';
 
 /**
  * Terrain in paper. A tile piece's canvas is larger than its tile so tall things (trees) can rise
@@ -987,7 +987,117 @@ const DECOR_ART: Readonly<Record<string, (variant: number) => string>> = {
     const r = pieceRng('pebbles', v);
     return sheet([{ x: -4, y: 1, s: 3.4 }, { x: 4, y: -1, s: 2.4 }, { x: 1, y: 4, s: 1.8 }].map((p) => fill(blob(r, DX + p.x, DY + p.y, p.s, p.s * 0.75, 7, 0.1), P.pebble)).join(''));
   },
+
+  // The caves'.
+  shards: (v) => {
+    const r = pieceRng('caveShards', v);
+    // Broken crystal lying flat, and now and then a stub still standing.
+    const lying = [{ x: -5, y: 1 }, { x: 4, y: -2 }, { x: 1, y: 4 }].slice(0, 2 + (v % 2)).map((p) => sliver(r, DX + p.x, DY + p.y, 4 + r.next() * 3, r.next() * Math.PI));
+    return sheet(lying.join('') + (v >= 2 ? shards(`decor${v}`, DX + (v === 2 ? 6 : -6), DY + 2, 6, 2) : ''));
+  },
+  glints: (v) => {
+    const r = pieceRng('glints', v);
+    const spots = [{ x: -5, y: -1 }, { x: 5, y: 2 }, { x: 0, y: -6 }, { x: -1, y: 4 }].filter((_, i) => (i + v) % 4 !== 3);
+    return spots.map((p, i) => {
+      const at = { x: DX + p.x + (r.next() - 0.5) * 3, y: DY + p.y + (r.next() - 0.5) * 2 };
+      return ellipse(at.x, at.y, 3.6, 2.6, C.crystal, 'opacity="0.18"') + sheet(sparkle(at.x, at.y, i ? 2.6 : 4, i ? C.crystal : C.crystalLight));
+    }).join('');
+  },
+  spores: (v) => {
+    const r = pieceRng('spores', v);
+    const puffs = Array.from({ length: 5 + (v % 3) }, () => ({ x: DX + (r.next() - 0.5) * 16, y: DY - 2 + (r.next() - 0.5) * 10, s: 0.9 + r.next() * 1.1 }));
+    return puffs.map((p) => `<circle cx="${n(p.x)}" cy="${n(p.y)}" r="${n(p.s * 2.4)}" fill="${C.fungusGlow}" opacity="0.18"/>`).join('') +
+      sheet(puffs.map((p, i) => `<circle cx="${n(p.x)}" cy="${n(p.y)}" r="${n(p.s)}" fill="${i % 3 ? C.fungusGill : C.fungusGlow}"/>`).join(''));
+  },
+  caps: (v) => {
+    const r = pieceRng('caveCaps', v);
+    const caps = [
+      [{ dx: -4, dy: 2, stem: 4, cap: 5 }, { dx: 4, dy: 4, stem: 2.5, cap: 3.5 }],
+      [{ dx: 1, dy: 3, stem: 5, cap: 6 }],
+      [{ dx: 3, dy: 2, stem: 4, cap: 5 }, { dx: -5, dy: 4, stem: 2, cap: 3 }, { dx: -1, dy: 5, stem: 1.5, cap: 2.5 }],
+      [{ dx: -2, dy: 3, stem: 3.5, cap: 4.5 }, { dx: 5, dy: 1, stem: 3, cap: 4 }],
+    ][v % 4];
+    return caps.map((c) => mushroom(r, DX + c.dx, DY + c.dy, c.stem, c.cap, 0, 1, DULL)).join('');
+  },
+  moss: (v) => {
+    const r = pieceRng('caveMoss', v);
+    const tufts = Array.from({ length: 5 }, () => ({ x: DX + (r.next() - 0.5) * 12, y: DY + (r.next() - 0.5) * 4 }));
+    return sheet(fill(ragged(r, DX, DY + 1, 10, 4.5, 11, 0.3), C.moss) + tufts.map((t) => fill(ragged(r, t.x, t.y, 2.4, 1.6, 6, 0.3), C.mossLight)).join(''));
+  },
+  cracks: (v) => {
+    const r = pieceRng('caveCracks', v);
+    // A split in the ground with a hairline or two running off it, its lower lip catching the light.
+    const pts: Pt[] = Array.from({ length: 5 }, (_, i) => ({ x: DX - 11 + i * 5.5, y: DY + (r.next() - 0.5) * 6 + (v % 2 ? i - 2 : 2 - i) * 1.2 }));
+    const line = (ps: Pt[]) => `M${ps.map((p) => `${n(p.x)} ${n(p.y)}`).join('L')}`;
+    const branches = [1, 3].slice(0, 1 + (v % 2)).map((i) => line([pts[i], { x: pts[i].x + (r.next() - 0.5) * 6, y: Math.min(DY + 6, pts[i].y + (r.next() < 0.5 ? -5 : 5)) }]));
+    return `<path d="${line(pts.map((p) => ({ x: p.x, y: p.y + 0.9 })))}" stroke="${C.slabLight}" stroke-width="1.2" fill="none" opacity="0.6"/>` +
+      `<path d="${line(pts)}" stroke="${C.crack}" stroke-width="1.8" fill="none" stroke-linejoin="round"/>` +
+      branches.map((d) => `<path d="${d}" stroke="${C.crack}" stroke-width="0.9" fill="none"/>`).join('');
+  },
+  dust: (v) => {
+    const r = pieceRng('caveDust', v);
+    const grit = Array.from({ length: 6 }, () => `<circle cx="${n(DX + (r.next() - 0.5) * 18)}" cy="${n(DY + (r.next() - 0.5) * 8)}" r="${n(0.5 + r.next() * 0.6)}" fill="${C.rockLight}"/>`);
+    return fill(blob(r, DX, DY, 11, 5, 9, 0.2), C.stalactiteLight, 'opacity="0.16"') + fill(blob(r, DX + 2, DY - 1, 6, 3, 8, 0.2), C.stalactiteLight, 'opacity="0.16"') + grit.join('');
+  },
+  bones: (v) => {
+    const r = pieceRng('bones', v);
+    const pieces = [
+      bone(r, DX - 1, DY + 1, 15, -0.3) + bone(r, DX + 2, DY + 2, 10, 0.9),
+      skull(DX - 4, DY - 1, false) + bone(r, DX + 5, DY + 3, 11, 0.4),
+      bone(r, DX, DY, 17, 0.15) + bone(r, DX - 6, DY + 4, 6, 1.8) + bone(r, DX + 6, DY - 4, 5, -0.9),
+      skull(DX + 1, DY, true),
+    ][v % 4];
+    return sheet(pieces);
+  },
+  pick: (v) => {
+    const r = pieceRng('pick', v);
+    const angle = [-24, 18, 158, -150][v % 4] + (r.next() - 0.5) * 10;
+    // Built lying along x, the haft's butt to the left and the iron head across its end.
+    const haft = fill(cutPoly(r, [{ x: -11, y: -1.1 }, { x: 7, y: -1.4 }, { x: 7, y: 1.4 }, { x: -11, y: 1.2 }], 0.2), C.timberLight) +
+      fill(polyPath([{ x: -11, y: 0.3 }, { x: 7, y: 0.4 }, { x: 7, y: 1.4 }, { x: -11, y: 1.2 }]), C.timberDark, 'opacity="0.8"');
+    const head = fill('M5 -9.5Q12.5 0 5 9.5Q9.6 0 5 -9.5Z', C.iron) + fill('M5.6 -7.6Q11 0 5.6 7.6Q9 0 5.6 -7.6Z', C.rust, 'opacity="0.75"') +
+      fill(polyPath([{ x: 6.4, y: -2 }, { x: 9.4, y: -2 }, { x: 9.4, y: 2 }, { x: 6.4, y: 2 }]), C.rustDark);
+    return sheet(group(haft + head, `translate(${DX} ${DY - 3}) rotate(${n(angle)}) scale(0.9)`));
+  },
 };
+
+/** A shard of crystal lying flat: an icy sliver, its far half in shade and a pale edge catching the light. */
+function sliver(r: Rng, x: number, y: number, len: number, angle: number) {
+  // Seen from above at a slant, so its run across the screen is foreshortened up and down.
+  const along = { x: Math.cos(angle), y: Math.sin(angle) * 0.6 };
+  const across = { x: -Math.sin(angle), y: Math.cos(angle) * 0.6 };
+  const w = len * 0.42;
+  const at = (a: number, b: number) => ({ x: x + along.x * a + across.x * b, y: y + along.y * a + across.y * b });
+  const tip = at(len, (r.next() - 0.5) * w);
+  const tail = at(-len * 0.45, 0);
+  return fill(cutPoly(r, [tail, at(0, -w), tip, at(len * 0.1, w)], 0.2), C.crystal) +
+    fill(polyPath([at(-len * 0.2, 0), tip, at(len * 0.1, w)]), C.crystalShade) +
+    `<path d="M${n(tail.x)} ${n(tail.y)}L${n(at(0, -w).x)} ${n(at(0, -w).y)}L${n(tip.x)} ${n(tip.y)}" stroke="${C.crystalLight}" stroke-width="0.7" fill="none" opacity="0.9"/>`;
+}
+
+/** A four-pointed glint of light. */
+const sparkle = (x: number, y: number, s: number, color: string) =>
+  fill(`M${n(x)} ${n(y - s)}L${n(x + s * 0.22)} ${n(y - s * 0.22)}L${n(x + s)} ${n(y)}L${n(x + s * 0.22)} ${n(y + s * 0.22)}L${n(x)} ${n(y + s)}L${n(x - s * 0.22)} ${n(y + s * 0.22)}L${n(x - s)} ${n(y)}L${n(x - s * 0.22)} ${n(y - s * 0.22)}Z`, color);
+
+/** An old bone: a shaft with a knuckled knob at each end, turned `angle` radians. */
+function bone(r: Rng, x: number, y: number, len: number, angle: number) {
+  const k = len / 2;
+  const knob = (end: number) => [-1, 1].map((s) => `<circle cx="${n(end)}" cy="${n(s * 1.2)}" r="${n(1.5 + r.next() * 0.3)}" fill="${C.bone}"/>`).join('');
+  const shaft = fill(cutPoly(r, [{ x: -k, y: -0.9 }, { x: k, y: -0.9 }, { x: k, y: 0.9 }, { x: -k, y: 0.9 }], 0.15), C.bone);
+  const shade = `<path d="M${n(-k + 1)} 0.8L${n(k - 1)} 0.8" stroke="${C.boneShade}" stroke-width="0.8"/>`;
+  return group(knob(-k) + knob(k) + shaft + shade, `translate(${n(x)} ${n(y)}) rotate(${n((angle * 180) / Math.PI)})`);
+}
+
+/** A skull lying in the dirt, its sockets dark; `jaw` adds the jawbone fallen beside it. */
+function skull(x: number, y: number, jaw: boolean) {
+  const r = pieceRng('skull', x, y);
+  return fill(blob(r, x, y - 1, 5, 4.2, 9, 0.05), C.bone) +
+    fill(polyPath([{ x: x - 3, y: y + 2 }, { x: x + 3, y: y + 2 }, { x: x + 2.4, y: y + 4.5 }, { x: x - 2.4, y: y + 4.5 }]), C.bone) +
+    ellipse(x - 1.9, y - 0.2, 1.4, 1.2, C.boneHollow) + ellipse(x + 1.9, y - 0.2, 1.4, 1.2, C.boneHollow) +
+    fill(`M${n(x - 0.5)} ${n(y + 1.6)}L${n(x)} ${n(y + 2.6)}L${n(x + 0.5)} ${n(y + 1.6)}Z`, C.boneHollow) +
+    `<path d="M${n(x - 2)} ${n(y + 4.4)}L${n(x + 2)} ${n(y + 4.4)}" stroke="${C.boneShade}" stroke-width="0.7"/>` +
+    (jaw ? `<path d="M${n(x + 5)} ${n(y + 5)}q3 2.4 6 -0.4" stroke="${C.bone}" stroke-width="1.6" fill="none" stroke-linecap="round"/>` : '');
+}
 
 export const DECOR_KINDS = Object.keys(DECOR_ART);
 

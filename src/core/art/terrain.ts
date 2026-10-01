@@ -17,7 +17,9 @@ const H = TILE / 2;
 const ellipse = (x: number, y: number, rx: number, ry: number, color: string, extra = '') =>
   `<ellipse cx="${n(x)}" cy="${n(y)}" rx="${n(rx)}" ry="${n(ry)}" fill="${color}"${extra ? ` ${extra}` : ''}/>`;
 const contact = (rx: number, ry: number, dy = 14) => ellipse(AX + 3, AY + dy, rx, ry, P.shadow, 'opacity="0.42"');
-const tileDoc = (body: string, seed: number) => svgDoc(TILE_CANVAS.w, TILE_CANVAS.h, body, seed);
+const tileDoc = (body: string, seed: number, grain = 1) => svgDoc(TILE_CANVAS.w, TILE_CANVAS.h, body, seed, grain);
+/** The cave floor's paper grain: half strength, so the ground stays quiet under the fight. */
+const CAVE_FLOOR_GRAIN = 0.5;
 
 
 // ---------------------------------------------------------------------------------------------
@@ -1269,9 +1271,9 @@ export const terrainSvg = {
     tileDoc(shell === 'caves' ? mineDoor(side, locked) : doorway(side, locked), 29),
   floor: (kind: 'normal' | 'item' | 'boss', variant: number, shell: Shell = 'forest') =>
     shell === 'caves'
-      ? svgDoc(CAVE_FLOOR_CANVAS.w, CAVE_FLOOR_CANVAS.h, caveFloor(variant, kind), 31 + variant)
+      ? svgDoc(CAVE_FLOOR_CANVAS.w, CAVE_FLOOR_CANVAS.h, caveFloor(variant, kind), 31 + variant, CAVE_FLOOR_GRAIN)
       : tileDoc(floorTile(variant, kind), 31 + variant),
   /** The paper ground under a floor that has one (`hasGround`). */
-  ground: (kind: 'normal' | 'item' | 'boss') => tileDoc(caveGround(kind), 43),
+  ground: (kind: 'normal' | 'item' | 'boss') => tileDoc(caveGround(kind), 43, CAVE_FLOOR_GRAIN),
   decor: (kind: string, variant: number) => svgDoc(DECOR_CANVAS.w, DECOR_CANVAS.h, (DECOR_ART[kind] ?? DECOR_ART.pebbles)(variant), 37),
 };

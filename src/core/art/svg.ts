@@ -87,26 +87,28 @@ export const group = (content: string, transform: string) => `<g transform="${tr
 export const SHADOW = { dx: 1.6, dy: 2.2, blur: 0.9, opacity: 0.45 };
 
 /** Filters every papercut SVG carries: sheet shadows at three thicknesses, and the paper grain. */
-function defs(grainSeed: number): string {
+function defs(grainSeed: number, grain: number): string {
   const lift = (i: number) =>
     `<filter id="lift${i}" x="-20%" y="-20%" width="150%" height="150%"><feDropShadow dx="${n(SHADOW.dx * i)}" dy="${n(SHADOW.dy * i)}" stdDeviation="${n(SHADOW.blur * (0.7 + i * 0.3))}" flood-color="#060805" flood-opacity="${SHADOW.opacity}"/></filter>`;
   // Faint fibres: grey noise soft-lit into the colours (a little lighter and darker, never speckled),
   // kept only on solid paper so soft shadows stay clean.
-  const grain =
+  // `grain` scales how far the grey strays from mid-grey (which soft-light leaves unchanged): 1 full, 0.5 half as strong.
+  const [k, c] = [0.5 * grain, 0.5 - 0.75 * grain];
+  const fibres =
     `<filter id="grain" x="0" y="0" width="100%" height="100%">` +
     `<feTurbulence type="fractalNoise" baseFrequency="0.7" numOctaves="2" seed="${grainSeed}" result="noise"/>` +
-    `<feColorMatrix in="noise" type="matrix" values="0.5 0.5 0.5 0 -0.25  0.5 0.5 0.5 0 -0.25  0.5 0.5 0.5 0 -0.25  0 0 0 0 1" result="grey"/>` +
+    `<feColorMatrix in="noise" type="matrix" values="${k} ${k} ${k} 0 ${c}  ${k} ${k} ${k} 0 ${c}  ${k} ${k} ${k} 0 ${c}  0 0 0 0 1" result="grey"/>` +
     `<feBlend in="grey" in2="SourceGraphic" mode="soft-light" result="textured"/>` +
     `<feComponentTransfer in="SourceAlpha" result="solid"><feFuncA type="linear" slope="8" intercept="-7"/></feComponentTransfer>` +
     `<feComposite in="textured" in2="solid" operator="in" result="paper"/>` +
     `<feMerge><feMergeNode in="SourceGraphic"/><feMergeNode in="paper"/></feMerge></filter>`;
-  return `<defs>${lift(1)}${lift(2)}${lift(3)}${grain}</defs>`;
+  return `<defs>${lift(1)}${lift(2)}${lift(3)}${fibres}</defs>`;
 }
 
-/** A whole papercut SVG, `w`×`h` px, with its grain laid over everything drawn in `body`. */
-export function svgDoc(w: number, h: number, body: string, grainSeed = 3): string {
+/** A whole papercut SVG, `w`×`h` px, with its grain (at `grain` strength) laid over everything drawn in `body`. */
+export function svgDoc(w: number, h: number, body: string, grainSeed = 3, grain = 1): string {
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">` +
-    `${defs(grainSeed)}<g filter="url(#grain)">${body}</g></svg>`
+    `${defs(grainSeed, grain)}<g filter="url(#grain)">${body}</g></svg>`
   );
 }

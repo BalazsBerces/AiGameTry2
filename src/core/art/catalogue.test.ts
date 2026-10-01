@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { artCatalogue, charKey, decorKey, doorKey, floorKey, floorLook, groundKey, joinKey, shotKey, tileKey, wallKey, type DoorSide, type FloorKind } from './catalogue';
 import { CHARACTERS, type Action } from './characters';
 import { PAPER } from './palette';
-import { CAVE_FLOOR_LOOKS, WALL_STYLES, type WallSide } from './terrain';
+import { CAVE_FLOOR_LOOKS, TILE, WALL_STYLES, wallGems, type WallSide } from './terrain';
 import { themeForFloor } from '../map/themes';
 import { roomThemesFor } from '../rooms/roomThemes';
 
@@ -94,13 +94,41 @@ describe('the art catalogue', () => {
 
     it('draws its own art, not the forest\'s', () => {
       expect(svgOf(wallKey('caves', 'top', 0, 'strata'))).not.toBe(svgOf(wallKey('forest', 'top', 0)));
-      expect(svgOf(wallKey('caves', 'top', 0, 'veined'))).not.toBe(svgOf(wallKey('caves', 'top', 0, 'strata')));
+      // Veined walls differ only where a piece has wall gems; many pieces have none.
+      expect(VARIANTS.some((v) => svgOf(wallKey('caves', 'top', v, 'veined')) !== svgOf(wallKey('caves', 'top', v, 'strata')))).toBe(true);
       expect(svgOf(doorKey('caves', 'up', true))).not.toBe(svgOf(doorKey('forest', 'up', true)));
       expect(svgOf(floorKey('caves', 'boss', 0))).not.toBe(svgOf(floorKey('forest', 'boss', 0)));
     });
 
     it('comes out the same when built twice', () => {
       for (const key of [...walls, ...doors, ...floors]) expect(svgOf(key), key).toBe(svgOf(key));
+    });
+
+    describe('wall gems', () => {
+      const pieces = (['top', 'bottom', 'left', 'right'] as const).flatMap((side) => VARIANTS.map((v) => ({ side, v, gems: wallGems(side, v) })));
+
+      it('sets 0-2 in each wall piece and none in a corner, many pieces going without', () => {
+        for (const v of VARIANTS) expect(wallGems('corner', v)).toEqual([]);
+        for (const { gems } of pieces) expect(gems.length).toBeLessThanOrEqual(2);
+        const bare = pieces.filter((p) => p.gems.length === 0).length;
+        expect(bare).toBeGreaterThanOrEqual(pieces.length / 3);
+        expect(bare).toBeLessThan(pieces.length);
+      });
+
+      it('keeps them back from the edge facing the room', () => {
+        const into = { top: { x: 0, y: 1 }, bottom: { x: 0, y: -1 }, left: { x: 1, y: 0 }, right: { x: -1, y: 0 } };
+        for (const { side, gems } of pieces) for (const g of gems) expect(TILE / 2 - (g.x * into[side].x + g.y * into[side].y), side).toBeGreaterThanOrEqual(12);
+      });
+
+      it('places them the same every time', () => {
+        for (const { side, v, gems } of pieces) expect(wallGems(side, v)).toEqual(gems);
+      });
+
+      it('draws veined walls with no continuous crystal seam', () => {
+        for (const side of ['top', 'bottom', 'left', 'right'] as const) {
+          for (const v of VARIANTS) expect(svgOf(wallKey('caves', side, v, 'veined'))).not.toContain('stroke-dasharray="3 9 2 13"');
+        }
+      });
     });
   });
 

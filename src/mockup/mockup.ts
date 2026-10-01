@@ -517,7 +517,7 @@ function caveShellSheet(): string {
     const figs = sides
       .flatMap((side) => variants.map((v) => `<figure>${img(terrainSvg.wall(side, v, style), CAVE_WALL_CANVAS.w, CAVE_WALL_CANVAS.h, 1.2, false, `${side} ${v + 1}`)}<figcaption>${side} ${v + 1}</figcaption></figure>`))
       .join('');
-    const name = style === 'strata' ? 'Rock-strata walls <span>free-form crags spilling past their tile; the top wall a ragged strata cliff with stalactites</span>' : 'Crystal-veined walls <span>rooms with 3 or more crystal tiles: one seam runs the length of each wall, clusters breaking out of it</span>';
+    const name = style === 'strata' ? 'Rock-strata walls <span>free-form crags spilling past their tile; the top wall a ragged strata cliff with stalactites</span>' : 'Crystal-veined walls <span>rooms with 3 or more crystal tiles: the odd wall gem (a few tiny prisms) set into the rock, back from the room; many pieces and every corner have none</span>';
     return `<section class="strip"><h3>${name}</h3><div class="frames">${figs}</div></section>`;
   });
   const doors = (['top', 'bottom', 'left', 'right'] as const)

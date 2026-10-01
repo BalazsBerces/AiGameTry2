@@ -394,12 +394,11 @@ const INTO: Record<WallSide, { x: number; y: number }> = { top: { x: 0, y: 1 }, 
 /**
  * A cave wall: free-form crags heaped on a bed of dark rock that spills far past the tile, rubble
  * tumbling out into the room, and the odd spire. The top wall shows its front face, a ragged cliff
- * of rock strata with stalactites hanging from its lip. `veined` rock has a crystal seam running the length of the wall, with clusters
- * breaking out of it. The rock of every piece is laid out afresh, so no two look alike.
+ * of rock strata with stalactites hanging from its lip. `veined` rock has the odd wall gem set
+ * into it. The rock of every piece is laid out afresh, so no two look alike.
  */
 function rockWall(side: WallSide, variant: number, veined: boolean) {
   const r = pieceRng('rockWall', side, variant);
-  const cr = pieceRng('rockWallCrystal', side, variant);
   const into = INTO[side];
   // A side wall is drawn over the one above it and under the one below, so it must not reach up
   // into the tile above (a doorway may be there); it spills down, out and a little into the room.
@@ -490,77 +489,48 @@ function rockWall(side: WallSide, variant: number, veined: boolean) {
   }
   parts.sort((a, b) => a.y - b.y);
 
-  // Crystal: one seam running the length of the wall, through the bedrock under the loose crags
-  // (on the top wall, along a layer of its face). It crosses every tile edge at the same point, so
-  // neighbouring pieces join into one unbroken vein; now and then a cluster breaks out of it.
-  let seamSvg = '';
-  let clusters = '';
-  if (veined && side !== 'corner') {
-    const s = SEAMS[side];
-    // It reaches as far as the piece's rock does: past the tile sideways, but a side wall's never up into the tile above.
-    const reach = top ? [H + 2, H + 2] : side === 'bottom' ? [40, 40] : [H + 3, 40];
-    const pts = seamPoints(cr, s.axis, s.at, reach[0], reach[1], top ? 5 : 8);
-    // Now and then a thinner vein forks off, away from the room (on the face, up or down it).
-    const forks = Array.from({ length: cr.next() < 0.55 ? 1 + Math.floor(cr.next() * 2) : 0 }, () => {
-      const from = pts[3 + Math.floor(cr.next() * 5)];
-      const away = top ? { x: (cr.next() - 0.5) * 1.4, y: cr.next() < 0.5 ? -0.6 : 0.6 } : { x: -into.x + into.y * (cr.next() - 0.5) * 1.6, y: -into.y + Math.abs(into.x) * cr.next() * 0.8 }; // side walls' fork downward, never into the tile above
-      const len = Math.hypot(away.x, away.y);
-      const dir = { x: away.x / len, y: away.y / len };
-      return seamBranch(cr, from, dir, top ? 6 + cr.next() * 5 : 10 + cr.next() * 12);
-    }).join('');
-    seamSvg = sheet(forks + crystalSeam(pts));
-    const burst = [0, 12 + cr.next() * 5, 0, 7 + cr.next() * 3][variant % 4];
-    if (burst) {
-      const p = pts[3 + Math.floor(cr.next() * 5)];
-      clusters = sheet(shards(`seam${side}${variant}`, p.x, p.y + 2, burst, 2 + Math.floor(cr.next() * 2)), 2);
-    }
-  }
+  // Wall gems: now and then a small cluster of prisms set into the rock, well back from the room.
+  const gems = veined ? wallGems(side, variant).map((g, i) => wallGem(`${side}${variant}${i}`, WX + g.x, WY + g.y, g.size)).join('') : '';
   return top
-    ? face + seamSvg + clusters + (drips ? sheet(drips, 2) : '') + bed + parts.map((p) => p.svg).join('')
-    : bed + seamSvg + parts.map((p) => p.svg).join('') + clusters;
+    ? face + gems + (drips ? sheet(drips, 2) : '') + bed + parts.map((p) => p.svg).join('')
+    : bed + parts.map((p) => p.svg).join('') + gems;
 }
 
-/** Where each wall's crystal seam runs: along the wall, set back from the room (on the top wall, along its face). */
-const SEAMS: Record<Exclude<WallSide, 'corner'>, { axis: 'x' | 'y'; at: number }> = {
-  top: { axis: 'x', at: WY + 10.5 },
-  bottom: { axis: 'x', at: WY + 6 },
-  left: { axis: 'y', at: WX - 6 },
-  right: { axis: 'y', at: WX + 6 },
-};
+/** A wall gem: where it sits, from its wall tile's centre in px, and how tall its prisms stand. */
+export interface WallGem {
+  x: number;
+  y: number;
+  size: number;
+}
 
 /**
- * A seam's points along `axis`, from `before` px before the tile's centre to `after` px past it:
- * straight where it nears and crosses the tile's edges, wandering only in the middle.
+ * Where a veined wall piece's gems sit: none in a corner, and 0-2 elsewhere (many pieces have none),
+ * each set back from the room-facing edge; on the top wall, in the cliff face above its foot. The
+ * same for a piece every time, so the gloom can light them where they are drawn.
  */
-function seamPoints(r: Rng, axis: 'x' | 'y', at: number, before: number, after: number, wander: number): Pt[] {
-  const c = axis === 'x' ? WX : WY;
-  // Pinned at the tile's edges, free in the middle; one piece barely strays, the next swings wide.
-  const swing = (0.25 + r.next()) * wander;
-  return [-before, -H, -18, -12, -6, 0, 6, 12, 18, H, after].map((t) => {
-    const room = Math.max(0, 1 - Math.abs(t) / 20);
-    const off = (r.next() - 0.5) * 2 * swing * Math.sqrt(room);
-    return axis === 'x' ? { x: c + t, y: at + off } : { x: at + off, y: c + t };
+export function wallGems(side: WallSide, variant: number): WallGem[] {
+  if (side === 'corner') return [];
+  const r = pieceRng('wallGems', side, variant);
+  const roll = r.next();
+  const count = roll < 0.45 ? 0 : roll < 0.82 ? 1 : 2;
+  const into = INTO[side];
+  // Along the wall, the gems keep apart; across it, they sit 14-24 px back from the room-facing edge.
+  const slots = count === 2 ? [-12, 12] : [0];
+  return slots.slice(0, count).map((slot) => {
+    const along = slot + (r.next() - 0.5) * 12;
+    const size = 6 + r.next() * 3.5;
+    if (side === 'top') return { x: along, y: -2 + r.next() * 8, size };
+    const back = H - 14 - r.next() * 10;
+    // A side wall's gems stay inside its own tile, never up in the tile above (a doorway may be there).
+    const sideways = side === 'bottom' ? along : Math.max(-H + 10, along);
+    return { x: into.x * back + into.y * sideways, y: into.y * back + Math.abs(into.x) * sideways, size };
   });
 }
 
-const seamPath = (pts: Pt[]) => `M${pts.map((p) => `${n(p.x)} ${n(p.y)}`).join('L')}`;
-
-/** A crystal seam: a dark crack filled with icy crystal, glinting here and there. `width` 1 is the main seam, less a branch. */
-function crystalSeam(pts: Pt[], width = 1) {
-  const d = seamPath(pts);
-  return `<path d="${d}" stroke="${C.crystalDeep}" stroke-width="${n(4 * width)}" fill="none" stroke-linejoin="bevel" stroke-linecap="round"/>` +
-    `<path d="${d}" stroke="${C.crystal}" stroke-width="${n(1.8 * width)}" fill="none" stroke-linejoin="bevel" stroke-linecap="round"/>` +
-    `<path d="${d}" stroke="${C.crystalLight}" stroke-width="${n(0.9 * width)}" fill="none" stroke-dasharray="3 9 2 13" stroke-linejoin="bevel"/>`;
-}
-
-/** A thinner vein forking off the seam at `from`, heading off into the rock along `dir` and tapering out. */
-function seamBranch(r: Rng, from: Pt, dir: Pt, len: number) {
-  const side = { x: -dir.y, y: dir.x };
-  const pts = [0, 0.35, 0.7, 1].map((k, i) => {
-    const bend = i ? (r.next() - 0.5) * 6 : 0;
-    return { x: from.x + dir.x * len * k + side.x * bend, y: from.y + dir.y * len * k + side.y * bend };
-  });
-  return crystalSeam(pts, 0.55);
+/** A wall gem: 2-3 tiny prisms breaking out of a dark socket in the rock. */
+function wallGem(key: string, x: number, y: number, size: number) {
+  const r = pieceRng('wallGem', key);
+  return sheet(fill(blob(r, x, y + 1, size * 0.6, size * 0.32, 8, 0.2), C.rockDeep) + shards(`gem${key}`, x, y - 1, size, 2 + Math.floor(r.next() * 2)));
 }
 
 /** A cave doorway: an opening in the rock framed by timber mine props and a lintel. `locked` bars it with a rusted iron grate. */

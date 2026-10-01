@@ -32,6 +32,9 @@ export const GEODE: GeodeRules = {
   staggerMs: { min: 300, max: 800 },
 };
 
+/** A champion is a harder version of the same fight: a bigger burst, the same punish windows. */
+export const geodeRules = (champion: boolean): GeodeRules => (champion ? { ...GEODE, burstSize: 3 } : GEODE);
+
 export type Geode =
   | {
       open: false;

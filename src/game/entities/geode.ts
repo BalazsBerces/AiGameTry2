@@ -1,7 +1,7 @@
 import type Phaser from 'phaser';
 import { GEODE_BOUNCES } from '../../core/player/ricochet';
 import { geodePose } from '../../core/art/castPoses';
-import { GEODE, createGeode as createGeodeState, updateGeode, type Geode } from '../../core/enemies/geode';
+import { createGeode as createGeodeState, geodeRules, updateGeode, type Geode } from '../../core/enemies/geode';
 import { COLORS, TUNING } from '../config';
 import { championBoost, championColor, markChampion, singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
 
@@ -11,7 +11,8 @@ import { championBoost, championColor, markChampion, singlePartEnemy, type Enemy
  */
 export function createGeode(scene: Phaser.Scene, x: number, y: number, champion = false): Enemy {
   const { shotSpeed } = TUNING.geode;
-  const rules = GEODE;
+  // A turret never moves, and a champion's speed changes none of its timings: it fires a bigger burst instead.
+  const rules = geodeRules(champion);
   const boost = championBoost(champion);
   const size = TUNING.geode.size * boost.scale;
   const hp = TUNING.geode.hp * boost.hp;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createGeode, updateGeode, type GeodeRules } from './geode';
+import { GEODE, createGeode, geodeRules, updateGeode, type GeodeRules } from './geode';
 
 /** A small hand-built rule set: wakes within 3 tiles, fires 2-shot bursts. */
 const RULES: GeodeRules = {
@@ -93,6 +93,11 @@ describe('geode', () => {
     expect(shots).toEqual([300, 500, 700]);
     expect(openAt(940)).toBe(true);
     expect(openAt(950)).toBe(false);
+  });
+
+  it('as a champion fires 3-shot bursts, with every other timing unchanged', () => {
+    expect(geodeRules(false)).toEqual(GEODE);
+    expect(geodeRules(true)).toEqual({ ...GEODE, burstSize: 3 });
   });
 
   it('catches up on a long frame, firing every shot that fell due', () => {

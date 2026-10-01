@@ -209,8 +209,8 @@ const ENEMY_ART: Partial<Record<EnemyLook, { footOffset: number; fps?: number; o
 };
 
 const hex = (color: string) => parseInt(color.slice(1), 16);
-/** The colours glowers cast into the gloom: crystal cyan, glowing-fungus violet. */
-const GLOW_TINT: Record<GlowTint, number> = { cyan: hex(GLOW_COLOR.cyan), violet: hex(GLOW_COLOR.violet) };
+/** The colours glowers cast into the gloom: crystal cyan, glowshroom violet, withered giant mushroom a faint pale. */
+const GLOW_TINT: Record<GlowTint, number> = { cyan: hex(GLOW_COLOR.cyan), violet: hex(GLOW_COLOR.violet), pale: hex(GLOW_COLOR.pale) };
 /** The paper an enemy tears into when it dies; enemies left out tear into their shape's colour. */
 /** Bosses stand their ground: a hit never knocks them back. */
 const BOSSES: ReadonlySet<EnemyType> = new Set<BossType>(['wormBoss', 'ironMaiden', 'candleWitch', 'treantBoss']);

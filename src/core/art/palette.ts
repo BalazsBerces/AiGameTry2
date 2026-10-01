@@ -136,6 +136,12 @@ export const PAPER = {
     fungusShade: '#4e1e5a',
     fungusGill: '#e08ec4',
     fungusGlow: '#c060d0',
+    // Withered fungus (giant mushrooms, mushroom caps): dead, ashen grey-brown, with no violet left in it.
+    withered: '#54493f',
+    witheredLight: '#73675a',
+    witheredShade: '#352d27',
+    witheredGill: '#857a6c',
+    witheredRot: '#1f1915',
 
     chasm: '#060403',
     riftLip: '#5e2c1e',

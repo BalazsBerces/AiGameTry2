@@ -61,9 +61,12 @@ export function pulse(seed: number, time: number): number {
 }
 
 /** The colour a fixed glower casts into its light pool, if any. */
-export type GlowTint = 'cyan' | 'violet';
-/** Each tint's light: crystal a cold blue, fungus a deep purple; deeper than the things themselves, for mood. */
-export const GLOW_COLOR: Record<GlowTint, string> = { cyan: '#3a78f0', violet: '#9a36e0' };
+export type GlowTint = 'cyan' | 'violet' | 'pale';
+/**
+ * Each tint's light: crystal a cold blue, glowing fungus a deep purple; deeper than the things
+ * themselves, for mood. Withered fungus has no colour of its own, so its faint light is a pale grey-white.
+ */
+export const GLOW_COLOR: Record<GlowTint, string> = { cyan: '#3a78f0', violet: '#9a36e0', pale: '#c8c4bc' };
 /**
  * A coloured glower's light is its colour, not white: it lifts only `lift` of the gloom a white light
  * would, and lays its colour over the pool at `glow` strength, reaching `reach` times the pool's radius.
@@ -87,12 +90,16 @@ export interface Glower extends ColouredLight {
   seed: number;
 }
 
-/** Terrain looks that glow, by look: crystal cyan, glowing fungus violet. Mushroom caps stay dull. */
+/**
+ * Terrain looks that glow, by look: crystal cyan, glowshrooms violet (violet on a mushroom always
+ * means a glowshroom). A withered giant mushroom keeps only a barely-there colourless glow, so the
+ * big cover isn't lost in the gloom; withered mushroom caps stay unlit.
+ */
 const GLOWING_LOOKS: Readonly<Record<string, ColouredLight & { rise: number }>> = {
   'crystal cluster': { radius: 85, intensity: 0.5, tint: 'cyan', rise: 6, core: 30 },
   'crystal spire': { radius: 95, intensity: 0.5, tint: 'cyan', rise: 14, core: 34 },
   glowshroom: { radius: 90, intensity: 0.55, tint: 'violet', rise: 6, core: 24 },
-  'giant mushroom': { radius: 100, intensity: 0.5, tint: 'violet', rise: 16, core: 34 },
+  'giant mushroom': { radius: 60, intensity: 0.075, tint: 'pale', rise: 16, core: 10 },
 };
 /** Floor decor that glints in the gloom: very faint. */
 const GLOWING_DECOR: Readonly<Record<string, ColouredLight>> = {

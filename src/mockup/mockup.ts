@@ -261,7 +261,7 @@ function caveGloom(id: string, w: number, h: number, scene: Scene, glows: (Colou
   const glowing = glows.map((g) =>
     `<circle cx="${g.x}" cy="${g.y}" r="${g.radius * TINTED.reach}" fill="url(#${id}-${g.tint})" opacity="${n(TINTED.glow * g.intensity)}" style="mix-blend-mode:screen"/>` +
     `<circle cx="${g.x}" cy="${g.y}" r="${g.core * 1.8}" fill="url(#${id}-${g.tint})" opacity="${n(Math.min(1, BLOOM * (0.5 + g.intensity)))}" style="mix-blend-mode:screen"/>`).join('');
-  return `<defs>${brush('pool', '#000', '#fff')}${falloff('cyan', GLOW_COLOR.cyan)}${falloff('violet', GLOW_COLOR.violet)}` +
+  return `<defs>${brush('pool', '#000', '#fff')}${falloff('cyan', GLOW_COLOR.cyan)}${falloff('violet', GLOW_COLOR.violet)}${falloff('pale', GLOW_COLOR.pale)}` +
     `<mask id="${id}-gloom" maskUnits="userSpaceOnUse" x="0" y="0" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="#fff"/>${holes}</mask></defs>` +
     `<rect width="${w}" height="${h}" fill="#${GLOOM.color.toString(16).padStart(6, '0')}" opacity="${GLOOM.alpha}" mask="url(#${id}-gloom)"/>` + glowing;
 }

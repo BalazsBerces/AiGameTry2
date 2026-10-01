@@ -178,6 +178,17 @@ describe('the art catalogue', () => {
     it('comes out the same when built twice', () => {
       for (const key of [...tiles, ...joins]) expect(svgOf(key), key).toBe(svgOf(key));
     });
+
+    it('draws giant mushrooms and mushroom caps withered, with none of the glowshroom\'s violet', () => {
+      const { fungus, fungusLight, fungusShade, fungusGill, fungusGlow } = PAPER.caves;
+      const violet = [fungus, fungusLight, fungusShade, fungusGill, fungusGlow].map((c) => c.toLowerCase());
+      const violetIn = (art: string, v: number) => violet.filter((c) => svgOf(tileKey(art, v, 0)).toLowerCase().includes(c));
+      for (const v of VARIANTS) {
+        expect(violetIn('giant mushroom', v), `giant mushroom ${v}`).toEqual([]);
+        expect(violetIn('mushroom cap', v), `mushroom cap ${v}`).toEqual([]);
+        expect(violetIn('glowshroom', v), `glowshroom ${v}`).not.toEqual([]);
+      }
+    });
   });
 
   describe('the caves decor', () => {

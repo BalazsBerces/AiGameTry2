@@ -197,6 +197,8 @@ const ENEMY_ART: Partial<Record<EnemyType, { footOffset: number; fps?: number; o
   // The big slime's (each tier is scaled from it); the art squashes and stretches itself.
   slime: { footOffset: 16, ownShape: true },
   crystalTurret: { footOffset: 14 },
+  // Each segment's piece (head, body or tail) stands on its cell's centre, 10 px above its feet.
+  worm: { footOffset: 10 },
 };
 
 const hex = (color: string) => parseInt(color.slice(1), 16);
@@ -213,6 +215,7 @@ const SCRAP_COLORS: Partial<Record<EnemyType, number[]>> = {
   bat: [PAPER.caves.bat, PAPER.caves.batWing, PAPER.caves.batEar].map(hex),
   slime: [PAPER.caves.slime, PAPER.caves.slimeLight, PAPER.caves.slimeCore].map(hex),
   crystalTurret: [PAPER.caves.rock, PAPER.caves.rockLight, PAPER.caves.crystal].map(hex),
+  worm: [PAPER.caves.chitin, PAPER.caves.chitinEdge, PAPER.caves.crystal].map(hex),
   treantBoss: [PAPER.bark, PAPER.canopy, PAPER.eyeGlow].map(hex),
 };
 /** A bomb's confetti. */
@@ -1555,13 +1558,19 @@ export class GameScene extends Phaser.Scene {
     const where = { x: part.x, y: part.y };
     const color = part.fillColor;
     const replacements = enemy.hit(part, damage);
-    // Torn to paper scraps when it dies (a split into pieces is not a death).
-    if (!replacements.length) this.scraps.burst('death', where, SCRAP_COLORS[this.enemyTypes.get(enemy)!] ?? [color, 0x1c140f]);
+    // Torn to paper scraps when it dies (a split into pieces is not a death, but a worm's segment dying is).
+    if (!replacements.length || (enemy.pieceVisual && !part.active)) this.scraps.burst('death', where, SCRAP_COLORS[this.enemyTypes.get(enemy)!] ?? [color, 0x1c140f]);
     this.enemies = this.enemies.flatMap((e) => (e === enemy ? replacements : [e]));
     // Newborn enemies (a slime's children) join physics, dressed as their parent was; split pieces keep the parts they had.
     const type = this.enemyTypes.get(enemy);
     for (const r of replacements) {
-      if (!r.parts.some((p) => !this.enemyParts.contains(p))) continue;
+      if (!r.parts.some((p) => !this.enemyParts.contains(p))) {
+        // A split worm's pieces: their parts keep their art, looked at through the piece they're in now.
+        if (!r.pieceVisual || !type) continue;
+        this.enemyTypes.set(r, type);
+        this.lookThrough(r);
+        continue;
+      }
       this.addPhysics(r);
       if (!type || this.enemyTypes.has(r)) continue;
       this.enemyTypes.set(r, type);
@@ -1886,11 +1895,25 @@ export class GameScene extends Phaser.Scene {
     const look = ENEMY_ART[type];
     if (!look) return;
     const art = enemy.art ?? { champion, scale: champion ? TUNING.champion.scale : 1 };
+    if (enemy.pieceVisual) {
+      // A body drawn piece by piece (a worm): each part its own character.
+      for (const part of enemy.parts) this.paper.actor(part, enemy.pieceVisual(part, this.now).kind, { ...look, ...art });
+      this.lookThrough(enemy);
+      return;
+    }
     const actor = this.paper.actor(enemy.parts[0], type, { ...look, ...art });
     if (!actor) return;
     if (enemy.visual) actor.visual = (time) => enemy.visual!(time);
     if (enemy.airborne) actor.aloft = () => enemy.airborne!(enemy.parts[0]);
     for (const shape of enemy.trim ?? []) this.cameras.main.ignore(shape);
+  }
+
+  /** Each part of a body drawn piece by piece looks the way `enemy` says it does (which piece it is, how it moves). */
+  private lookThrough(enemy: Enemy) {
+    for (const part of enemy.parts) {
+      const actor = this.paper.of(part);
+      if (actor) actor.visual = (time) => enemy.pieceVisual!(part, time);
+    }
   }
 
   private lockDoors(room: WorldRoom) {

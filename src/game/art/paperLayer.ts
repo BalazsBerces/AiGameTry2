@@ -37,8 +37,8 @@ export class PaperActor {
   loop?: Action;
   /** Velocity to animate from when the shape has no moving body (grid movers). */
   motion?: { vx: number; vy: number };
-  /** What its owner reports about how it looks (an enemy's `visual`). */
-  visual?: (time: number) => Visual;
+  /** What its owner reports about how it looks (an enemy's `visual`), and the character it is drawn as if that changes (a worm's tail becoming its head). */
+  visual?: (time: number) => Visual & { kind?: string };
   /** Up in the air (a jumping slime): drawn at its shape's depth, over everything standing, not by its feet. */
   aloft?: () => boolean;
 
@@ -80,10 +80,11 @@ export class PaperActor {
     const body = shape.body as Phaser.Physics.Arcade.Body | null;
     const v = this.motion ?? { vx: body?.velocity.x ?? 0, vy: body?.velocity.y ?? 0 };
     const aim = this.aim && time < this.aim.until ? this.aim : undefined;
-    const f = this.animator.update(time, { ...v, aim, loop: this.loop, ...this.visual?.(time) });
+    const { kind = this.kind, ...look } = this.visual?.(time) ?? {};
+    const f = this.animator.update(time, { ...v, aim, loop: this.loop, ...look });
     // A champion's gold-trimmed frame where there is one, else the plain frame.
-    const trimmed = charKey(this.kind, f.action, f.frame, f.view, this.opts.champion);
-    const key = bakedArt(trimmed) ? trimmed : charKey(this.kind, f.action, f.frame, f.view);
+    const trimmed = charKey(kind, f.action, f.frame, f.view, this.opts.champion);
+    const key = bakedArt(trimmed) ? trimmed : charKey(kind, f.action, f.frame, f.view);
     const art = bakedArt(key);
     if (art) sprite.setTexture(art.texture, key);
     const scale = (this.opts.scale ?? 1) / ART_SCALE;

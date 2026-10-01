@@ -2,6 +2,8 @@ import type { Motion } from './animator';
 import type { GhoulState } from '../enemies/ghoul';
 import type { Bat } from '../enemies/bat';
 import { SLIME, type Slime } from '../enemies/slime';
+import { STEP } from '../map/floorGenerator';
+import type { Worm } from '../bosses/wormChain';
 
 /** What a body reports about how it looks: a state to loop, a frame to hold, a way to face. */
 export type Pose = Pick<Motion, 'loop' | 'hold' | 'aim'>;
@@ -82,4 +84,24 @@ export function geodePose({ nextShotAt, firedAt }: GeodeTimer, time: number): Po
   if (firedAt !== undefined && time - firedAt < GEODE_FIRE_MS) return { hold: { action: 'attack', frame: 2 } };
   if (nextShotAt === 0 || time < nextShotAt - GEODE_CHARGE_MS) return {};
   return { hold: { action: 'attack', frame: time < nextShotAt - GEODE_CHARGE_MS / 2 ? 0 : 1 } };
+}
+
+/** The pieces a worm is drawn in: its head, its body segments and its tail. */
+export type WormPiece = 'wormHead' | 'wormBody' | 'wormTail';
+
+/** How long each frame of a worm's crawl shows. */
+export const WORM_CRAWL_FRAME_MS = 110;
+
+/**
+ * The pose of a worm's `index`th segment: its head first (a lone segment is all head), its tail
+ * last, body pieces between; the crawl rippling from the head down to the tail, each segment a
+ * frame behind the one in front. The head points the way the worm is heading; the rest face the
+ * way they glide, so the body bends round each turn as it gets there.
+ */
+export function wormPose(worm: Worm, index: number, time: number): Pose & { piece: WormPiece } {
+  const last = worm.segments.length - 1;
+  const piece = index === 0 ? 'wormHead' : index === last ? 'wormTail' : 'wormBody';
+  const frame = (((Math.floor(time / WORM_CRAWL_FRAME_MS) - index) % 4) + 4) % 4;
+  const hold = { action: 'move' as const, frame };
+  return index === 0 ? { piece, hold, aim: { ...STEP[worm.heading] } } : { piece, hold };
 }

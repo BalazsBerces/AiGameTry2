@@ -31,6 +31,7 @@ import {
 } from '../../../core/bosses/wormBossAttack';
 import type { BarHalf, BossBarSnapshot } from '../../../core/bosses/bossBar';
 import { hitsToBreak } from '../../../core/map/tiles';
+import { wormPose } from '../../../core/art/castPoses';
 import { COLORS, TUNING } from '../../config';
 import { shellBurst, shakeScreen, spray } from '../../effects/shellBurst';
 import { championBoost, championColor, flash, gameNow, singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from '../enemy';
@@ -660,6 +661,11 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
         const part = state.parts[i];
         part.body.setVelocity((to.x - part.x) / seconds, (to.y - part.y) / seconds);
       });
+    },
+    // Drawn piece by piece: head, body and tail, the head facing the way it heads (the boss is drawn its own way).
+    pieceVisual: state.boss ? undefined : (part, time) => {
+      const { piece: kind, ...look } = wormPose(state.worm, Math.max(0, state.parts.indexOf(part)), time);
+      return { kind, ...look };
     },
     hit(part, damage) {
       const index = state.parts.indexOf(part);

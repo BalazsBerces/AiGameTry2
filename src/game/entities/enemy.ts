@@ -109,6 +109,11 @@ export interface Enemy extends Stunnable {
    */
   visual?(time: number): Visual;
   /**
+   * For a body whose every part wears paper art of its own (a worm's head, body and tail): which
+   * character `part` is drawn as right now, and how it looks. Read from its own state like `visual`.
+   */
+  pieceVisual?(part: EnemySprite, time: number): PieceVisual;
+  /**
    * How its paper art is drawn where its spawn doesn't say: its size against the art (a slime's
    * tier, champion or not) and whether it wears the gold trim (a champion slime's children).
    */
@@ -119,6 +124,8 @@ export interface Enemy extends Stunnable {
 
 /** What an enemy reports about how it looks: its paper art otherwise animates from its velocity. */
 export type Visual = Pick<Motion, 'loop' | 'hold' | 'aim'>;
+/** How one part of a many-piece body looks: the character it is drawn as (core/art/characters), and its `Visual`. */
+export type PieceVisual = Visual & { kind: string };
 
 /** Emitted on an enemy part when it takes a hit (with the time), so its paper art can flash and flinch. */
 export const HIT_EVENT = 'enemy-hit';

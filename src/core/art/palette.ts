@@ -176,6 +176,15 @@ export const PAPER = {
     batEar: '#e89aa8',
     batEarInner: '#c4687e',
     batEye: '#d8445a',
+    // The worm: dark chitin plates with a cold sheen, a pale rim where each plate overlaps the next, and a raw red lamprey maw ringed with bone teeth.
+    chitin: '#3e3438',
+    chitinLight: '#66585c',
+    chitinDark: '#1e171a',
+    chitinEdge: '#a08a7a',
+    wormBelly: '#4a3532',
+    wormBellyShade: '#33221f',
+    maw: '#7a2a2c',
+    mawDeep: '#2a0a0e',
 
     earth: '#33271c',
     earthPatch: '#3e3022',

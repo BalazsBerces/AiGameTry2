@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { GEODE_CHARGE_MS, batPose, geodePose, ghoulPose, slimePose } from './castPoses';
+import { GEODE_CHARGE_MS, WORM_CRAWL_FRAME_MS, batPose, geodePose, ghoulPose, slimePose, wormPose } from './castPoses';
+import { createWorm } from '../bosses/wormChain';
 
 describe("the ghoul's poses", () => {
   it('stalks on its walk, with nothing to hold', () => {
@@ -90,5 +91,29 @@ describe("the geode's poses", () => {
 
   it('flares its core as it fires', () => {
     expect(geodePose({ nextShotAt: 4700, firedAt: 3000 }, 3050)).toEqual({ hold: { action: 'attack', frame: 2 } });
+  });
+});
+
+describe("the worm's poses", () => {
+  // Head at 5,2 heading down; the body turns the corner above it and runs off left to the tail.
+  const worm = createWorm([{ x: 5, y: 2 }, { x: 5, y: 1 }, { x: 4, y: 1 }, { x: 3, y: 1 }], 'down');
+
+  it('wears its head first, its tail last and body pieces between', () => {
+    expect([0, 1, 2, 3].map((i) => wormPose(worm, i, 0).piece)).toEqual(['wormHead', 'wormBody', 'wormBody', 'wormTail']);
+  });
+
+  it('is all head when only one segment is left', () => {
+    expect(wormPose(createWorm([{ x: 2, y: 2 }], 'left'), 0, 0).piece).toBe('wormHead');
+  });
+
+  it('points its head the way it is heading; the rest face the way they glide', () => {
+    expect(wormPose(worm, 0, 0).aim).toEqual({ x: 0, y: 1 });
+    for (const i of [1, 2, 3]) expect(wormPose(worm, i, 0).aim, `segment ${i}`).toBeUndefined();
+  });
+
+  it('crawls in a ripple that runs from its head down to its tail, a frame behind segment by segment', () => {
+    const frame = (i: number, tick: number) => wormPose(worm, i, tick * WORM_CRAWL_FRAME_MS).hold;
+    expect([0, 1, 2, 3].map((i) => frame(i, 0))).toEqual([0, 3, 2, 1].map((f) => ({ action: 'move', frame: f })));
+    for (const tick of [0, 1, 2, 5]) for (const i of [1, 2, 3]) expect(frame(i, tick + 1)).toEqual(frame(i - 1, tick));
   });
 });

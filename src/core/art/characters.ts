@@ -747,6 +747,207 @@ function drawGeode(action: Action, frame: number, champion: boolean): string {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Worm
+// ---------------------------------------------------------------------------------------------
+
+/** One piece of a worm (its head, a body segment or its tail), drawn over its segment's cell. */
+const WORM = { w: 64, h: 86, foot: { x: 32, y: 56 } };
+/** Where the segment's centre (its cell's) sits on the canvas, 10 px above its feet. */
+const WORM_MID = { x: 32, y: 46 };
+
+type Pt = { x: number; y: number };
+type PieceRng = (part: string) => ReturnType<typeof pieceRng>;
+type WormPieceArt = 'head' | 'body' | 'tail';
+
+/**
+ * How a worm piece moves in one frame: its bob, its stretch along the way it crawls, how high
+ * its back arches, how wide the maw gapes and how bright the crystals on its spine burn.
+ */
+interface Crawl {
+  bob: number;
+  stretch: number;
+  arch: number;
+  maw: number;
+  glow: number;
+  hurt: boolean;
+}
+
+function crawl(action: Action, frame: number): Crawl {
+  switch (action) {
+    case 'move':
+      return { bob: [0, -1.5, 0, -0.8][frame], stretch: [1, 1.05, 1, 0.95][frame], arch: [0, 1, 0.4, -0.5][frame], maw: [0.5, 0.8, 0.55, 0.3][frame], glow: [0.3, 0.42, 0.34, 0.24][frame], hurt: false };
+    case 'attack':
+      // Rearing: tensed as its crystals kindle, the maw splayed wide as they flare, then settling.
+      return { bob: [-1, -2, 0][frame], stretch: [0.94, 1.06, 1][frame], arch: [2, 3, 0.5][frame], maw: [0.8, 1.35, 0.9][frame], glow: [0.8, 1.3, 0.6][frame], hurt: false };
+    case 'hurt':
+      return { bob: 1, stretch: 0.95, arch: -1, maw: 0.1, glow: 0.05, hurt: true };
+    default:
+      return { bob: frame ? 0.6 : 0, stretch: 1, arch: 0, maw: [0.4, 0.5][frame], glow: [0.25, 0.4][frame], hurt: false };
+  }
+}
+
+/** Points about the segment's centre, scaled by `sx` and `sy` (a stretch, a mirror). */
+const wormPts = (list: readonly (readonly [number, number])[], sx = 1, sy = 1): Pt[] => list.map(([x, y]) => ({ x: WORM_MID.x + x * sx, y: WORM_MID.y + y * sy }));
+
+/**
+ * A cluster of crystal shards growing out of the spine at x,y, fanned about `a` degrees off
+ * straight up, `size` times full height, in a halo as bright as `glow` (flaring past 1).
+ */
+function spineShards(x: number, y: number, a: number, size: number, glow: number): string {
+  // A cold glow round them only as they kindle; a faint one otherwise would read as a bubble.
+  const halo = glow > 0.5 ? ellipse(x + Math.sin((a * Math.PI) / 180) * 6 * size, y - 8 * size, 8 * size, 10 * size, C.crystal, `opacity="${n(Math.min(0.4, 0.2 * glow))}"`) : '';
+  const flare =
+    glow > 1
+      ? [-40, 0, 40]
+          .map((d) => group(fill(polyPath([{ x: 0, y: -1 }, { x: 1, y: -5 }, { x: -1, y: -5 }]), C.crystalLight), `translate(${n(x)} ${n(y - 13 * size)}) rotate(${a + d}) translate(0 ${n(-9 * size)})`))
+          .join('')
+      : '';
+  return (
+    halo +
+    prism(x - 3 * size, y + 0.5, a - 48, 7 * size, 3 * size) +
+    prism(x + 3.5 * size, y + 0.5, a + 26, 10 * size, 4 * size) +
+    prism(x, y, a, 15 * size, 5.5 * size) +
+    prism(x - 1.5 * size, y + 1, a - 22, 9 * size, 3.5 * size) +
+    // A glint at the tip of the tallest, catching the light as it crawls.
+    ellipse(x + Math.sin((a * Math.PI) / 180) * 11 * size, y - Math.cos((a * Math.PI) / 180) * 11 * size, 1.1 * size, 1.1 * size, C.crystalLight, `opacity="${Math.min(1, 0.3 + glow).toFixed(2)}"`) +
+    flare
+  );
+}
+
+/** `count` bone teeth set round the inside of an ellipse at cx,cy, pointing `depth` of the way in toward its middle. */
+function teeth(cx: number, cy: number, rx: number, ry: number, count: number, depth: number, turn = 0): string {
+  const w = (Math.PI / count) * 0.7;
+  return Array.from({ length: count }, (_, i) => {
+    const a = turn + (i / count) * Math.PI * 2;
+    const at = (da: number, k: number) => ({ x: cx + Math.cos(a + da) * rx * k, y: cy + Math.sin(a + da) * ry * k });
+    return fill(polyPath([at(-w, 1), at(0, depth), at(w, 1)]), C.bone);
+  }).join('');
+}
+
+/** A lamprey's round maw at x,y, `rx` by `ry`: a raw lip, rings of hooked teeth, a dark throat open `gape` wide. */
+const lampreyMaw = (x: number, y: number, rx: number, ry: number, gape: number) =>
+  ellipse(x, y, rx, ry, C.maw) +
+  teeth(x, y, rx * 0.92, ry * 0.92, 12, 0.66) +
+  ellipse(x, y, rx * (0.2 + 0.3 * gape), ry * (0.2 + 0.3 * gape), C.mawDeep) +
+  teeth(x, y, rx * 0.5, ry * 0.5, 8, 0.5, 0.4) +
+  ellipse(x, y, rx, ry, 'none', `stroke="${C.wormBelly}" stroke-width="1.2"`);
+
+/** Where one plate laps over the next across the back: its shadow, and the pale rim of the plate in front (`toward` it). */
+function plateSeam(from: Pt, ctrl: Pt, to: Pt, toward: Pt): string {
+  const d = (o: Pt) => `M${n(from.x + o.x)} ${n(from.y + o.y)}Q${n(ctrl.x + o.x)} ${n(ctrl.y + o.y)} ${n(to.x + o.x)} ${n(to.y + o.y)}`;
+  return (
+    `<path d="${d({ x: 0, y: 0 })}" stroke="${C.chitinDark}" stroke-width="1.5" fill="none"/>` +
+    `<path d="${d(toward)}" stroke="${C.chitinEdge}" stroke-width="0.8" fill="none" opacity="0.75"/>`
+  );
+}
+
+/** Chips of chitin knocked off by a hit. */
+const chitinChips = (r: PieceRng) =>
+  [{ x: -20, y: -18, a: 25 }, { x: 19, y: -16, a: -40 }, { x: 14, y: 4, a: 70 }]
+    .map((c, i) =>
+      group(fill(cutPoly(r(`chip${i}`), [{ x: -2, y: -1.4 }, { x: 2, y: -1 }, { x: 1, y: 1.8 }, { x: -1.5, y: 1.2 }], 0.3), C.chitinLight), `translate(${n(WORM_MID.x + c.x)} ${n(WORM_MID.y + c.y)}) rotate(${c.a})`),
+    )
+    .join('');
+
+/**
+ * A worm piece crawling right, side on: a dark chitin plate arched over a soft belly, lapped
+ * plates along its back, crystals growing out of its spine; the head ends in a lamprey maw, the
+ * tail tapers off behind to a spike.
+ */
+function wormSide(piece: WormPieceArt, c: Crawl, champion: boolean, r: PieceRng): string {
+  const s = c.stretch;
+  const { x: mx, y: my } = WORM_MID;
+  const top = -14 - c.arch;
+  const outline =
+    piece === 'head'
+      ? ([[-25, 7], [-24, -3], [-16, -11], [-2, top], [10, -12], [17, -6], [19, 2], [16, 8], [0, 9]] as const)
+      : piece === 'tail'
+        ? ([[-28, 5], [-20, -1], [-8, -8], [6, top + 2], [18, -10], [25, -3], [25, 7], [6, 9], [-14, 8]] as const)
+        : ([[-25, 7], [-24, -3], [-16, -11], [0, top], [16, -11], [24, -3], [25, 7], [0, 9]] as const);
+  const plateD = smoothPath(wormPts(outline, s));
+  const belly =
+    ellipse(mx + (piece === 'tail' ? 4 : piece === 'head' ? -3 : 0) * s, my + 7.5, (piece === 'tail' ? 20 : 23) * s, 4.5, C.wormBelly) +
+    [-12, -4, 4, 12].map((x) => `<path d="M${n(mx + x * s)} ${n(my + 5)}l0.6 5" stroke="${C.wormBellyShade}" stroke-width="1" opacity="0.8"/>`).join('');
+  const shade = fill(polyPath(wormPts([[-26, 2], [26, 2], [26, 8], [0, 10], [-26, 8]], s)), C.chitinDark, 'opacity="0.55"');
+  const seams = (piece === 'head' ? [-6] : piece === 'tail' ? [-6, 9] : [-9, 7])
+    .map((x) => plateSeam({ x: mx + x * s, y: my - 12 - c.arch * 0.6 }, { x: mx + (x + 3) * s, y: my - 3 }, { x: mx + x * s, y: my + 6 }, { x: 1.2, y: 0 }))
+    .join('');
+  const sheen = `<path d="M${n(mx - 14 * s)} ${n(my - 10)}Q${n(mx)} ${n(my + top - 1)} ${n(mx + 12 * s)} ${n(my - 10)}" stroke="${C.chitinLight}" stroke-width="1.4" fill="none" opacity="0.8"/>`;
+  // The pale rim of its front plate, lapped over the piece ahead.
+  const lip = piece === 'head' ? '' : `<path d="M${n(mx + 16 * s)} ${n(my - 11)}Q${n(mx + 26 * s)} ${n(my - 3)} ${n(mx + 25 * s)} ${n(my + 7)}" stroke="${C.chitinEdge}" stroke-width="1.6" fill="none"/>`;
+  const end =
+    piece === 'head'
+      ? // The maw seen edge on, and a row of pale pits behind it where eyes should be.
+        lampreyMaw(mx + 20 * s, my - 1, 3 + 2.5 * c.maw, 9 + 2 * c.maw, c.maw) + [[8, -5], [11, -3], [13, 0]].map(([x, y]) => ellipse(mx + x * s, my + y, 0.7, 0.7, C.crystalLight, 'opacity="0.6"')).join('')
+      : piece === 'tail'
+        ? fill(cutPoly(r('spike'), wormPts([[-27, 6], [-34, 3.5], [-26, 1.5]], s), 0.3), C.chitinEdge)
+        : '';
+  const shards =
+    piece === 'head' ? spineShards(mx - 8 * s, my + top + 1, -18, 0.75, c.glow) : piece === 'tail' ? spineShards(mx + 4 * s, my + top + 3, -20, 0.55, c.glow) : spineShards(mx - 2 * s, my + top + 1, -12, 1.15, c.glow) + spineShards(mx + 12 * s, my - 10, 18, 0.45, c.glow);
+  const plate = trim(plateD, champion) + fill(plateD, C.chitin) + shade + seams + sheen + lip;
+  return contact(mx, my + 9, 25 * s, 3) + group(sheet(belly) + sheet(plate + end, 2) + sheet(shards), `translate(0 ${n(c.bob)})`);
+}
+
+/**
+ * A worm piece crawling toward the camera (`dir` 1) or away from it (-1), seen from above: its
+ * plated back down the length of its cell, lapping toward its front, crystals standing up out of
+ * its spine. Toward the camera the head shows its maw under the lip of its hood; away, just the
+ * maw's rim past the back of the hood. The tail tapers off behind to a spike.
+ */
+function wormEnd(piece: WormPieceArt, dir: 1 | -1, c: Crawl, champion: boolean, r: PieceRng): string {
+  const sy = c.stretch * dir;
+  // Seen from above it reaches past its cell at both ends, lapping its neighbours, and under a piece turning side on at a corner.
+  const reach = sy * 1.3;
+  const { x: mx, y: my } = WORM_MID;
+  const facing = piece === 'head' && dir === 1;
+  const outline =
+    piece === 'tail'
+      ? ([[0, -29], [5, -18], [10, -6], [13, 8], [9, 23], [0, 26], [-9, 23], [-13, 8], [-10, -6], [-5, -18]] as const)
+      : facing
+        ? ([[0, -26], [12, -22], [15, -8], [14, 4], [8, 6.5], [-8, 6.5], [-14, 4], [-15, -8], [-12, -22]] as const)
+        : ([[0, -26], [12, -22], [15, -6], [14, 10], [9, 23], [0, 26], [-9, 23], [-14, 10], [-15, -6], [-12, -22]] as const);
+  // Its back swells across as it arches.
+  const plateD = smoothPath(wormPts(outline, 1 + c.arch * 0.03, reach));
+  const belly = ellipse(mx, my + 2 * dir, 16, 25 * Math.abs(reach), C.wormBelly);
+  const shade = fill(polyPath(wormPts([[5, -24], [16, -18], [16, 12], [8, 24], [5, 24]], 1, reach)), C.chitinDark, 'opacity="0.5"');
+  // The plates lap toward the front, so each seam bows that way, the pale rim of the plate in front beside it.
+  const seams = (facing ? [-8] : [-11, 11])
+    .map((y) => {
+      const w = piece === 'tail' ? 10 + y * 0.25 * dir : 14;
+      return plateSeam({ x: mx - w, y: my + y * sy }, { x: mx, y: my + (y + 4) * sy }, { x: mx + w, y: my + y * sy }, { x: 0, y: 1.2 * dir });
+    })
+    .join('');
+  const spine = `<path d="M${n(mx)} ${n(my - 26 * c.stretch)}L${n(mx)} ${n(my + 26 * c.stretch)}" stroke="${C.chitinLight}" stroke-width="1.2" opacity="0.6"/>`;
+  const lip = facing ? '' : `<path d="M${n(mx - 9)} ${n(my + 23 * reach)}Q${n(mx)} ${n(my + 27.5 * reach)} ${n(mx + 9)} ${n(my + 23 * reach)}" stroke="${C.chitinEdge}" stroke-width="1.6" fill="none"/>`;
+  const pits = facing ? [[6, -1], [9, -3], [11, -6]].flatMap(([x, y]) => [circle(mx + x, my + y, 0.8, C.crystalLight), circle(mx - x, my + y, 0.8, C.crystalLight)]).join('') : '';
+  const end =
+    piece === 'head'
+      ? facing
+        ? lampreyMaw(mx, my + 12, 11 + 2 * c.maw, 9 + 2 * c.maw, c.maw)
+        : ellipse(mx, my + 25.5 * reach, 9 + c.maw, 3.2, C.maw) + teeth(mx, my + 25.5 * reach, 8 + c.maw, 3, 10, 0.4)
+      : piece === 'tail'
+        ? fill(cutPoly(r('spike'), wormPts([[-2.5, -27], [0, -35], [2.5, -27]], 1, reach), 0.3), C.chitinEdge)
+        : '';
+  const shards =
+    piece === 'head'
+      ? spineShards(mx, my - (facing ? 10 : 2), 0, 0.8, c.glow)
+      : piece === 'tail'
+        ? spineShards(mx, my + 3 * dir, 0, 0.55, c.glow)
+        : spineShards(mx, my - 2, 0, 0.9, c.glow) + spineShards(mx, my + 13, 8, 0.45, c.glow);
+  const plate = trim(plateD, champion) + fill(plateD, C.chitin) + shade + seams + spine + lip + pits;
+  const body = facing ? sheet(belly) + sheet(end) + sheet(plate, 2) : sheet(belly) + sheet(plate + end, 2);
+  return contact(mx, my + 1, 16, 30) + group(body + sheet(shards), `translate(0 ${n(c.bob)})`);
+}
+
+function drawWorm(piece: WormPieceArt, action: Action, frame: number, view: View, champion: boolean): string {
+  const r: PieceRng = (part) => pieceRng('worm', piece, view, part);
+  const c = crawl(action, frame);
+  const drawn = view === 'side' ? wormSide(piece, c, champion, r) : wormEnd(piece, view === 'down' ? 1 : -1, c, champion, r);
+  // A hit jolts it and knocks chips off its plates.
+  return c.hurt ? group(drawn, `rotate(-4 ${WORM_MID.x} ${WORM_MID.y})`) + chitinChips(r) : drawn;
+}
+
+// ---------------------------------------------------------------------------------------------
 // Treant
 // ---------------------------------------------------------------------------------------------
 
@@ -890,5 +1091,8 @@ export const CHARACTERS: Readonly<Record<string, CharacterArt>> = {
   bat: art(BAT, ['side'], (a, f, _v, c) => drawBat(a, f, c), 23),
   slime: art(SLIME, ['side'], (a, f, _v, c) => drawSlime(a, f, c), 29, ['land']),
   crystalTurret: art(GEODE, ['down'], (a, f, _v, c) => drawGeode(a, f, c), 31),
+  wormHead: art(WORM, ['side', 'down', 'up'], (a, f, v, c) => drawWorm('head', a, f, v, c), 37),
+  wormBody: art(WORM, ['side', 'down', 'up'], (a, f, v, c) => drawWorm('body', a, f, v, c), 37),
+  wormTail: art(WORM, ['side', 'down', 'up'], (a, f, v, c) => drawWorm('tail', a, f, v, c), 37),
   treantBoss: art(TREANT, ['down'], (a, f) => drawTreant(a, f), 17),
 };

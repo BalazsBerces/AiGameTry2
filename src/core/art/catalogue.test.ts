@@ -157,21 +157,26 @@ describe('the art catalogue', () => {
 
   describe('the cave cast', () => {
     const CAST = {
-      ghoul: { view: 'side', actions: { idle: 2, move: 4, attack: 3, hurt: 1, recover: 2 } },
-      bat: { view: 'side', actions: { idle: 2, move: 4, attack: 3, hurt: 1 } },
-      slime: { view: 'side', actions: { idle: 2, move: 4, attack: 3, hurt: 1, land: 2 } },
-      crystalTurret: { view: 'down', actions: { idle: 2, move: 4, attack: 3, hurt: 1 } },
+      ghoul: { views: ['side'], actions: { idle: 2, move: 4, attack: 3, hurt: 1, recover: 2 } },
+      bat: { views: ['side'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 } },
+      slime: { views: ['side'], actions: { idle: 2, move: 4, attack: 3, hurt: 1, land: 2 } },
+      crystalTurret: { views: ['down'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 } },
+      wormHead: { views: ['side', 'down', 'up'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 } },
+      wormBody: { views: ['side', 'down', 'up'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 } },
+      wormTail: { views: ['side', 'down', 'up'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 } },
     } as const;
     const KINDS = Object.keys(CAST) as (keyof typeof CAST)[];
     const keysOf = (kind: keyof typeof CAST, champion: boolean) =>
-      (Object.entries(CAST[kind].actions) as [Action, number][]).flatMap(([action, count]) =>
-        Array.from({ length: count }, (_, f) => charKey(kind, action, f, CAST[kind].view, champion)),
+      CAST[kind].views.flatMap((view) =>
+        (Object.entries(CAST[kind].actions) as [Action, number][]).flatMap(([action, count]) =>
+          Array.from({ length: count }, (_, f) => charKey(kind, action, f, view, champion)),
+        ),
       );
 
-    it('stalks, lunges and recovers as a ghoul; flutters and swoops as a bat; squashes, hops and lands as a slime, all side on; a geode faces the camera', () => {
+    it("stalks, lunges and recovers as a ghoul; flutters and swoops as a bat; squashes, hops and lands as a slime, all side on; a geode faces the camera; a worm's head, body and tail face every way it crawls", () => {
       for (const kind of KINDS) {
         expect(CHARACTERS[kind].actions, kind).toEqual(CAST[kind].actions);
-        expect([...CHARACTERS[kind].views], kind).toEqual([CAST[kind].view]);
+        expect([...CHARACTERS[kind].views], kind).toEqual(CAST[kind].views);
       }
     });
 
@@ -183,6 +188,11 @@ describe('the art catalogue', () => {
         expect(new Set(plain.map(svgOf)).size, kind).toBe(plain.length);
         plain.forEach((key, i) => expect(svgOf(champ[i]), key).not.toBe(svgOf(key)));
       }
+    });
+
+    it("draws the worm's head, body and tail as pieces of their own", () => {
+      const idle = (kind: string) => svgOf(charKey(kind, 'idle', 0, 'side'));
+      expect(new Set(['wormHead', 'wormBody', 'wormTail'].map(idle)).size).toBe(3);
     });
 
     it('comes out the same when built twice', () => {

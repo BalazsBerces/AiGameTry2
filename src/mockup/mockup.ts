@@ -3,7 +3,7 @@ import { hudSvg, HEART_CANVAS, ICON_CANVAS, SHOT_CANVAS, type ShotArt } from '..
 import { PAPER } from '../core/art/palette';
 import { DOWN, LEFT, RIGHT, UP, type Mask } from '../core/art/autotile';
 import { CAVE_FLOOR_CANVAS, CAVE_WALL_CANVAS, DECOR_CANVAS, JOIN_LOOKS, MASKED_LOOKS, TILE, TILE_CANVAS, WALL_JOIN_LOOKS, WALL_STYLES, floorCanvas, floorLooks, hasGround, terrainSvg, wallCanvas, wallGems, type Shell, type WallSide, type WallStyle } from '../core/art/terrain';
-import { BLOOM, FALLOFF, GLOOM, GLOW_COLOR, PLAYER_POOL, SHOT_POOL, TINTED, WALL_GEM_GLOW, decorGlow, lookGlow, type ColouredLight } from '../core/art/gloom';
+import { BLOOM, CORE_LIFT, FALLOFF, GLOOM, GLOW_COLOR, PLAYER_POOL, SHOT_POOL, TINTED, WALL_GEM_GLOW, decorGlow, lookGlow, type ColouredLight } from '../core/art/gloom';
 import { n } from '../core/art/svg';
 import { createRng } from '../core/rng';
 import { SHOT_ART, floorLook } from '../core/art/catalogue';
@@ -255,7 +255,7 @@ function caveGloom(id: string, w: number, h: number, scene: Scene, glows: (Colou
   // A coloured glower lifts less of the gloom and lights its pool in its own colour, laid over the gloom.
   // The glowing thing itself is lifted wholly out of the gloom, so the light reads as coming from it.
   const hole = (x: number, y: number, r: number, a: number) => `<circle cx="${x}" cy="${y}" r="${r}" fill="url(#${id}-pool)" opacity="${n(a)}" style="mix-blend-mode:multiply"/>`;
-  const holes = pools.map((p) => hole(p.x, p.y, p.radius, p.intensity * ('tint' in p ? TINTED.lift : 1)) + ('core' in p ? hole(p.x, p.y, p.core as number, 1) : '')).join('');
+  const holes = pools.map((p) => hole(p.x, p.y, p.radius, p.intensity * ('tint' in p ? TINTED.lift : 1)) + ('core' in p ? hole(p.x, p.y, p.core as number, CORE_LIFT) : '')).join('');
   const glowing = glows.map((g) =>
     `<circle cx="${g.x}" cy="${g.y}" r="${g.radius * TINTED.reach}" fill="url(#${id}-${g.tint})" opacity="${n(TINTED.glow * g.intensity)}" style="mix-blend-mode:screen"/>` +
     `<circle cx="${g.x}" cy="${g.y}" r="${g.core * 1.8}" fill="url(#${id}-${g.tint})" opacity="${n(Math.min(1, BLOOM * (0.5 + g.intensity)))}" style="mix-blend-mode:screen"/>`).join('');

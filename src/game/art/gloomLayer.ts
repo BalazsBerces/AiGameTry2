@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { BLOOM, FALLOFF, GLOOM, TINTED, WALL_SHADE, type LightPool } from '../../core/art/gloom';
+import { BLOOM, CORE_LIFT, FALLOFF, GLOOM, TINTED, WALL_SHADE, type LightPool } from '../../core/art/gloom';
 import { DARK_DEPTH } from '../entities/bosses/candleWitch';
 
 /** Under the Candle Witch's own, deeper dark (and the HUD, a scene of its own), so her fight works as it always has. */
@@ -81,9 +81,9 @@ export class GloomLayer {
     for (const p of pools) {
       this.stamp.setScale(p.radius / BRUSH).setAlpha(p.intensity * (p.tint === undefined ? 1 : TINTED.lift)).setPosition(p.x - left, p.y - top);
       this.gloom.erase(this.stamp);
-      // The glowing thing itself shows at its full brightness.
+      // The glowing thing itself stands out of the gloom.
       if (p.core) {
-        this.stamp.setScale(p.core / BRUSH).setAlpha(1);
+        this.stamp.setScale(p.core / BRUSH).setAlpha(CORE_LIFT);
         this.gloom.erase(this.stamp);
       }
     }

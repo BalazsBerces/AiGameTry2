@@ -1,7 +1,69 @@
 import { describe, expect, it } from 'vitest';
-import { PULSE, isGloomy, pulse } from './gloom';
+import type { Tile } from '../rooms/roomGenerator';
+import { PULSE, glowersOf, isGloomy, pulse, type GlowRoom } from './gloom';
+import { TILE, wallGems } from './terrain';
 
 const CAVES = 1;
+
+/** `C` crystal, `G` glowshroom, `M` giant mushroom (obstacle), `r` mushroom cap (rock), `.` floor. */
+const tilesOf = (rows: string[]): Tile[][] =>
+  rows.map((row) => [...row].map((c) => ({ C: 'crystal', G: 'glowshroom', M: 'obstacle', r: 'rock', '.': 'floor' })[c] as Tile));
+const HOLLOW_LOOKS: Partial<Record<Tile, string>> = { crystal: 'crystal cluster', glowshroom: 'glowshroom', obstacle: 'giant mushroom', rock: 'mushroom cap' };
+const room = (rows: string[], extra: Partial<GlowRoom> = {}): GlowRoom => ({ tiles: tilesOf(rows), lookOf: (t) => HOLLOW_LOOKS[t], decor: [], walls: [], ...extra });
+
+describe("a room's glowers", () => {
+  it('lights one per crystal cluster, crystal spire, glowshroom and giant mushroom, in their colours', () => {
+    const glowers = glowersOf(room(['C.G', 'M.C']));
+    expect(glowers.filter((g) => g.tint === 'cyan')).toHaveLength(2);
+    expect(glowers.filter((g) => g.tint === 'violet')).toHaveLength(2);
+    expect(glowers).toHaveLength(4);
+    const spires = glowersOf(room(['C'], { lookOf: () => 'crystal spire' }));
+    expect(spires.map((g) => g.tint)).toEqual(['cyan']);
+  });
+
+  it('sits each on its tile', () => {
+    const [g] = glowersOf(room(['..', '.G']));
+    expect(Math.floor(g.x / TILE)).toBe(1);
+    expect(Math.floor(g.y / TILE)).toBe(1);
+  });
+
+  it('leaves mushroom caps, rock and bare floor dull', () => {
+    expect(glowersOf(room(['rr.', '...']))).toEqual([]);
+  });
+
+  it('loses the light of a glower whose tile broke', () => {
+    const tiles = tilesOf(['G.', '.C']);
+    expect(glowersOf({ ...room([]), tiles })).toHaveLength(2);
+    tiles[0][0] = 'floor';
+    expect(glowersOf({ ...room([]), tiles })).toHaveLength(1);
+  });
+
+  it('lets glints, spores and lying shards glow faintly, other decor not at all', () => {
+    const decor = ['glints', 'spores', 'shards', 'pebbles', 'bones', 'caps'].map((kind, x) => ({ kind, cell: { x, y: 0 } }));
+    const faint = glowersOf(room(['......'], { decor }));
+    expect(faint.map((g) => g.tint)).toEqual(['cyan', 'violet', 'cyan']);
+    const crystal = glowersOf(room(['C']))[0];
+    for (const g of faint) {
+      expect(g.intensity).toBeLessThan(crystal.intensity / 2);
+      expect(g.radius).toBeLessThan(crystal.radius / 2);
+    }
+  });
+
+  it('lights each wall gem faintly where its veined wall piece sets it, none in a strata wall', () => {
+    const walls = (['top', 'bottom', 'left', 'right', 'corner'] as const).flatMap((side, i) => [0, 1, 2, 3].map((variant) => ({ cell: { x: variant, y: -1 - i }, side, variant })));
+    const gems = walls.flatMap((w) => wallGems(w.side, w.variant).map((g) => ({ x: (w.cell.x + 0.5) * TILE + g.x, y: (w.cell.y + 0.5) * TILE + g.y })));
+    expect(gems.length).toBeGreaterThan(0);
+    const lit = glowersOf(room([], { walls, veined: true }));
+    expect(lit.map((g) => ({ x: g.x, y: g.y }))).toEqual(gems);
+    for (const g of lit) expect(g.tint).toBe('cyan');
+    expect(glowersOf(room([], { walls, veined: false }))).toEqual([]);
+  });
+
+  it('gives neighbours seeds of their own, so they breathe out of step', () => {
+    const seeds = glowersOf(room(['CCC', 'GGG'])).map((g) => g.seed);
+    expect(new Set(seeds).size).toBe(6);
+  });
+});
 
 describe('which rooms are gloomy', () => {
   it('puts every caves room under the gloom: start, item, normal and cleared alike', () => {

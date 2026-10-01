@@ -2,7 +2,9 @@ import { CHARACTERS, type Action, type View } from '../core/art/characters';
 import { hudSvg, HEART_CANVAS, ICON_CANVAS, SHOT_CANVAS, type ShotArt } from '../core/art/hud';
 import { PAPER } from '../core/art/palette';
 import { DOWN, LEFT, RIGHT, UP, type Mask } from '../core/art/autotile';
-import { CAVE_FLOOR_CANVAS, CAVE_WALL_CANVAS, DECOR_CANVAS, JOIN_LOOKS, MASKED_LOOKS, TILE, TILE_CANVAS, WALL_JOIN_LOOKS, WALL_STYLES, floorCanvas, floorLooks, hasGround, terrainSvg, wallCanvas, type Shell, type WallSide, type WallStyle } from '../core/art/terrain';
+import { CAVE_FLOOR_CANVAS, CAVE_WALL_CANVAS, DECOR_CANVAS, JOIN_LOOKS, MASKED_LOOKS, TILE, TILE_CANVAS, WALL_JOIN_LOOKS, WALL_STYLES, floorCanvas, floorLooks, hasGround, terrainSvg, wallCanvas, wallGems, type Shell, type WallSide, type WallStyle } from '../core/art/terrain';
+import { GLOOM, PLAYER_POOL, SHOT_POOL, WALL_GEM_GLOW, decorGlow, lookGlow, type GlowTint, type LightPool } from '../core/art/gloom';
+import { n } from '../core/art/svg';
 import { createRng } from '../core/rng';
 import { SHOT_ART, floorLook } from '../core/art/catalogue';
 import { roomThemeById, roomThemesFor } from '../core/rooms/roomThemes';
@@ -115,6 +117,8 @@ function drawRoom(sheet: Sheet, scene: Scene, lit: boolean, id: string): string 
   const ground: string[] = [];
   const flat: string[] = [];
   const standing: Placed[] = [];
+  /** The room's fixed glowers (core/gloom), lighting the caves' gloom. */
+  const glows: (LightPool & { x: number; y: number; tint: GlowTint })[] = [];
   const place = (svg: string, w: number, h: number, ax: number, ay: number, x: number, y: number, flip = false) => {
     const use = `<use href="#${sheet.id(svg, w, h)}" x="${x - ax}" y="${y - ay}"/>`;
     return flip ? `<g transform="translate(${2 * x} 0) scale(-1 1)">${use}</g>` : use;
@@ -136,6 +140,7 @@ function drawRoom(sheet: Sheet, scene: Scene, lit: boolean, id: string): string 
           y: gy === 0 ? -100 : gy === map.length - 1 ? 9999 : c.y + 14,
           svg: place(terrainSvg.wall(side, variant, wallStyle), wc.w, wc.h, wc.anchor.x, wc.anchor.y, c.x, c.y),
         });
+        if (wallStyle === 'veined') glows.push(...wallGems(side, variant).map((g) => ({ x: c.x + g.x, y: c.y + g.y, ...WALL_GEM_GLOW })));
         return;
       }
       const fc = floorCanvas(shell);
@@ -151,6 +156,8 @@ function drawRoom(sheet: Sheet, scene: Scene, lit: boolean, id: string): string 
       const same = (dx: number, dy: number) => cell(gx + dx, gy + dy) === ch;
       const mask: Mask = (same(0, -1) ? UP : 0) | (same(1, 0) ? RIGHT : 0) | (same(0, 1) ? DOWN : 0) | (same(-1, 0) ? LEFT : 0);
       const svg = tile(terrainSvg.tile(look, variant, mask), c.x, c.y);
+      const glow = lookGlow(look);
+      if (glow) glows.push({ ...glow, x: c.x, y: c.y - glow.rise });
       if (MASKED_LOOKS.includes(look)) flat.push(svg);
       else standing.push({ y: c.y, svg });
       // Neighbouring trees and thorns (stalagmites, vines) grow into each other across the seam.
@@ -179,7 +186,10 @@ function drawRoom(sheet: Sheet, scene: Scene, lit: boolean, id: string): string 
       if (kind === 'lilypad' && !map[gy][gx - 1]?.includes('~') && !map[gy][gx + 1]?.includes('~')) return;
       const svg = terrainSvg.decor(kind, rng.int(0, 3));
       const spread = shell === 'caves' ? 20 : 12;
-      flat.push(place(svg, DECOR_CANVAS.w, DECOR_CANVAS.h, DECOR_CANVAS.anchor.x, DECOR_CANVAS.anchor.y, c.x + rng.int(-spread, spread), c.y + rng.int(-spread, spread)));
+      const spot = { x: c.x + rng.int(-spread, spread), y: c.y + rng.int(-spread, spread) };
+      flat.push(place(svg, DECOR_CANVAS.w, DECOR_CANVAS.h, DECOR_CANVAS.anchor.x, DECOR_CANVAS.anchor.y, spot.x, spot.y));
+      const glint = decorGlow(kind);
+      if (glint) glows.push({ ...glint, ...spot });
     }),
   );
 
@@ -218,10 +228,33 @@ function drawRoom(sheet: Sheet, scene: Scene, lit: boolean, id: string): string 
       .map(([k, c]) => `<radialGradient id="${id}-glow-${k}"><stop offset="0" stop-color="${c}" stop-opacity="0.75"/><stop offset="1" stop-color="${c}" stop-opacity="0"/></radialGradient>`)
       .join('') +
     `<mask id="${id}-dark" maskUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${Hh}"><rect width="${W}" height="${Hh}" fill="#fff"/>${holes}</mask>`;
-  const dark = lit
+  const dark = lit && shell === 'caves'
+    ? caveGloom(id, W, Hh, scene, glows)
+    : lit
     ? `<rect width="${W}" height="${Hh}" fill="#04070a" opacity="0.62" mask="url(#${id}-dark)"/>${warmth}<rect width="${W}" height="${Hh}" fill="url(#${id}-vignette)"/>`
     : '';
   return `<defs>${defs}</defs><rect width="${W}" height="${Hh}" fill="${shell === 'caves' ? PAPER.caves.rockDeep : PAPER.hedgeDark}"/>${ground.join('')}${flat.join('')}${standing.map((s) => s.svg).join('')}${dark}${shots}`;
+}
+
+/**
+ * The caves' gloom over a room, as the game draws it (core/gloom): a moderate dark, no vignette, light
+ * pools cut out round the player, shots and the room's glowers, each glower's own colour glowing in its pool.
+ */
+function caveGloom(id: string, w: number, h: number, scene: Scene, glows: (LightPool & { x: number; y: number; tint: GlowTint })[]): string {
+  const pools = [
+    ...scene.actors.filter((a) => a.kind === 'player').map((a) => ({ x: a.x, y: a.y, ...PLAYER_POOL })),
+    ...scene.shots.map((s) => ({ x: s.x, y: s.y, ...SHOT_POOL })),
+    ...glows,
+  ];
+  const tint = { cyan: PAPER.caves.crystal, violet: PAPER.caves.fungusGlow };
+  // The game's soft brush: solid to 45% of its reach, fading to nothing at the rim.
+  const brush = (key: string, color: string, edge: string) =>
+    `<radialGradient id="${id}-${key}"><stop offset="0" stop-color="${color}"/><stop offset="0.45" stop-color="${color}" stop-opacity="0.9"/><stop offset="1" stop-color="${edge}" stop-opacity="${edge === '#fff' ? 1 : 0}"/></radialGradient>`;
+  const holes = pools.map((p) => `<circle cx="${p.x}" cy="${p.y}" r="${p.radius}" fill="url(#${id}-pool)" opacity="${p.intensity}" style="mix-blend-mode:multiply"/>`).join('');
+  const glowing = glows.map((g) => `<circle cx="${g.x}" cy="${g.y}" r="${g.radius * 0.8}" fill="url(#${id}-${g.tint})" opacity="${n(0.17 * g.intensity)}" style="mix-blend-mode:screen"/>`).join('');
+  return `<defs>${brush('pool', '#000', '#fff')}${brush('cyan', tint.cyan, tint.cyan)}${brush('violet', tint.violet, tint.violet)}` +
+    `<mask id="${id}-gloom" maskUnits="userSpaceOnUse" x="0" y="0" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="#fff"/>${holes}</mask></defs>` +
+    glowing + `<rect width="${w}" height="${h}" fill="#${GLOOM.color.toString(16).padStart(6, '0')}" opacity="${GLOOM.alpha}" mask="url(#${id}-gloom)"/>`;
 }
 
 function drawHud(sheet: Sheet, w: number): string {
@@ -614,9 +647,9 @@ function cavesSheet(): string {
   const unlit = new Sheet('cu');
   const caveUnlit = roomSvg(unlit, CAVE, false, 'cu', false);
   const grotto = new Sheet('cg');
-  const grottoUnlit = roomSvg(grotto, CAVE_GROTTO, false, 'cg', false);
+  const grottoUnlit = roomSvg(grotto, CAVE_GROTTO, true, 'cg', false);
   const hollow = new Sheet('ch');
-  const hollowUnlit = roomSvg(hollow, CAVE_HOLLOW, false, 'ch', false);
+  const hollowUnlit = roomSvg(hollow, CAVE_HOLLOW, true, 'ch', false);
   const rift = new Sheet('cr');
   const riftUnlit = roomSvg(rift, CAVE_RIFT, false, 'cr', false);
   const rubble = new Sheet('cw');
@@ -632,11 +665,11 @@ function cavesSheet(): string {
   <p class="lede">Warm earth, cold light: umber and ochre rock paper, icy cyan-white crystal as the hard accent, violet fungus as the second hue, and deep-teal slime, soft and translucent round a milky core. This sheet covers the room shell (walls, doors, floors), every cave terrain tile and the decor, bones and a dropped miner's pick among it, and the cave cast: the ghoul, the bat, the slime, the geode, the worm, and the worm boss with its eggs.</p>
 </header>
 ${defs(lit)}${defs(unlit)}${defs(grotto)}${defs(hollow)}${defs(rift)}${defs(rubble)}${defs(boss)}
-<figure class="stage">${caveLit}<figcaption>A sample cave room, lit as in the game: stalagmites fused along the walls, a chasm, thorn vines, a boulder, a crystal cluster and glowshrooms; a ghoul winding up at the player (a champion stalking below), one bat hanging wings-wide for its tell, another swooping; a geode split open and firing red-hot shard shots (one already ricocheting off the wall), a champion geode shut above; a big slime squashed for its jump, a medium one in the air over a rock and a small champion splatting down. The right door is barred while enemies live.</figcaption></figure>
+<figure class="stage">${caveLit}<figcaption>A sample cave room under the gloom, as in the game: a moderate dark (no vignette) with light pools round the player and each shard shot, the crystal cluster glowing cyan and the glowshrooms violet, the shards and glints on the floor faintly. Stalagmites fused along the walls, a chasm, thorn vines, a boulder, a crystal cluster and glowshrooms; a ghoul winding up at the player (a champion stalking below), one bat hanging wings-wide for its tell, another swooping; a geode split open and firing red-hot shard shots (one already ricocheting off the wall), a champion geode shut above; a big slime squashed for its jump, a medium one in the air over a rock and a small champion splatting down. The right door is barred while enemies live.</figcaption></figure>
 <div class="pair">
   <figure class="stage small">${caveUnlit}<figcaption>The same room with the lights on.</figcaption></figure>
-  <figure class="stage small">${grottoUnlit}<figcaption>A crystal grotto: crystal spires, and crystal enough for veined walls all the way round.</figcaption></figure>
-  <figure class="stage small">${hollowUnlit}<figcaption>A mushroom hollow: giant mushrooms, clumps of mushroom caps and glowshrooms.</figcaption></figure>
+  <figure class="stage small">${grottoUnlit}<figcaption>A crystal grotto under the gloom: crystal spires glowing cyan, each breathing at its own pace, and crystal enough for veined walls, their few wall gems glowing faintly.</figcaption></figure>
+  <figure class="stage small">${hollowUnlit}<figcaption>A mushroom hollow under the gloom: giant mushrooms and glowshrooms glow violet, spores faintly; the clumps of mushroom caps stay dull.</figcaption></figure>
   <figure class="stage small">${riftUnlit}<figcaption>A rift: the chasm's lip torn red. A worm crawls along the top and turns down the room, its crawl rippling from head to tail; a champion heads off the other way below.</figcaption></figure>
   <figure class="stage small">${rubbleUnlit}<figcaption>Rubble walls: neighbouring loose rock fuses into continuous walls, the way the worm boss's maze is built, and grows out of the cave wall wherever it meets it. Where a rock has broken (the gap in the long run) its joins are gone and the ends are left ragged.</figcaption></figure>
   <figure class="stage small">${bossUnlit}<figcaption>The worm's room: darker earth broken by burrows, strewn with bones and shards. The worm boss crawls round it, heaving an egg out of its back; another egg is in the air, one rests by the wall and one is splitting open to hatch.</figcaption></figure>

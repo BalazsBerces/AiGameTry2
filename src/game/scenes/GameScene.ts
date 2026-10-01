@@ -86,7 +86,7 @@ import { PaperLayer, type PaperActor } from '../art/paperLayer';
 import { footDepth } from '../../core/art/depth';
 import { AmbientLayer } from '../art/ambientLayer';
 import { GloomLayer, type PlacedPool } from '../art/gloomLayer';
-import { PLAYER_POOL, SHOT_POOL, isGloomy } from '../../core/art/gloom';
+import { PLAYER_POOL, SHOT_POOL, glowersOf, isGloomy, pulse, type Glower, type GlowTint } from '../../core/art/gloom';
 import { HIT_STOP, createHitStop, type HitStop } from '../../core/juice/hitStop';
 import { createShake, type Shake } from '../../core/juice/shake';
 import { shakeScreen } from '../effects/shellBurst';
@@ -94,7 +94,7 @@ import { ScrapLayer } from '../art/scrapLayer';
 import { passiveArtKey } from '../art/passiveArt';
 import { PAPER } from '../../core/art/palette';
 import { DECOR_CANVAS, JOIN_LOOKS, TILE_CANVAS, WALL_JOIN_LOOKS, WALL_STYLES, floorCanvas, hasGround, wallCanvas, type Shell, type WallSide } from '../../core/art/terrain';
-import { SHOT_ART, TILE_VARIANTS, decorKey, doorKey, floorKey, floorLook, groundKey, joinKey, pickupKey, shotKey, tileKey, wallJoinKey, wallKey, type FloorKind } from '../../core/art/catalogue';
+import { SHOT_ART, TILE_VARIANTS, decorKey, decorNudge, doorKey, floorKey, floorLook, groundKey, joinKey, pickupKey, shotKey, tileKey, wallJoinKey, wallKey, type FloorKind } from '../../core/art/catalogue';
 import { PICKUP_CANVAS, SHOT_CANVAS, type PickupArt } from '../../core/art/hud';
 import { ART_SCALE } from '../art/bake';
 import { joinsBetween, neighbourMask, wallJoins } from '../../core/art/autotile';
@@ -209,6 +209,8 @@ const ENEMY_ART: Partial<Record<EnemyLook, { footOffset: number; fps?: number; o
 };
 
 const hex = (color: string) => parseInt(color.slice(1), 16);
+/** The colours glowers cast into the gloom: crystal cyan, glowing-fungus violet. */
+const GLOW_TINT: Record<GlowTint, number> = { cyan: hex(PAPER.caves.crystal), violet: hex(PAPER.caves.fungusGlow) };
 /** The paper an enemy tears into when it dies; enemies left out tear into their shape's colour. */
 /** Bosses stand their ground: a hit never knocks them back. */
 const BOSSES: ReadonlySet<EnemyType> = new Set<BossType>(['wormBoss', 'ironMaiden', 'candleWitch', 'treantBoss']);
@@ -413,6 +415,10 @@ export class GameScene extends Phaser.Scene {
   private enemyTypes = new Map<Enemy, EnemyType>();
   /** The canopy and vine joins touching each terrain cell (`roomId|x,y`), gone once the cell's tile is. */
   private joinArt = new Map<string, Phaser.GameObjects.Image[]>();
+  /** Each room's paper wall pieces, as drawn: where their wall gems glow in the gloom. */
+  private wallPieces = new Map<string, { cell: Cell; side: WallSide; variant: number }[]>();
+  /** Each room's fixed glowers (core/gloom), worked out when first needed and again once a tile of it breaks. */
+  private glowers = new Map<string, Glower[]>();
   /** Set only in the enemy test arena. */
   private arena?: ArenaTools;
   /** Real time scaled by `speed`: what the game clock (`now`) counts from. */
@@ -486,6 +492,8 @@ export class GameScene extends Phaser.Scene {
     this.scraps = new ScrapLayer(this, DEPTH.player + 0.95);
     this.enemyTypes = new Map();
     this.joinArt = new Map();
+    this.wallPieces = new Map();
+    this.glowers = new Map();
     this.arena = undefined;
     // The arena is a room of its own, on a map cell clear below every generated floor.
     const lowest = Math.max(0, ...[...this.world.rooms.values()].flatMap((r) => r.floorRoom.cells.map((c) => c.y)));
@@ -720,16 +728,41 @@ export class GameScene extends Phaser.Scene {
     this.scraps.update(delta);
     this.applyShake(time);
     this.ambient.update(!!themeForFloor(this.currentRoom.floorIndex).paper);
-    this.gloom.update(isGloomy({ floorIndex: this.currentRoom.floorIndex, enemies: this.currentRoom.layout.enemies }) ? this.lightPools() : undefined);
+    this.gloom.update(isGloomy({ floorIndex: this.currentRoom.floorIndex, enemies: this.currentRoom.layout.enemies }) ? this.lightPools(time) : undefined);
   }
 
-  /** This frame's light pools in the gloom: round the player, and round every shot in flight (scaled with it). */
-  private lightPools(): PlacedPool[] {
+  /**
+   * This frame's light pools in the gloom: round the player, round every shot in flight (scaled with
+   * it), and round the room's fixed glowers, each breathing at its own pace and casting its colour.
+   */
+  private lightPools(time: number): PlacedPool[] {
+    const room = this.currentRoom;
     const shots = [...this.shots.getChildren(), ...this.enemyShots.getChildren()] as Phaser.GameObjects.Arc[];
+    const origin = tileCenter(room, 0, 0);
+    const [ox, oy] = [origin.x - TUNING.tile / 2, origin.y - TUNING.tile / 2];
     return [
       { x: this.player.x, y: this.player.y, ...PLAYER_POOL },
       ...shots.filter((s) => s.active).map((s) => ({ x: s.x, y: s.y, radius: SHOT_POOL.radius * (s.radius / SHOT_ART.enemy), intensity: SHOT_POOL.intensity })),
+      ...this.glowersOf(room).map((g) => ({ x: ox + g.x, y: oy + g.y, radius: g.radius, intensity: g.intensity * pulse(g.seed, time), tint: GLOW_TINT[g.tint] })),
     ];
+  }
+
+  /** `room`'s fixed glowers: its crystal and glowing fungus, glinting decor, and the gems in its veined walls. */
+  private glowersOf(room: WorldRoom): Glower[] {
+    const id = room.floorRoom.id;
+    let glowers = this.glowers.get(id);
+    if (!glowers) {
+      const looks = roomLooks(room.floorIndex, room.layout.theme ?? '');
+      glowers = glowersOf({
+        tiles: room.layout.tiles,
+        lookOf: (tile) => (tile === 'floor' || tile === 'wall' ? undefined : looks[tile].art),
+        decor: room.layout.decor ?? [],
+        walls: this.wallPieces.get(id) ?? [],
+        veined: room.layout.wallStyle === 'veined',
+      });
+      this.glowers.set(id, glowers);
+    }
+    return glowers;
   }
 
   /**
@@ -1529,6 +1562,8 @@ export class GameScene extends Phaser.Scene {
     this.terrain.delete(key);
     for (const art of this.joinArt.get(key) ?? []) art.destroy();
     this.joinArt.delete(key);
+    // A glower on the broken tile loses its light.
+    this.glowers.delete(roomId);
   }
 
   /** Drops a lit bomb at the player's feet, if they have one. */
@@ -2135,17 +2170,14 @@ export class GameScene extends Phaser.Scene {
         this.paper.piece(floorKey(shell, kind, floorLook(shell, variants?.[ty]?.[tx] ?? 0, tx, ty)), c.x, c.y, floorCanvas(shell));
       }),
     );
-    // Decor is nudged off its tile's centre by its cell, so a scatter of it doesn't sit on the grid;
-    // further on floors whose ground shows no grid at all.
+    // Decor is nudged off its tile's centre by its cell (decorNudge), so a scatter of it doesn't sit on the grid.
     // Decor with no paper art yet keeps its placeholder mark, so the room is never left bare.
-    const nudge = shell === 'caves' ? 9 : 5;
     const kinds = roomThemeById(room.layout.theme ?? '')?.decor;
     let marks: Phaser.GameObjects.Graphics | undefined;
     for (const d of room.layout.decor ?? []) {
       const c = tileCenter(room, d.cell.x, d.cell.y);
-      const x = c.x + (((d.cell.x * 7 + d.cell.y * 3) % 5) - 2) * nudge;
-      const y = c.y + (((d.cell.x * 3 + d.cell.y * 5) % 5) - 2) * nudge;
-      if (this.paper.piece(decorKey(d.kind, d.cell.x + d.cell.y), x, y, DECOR_CANVAS)) continue;
+      const nudge = decorNudge(d.cell, shell);
+      if (this.paper.piece(decorKey(d.kind, d.cell.x + d.cell.y), c.x + nudge.x, c.y + nudge.y, DECOR_CANVAS)) continue;
       const kind = kinds?.find((k) => k.id === d.kind);
       if (kind) drawDecorMark((marks ??= this.add.graphics()), c, d.cell, kind);
     }
@@ -2167,6 +2199,8 @@ export class GameScene extends Phaser.Scene {
     const style = room.layout.wallStyle ?? WALL_STYLES[shell][0];
     const art = this.paper.piece(wallKey(shell, side, variant, style), wall.x, wall.y, wallCanvas(style), footY);
     if (art) this.paper.standIn(wall, art);
+    const pieces = this.wallPieces.get(room.floorRoom.id) ?? [];
+    this.wallPieces.set(room.floorRoom.id, [...pieces, { cell: { x: tx, y: ty }, side, variant }]);
   }
 
   /** A terrain tile's physics shape, standing in paper where its look has art. */

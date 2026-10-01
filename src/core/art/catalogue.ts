@@ -70,6 +70,14 @@ export function floorLook(shell: Shell, variant: number, x: number, y: number): 
 }
 const SHELLS = Object.keys(WALL_STYLES) as Shell[];
 export const decorKey = (kind: string, variant: number) => `k:${kind}:${variant % TILE_VARIANTS}`;
+/**
+ * How far decor on `cell` is nudged off its tile's centre, in px, so a scatter of it doesn't sit on
+ * the grid; further on floors whose ground shows no grid at all.
+ */
+export function decorNudge(cell: { x: number; y: number }, shell: Shell): { x: number; y: number } {
+  const step = shell === 'caves' ? 9 : 5;
+  return { x: (((cell.x * 7 + cell.y * 3) % 5) - 2) * step, y: (((cell.x * 3 + cell.y * 5) % 5) - 2) * step };
+}
 
 const variants = Array.from({ length: TILE_VARIANTS }, (_, v) => v);
 const tileEntry = (key: string, svg: () => string): ArtEntry => ({ key, w: TILE_CANVAS.w, h: TILE_CANVAS.h, svg });

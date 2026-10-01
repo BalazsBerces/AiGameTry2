@@ -28,7 +28,17 @@ A small cluster of crystal set into a cave wall, sparse and kept back from the r
 _Avoid_: crystal seam, wall crystal
 
 **Glowshroom**:
-A glowing violet mushroom clump that bursts into a stun cloud; the plain mushroom cap stays dull so the hazard stands out.
+A glowing violet mushroom clump that bursts into a stun cloud. Violet glow on a mushroom always means a glowshroom.
+
+**Withered** (mushroom):
+Dead fungus: grey-brown, drooping and without colour of its own, so it never reads as a glowshroom. Giant mushrooms and mushroom caps are withered.
+_Avoid_: dull, inactive
+
+**Giant mushroom**:
+The mushroom hollow's obstacle: a tall withered mushroom with only a faint colourless glow.
+
+**Mushroom cap**:
+The mushroom hollow's loose rock: a low clump of withered fungus that breaks after a few shots.
 
 ## Light
 
@@ -48,8 +58,16 @@ Anything that casts a light pool in the gloom: the player, shots, crystals, wall
 ## Enemies and shots
 
 **Geode**:
-A rock enemy that splits open on its crystal core and fires shard shots.
+A rock enemy that splits open on its crystal core and fires shard shots. It is always either shut or open.
 _Avoid_: crystal turret
+
+**Shut** (geode):
+The geode closed up as plain rock: harmless, and nothing can hurt it.
+_Avoid_: closed, inactive, armoured
+
+**Open** (geode):
+The geode split apart with its core showing: it fires, and it can be hurt.
+_Avoid_: active, awake
 
 **Player shot**:
 The player's ranged shot: a steady pale star.

@@ -1,17 +1,20 @@
 import type Phaser from 'phaser';
 import { GEODE_BOUNCES } from '../../core/player/ricochet';
 import { geodePose } from '../../core/art/castPoses';
+import { GEODE, createGeode as createGeodeState, updateGeode, type Geode } from '../../core/enemies/geode';
 import { COLORS, TUNING } from '../config';
 import { championBoost, championColor, markChampion, singlePartEnemy, type Enemy, type EnemyContext, type EnemySprite } from './enemy';
 
-/** A crystal on the cave floor: fires aimed shots, while it can see the player, that ricochet once off stone. */
+/**
+ * A geode on the cave floor, shut or open on the cycle in core/enemies/geode: shut, nothing can
+ * hurt it; open, it fires aimed shard shots that ricochet once off stone, and can be hurt.
+ */
 export function createGeode(scene: Phaser.Scene, x: number, y: number, champion = false): Enemy {
   const { shotSpeed } = TUNING.geode;
+  const rules = GEODE;
   const boost = championBoost(champion);
   const size = TUNING.geode.size * boost.scale;
   const hp = TUNING.geode.hp * boost.hp;
-  // A turret never moves, so a champion's speed goes into firing faster.
-  const fireDelayMs = TUNING.geode.fireDelayMs / boost.speed;
   // A diamond: the physics body stays an axis-aligned square.
   const sprite = scene.add
     .rectangle(x, y, size * 0.8, size * 0.8, championColor(COLORS.geode, champion))
@@ -20,20 +23,29 @@ export function createGeode(scene: Phaser.Scene, x: number, y: number, champion 
   markChampion(sprite, champion);
   scene.physics.add.existing(sprite);
   sprite.body.setImmovable(true);
-  let nextShotAt = 0;
-  let firedAt: number | undefined;
+  // Made on its first update, once the room's clock is known: it may first open after a short random stagger.
+  let state: Geode | undefined;
   const enemy = singlePartEnemy(scene, sprite, hp, (ctx: EnemyContext) => {
     sprite.body.setVelocity(0, 0);
-    if (nextShotAt === 0) nextShotAt = ctx.time + fireDelayMs * (0.5 + Math.random() * 0.5);
-    if (ctx.time < nextShotAt || !ctx.canSeePlayer(sprite)) return;
-    nextShotAt = ctx.time + fireDelayMs;
-    firedAt = ctx.time;
+    const { min, max } = rules.staggerMs;
+    state ??= createGeodeState(ctx.time + min + Math.random() * (max - min));
+    const distance = Math.hypot(ctx.player.x - sprite.x, ctx.player.y - sprite.y) / TUNING.tile;
+    const step = updateGeode(state, distance, ctx.canSeePlayer(sprite), ctx.time, rules);
+    state = step.geode;
     const dx = ctx.player.x - sprite.x;
     const dy = ctx.player.y - sprite.y;
     const len = Math.hypot(dx, dy) || 1;
-    ctx.fireEnemyShot(sprite.x, sprite.y, (dx / len) * shotSpeed, (dy / len) * shotSpeed, false, GEODE_BOUNCES);
+    for (let i = 0; i < step.shots; i++) {
+      ctx.fireEnemyShot(sprite.x, sprite.y, (dx / len) * shotSpeed, (dy / len) * shotSpeed, false, GEODE_BOUNCES);
+    }
   });
-  // A cracked rock geode: it splits open on its crystal core as the shot charges, and flares as it fires.
-  enemy.visual = (time) => geodePose({ nextShotAt, firedAt }, time);
+  const shut = () => !state?.open;
+  // Shut, it is plain rock: harmless to touch, player shots bounce off, and nothing else (bombs, orbitals, lightning) hurts it either.
+  enemy.invulnerable = shut;
+  enemy.harmless = shut;
+  const hit = enemy.hit;
+  enemy.hit = (part, damage) => (shut() ? [enemy] : hit(part, damage));
+  // A cracked rock geode: it splits open on its crystal core through the opening delay, and flares as it fires.
+  enemy.visual = (time) => geodePose(state, time, rules);
   return enemy;
 }

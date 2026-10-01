@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  GEODE_CHARGE_MS,
   LOB_HEAVE_MS,
   POP_WARN_MS,
   WORM_CRAWL_FRAME_MS,
@@ -13,6 +12,7 @@ import {
   wormPose,
   type WormBossLook,
 } from './castPoses';
+import { GEODE, createGeode, updateGeode } from '../enemies/geode';
 import { createWorm } from '../bosses/wormChain';
 import { WORM_BOSS, deathChain, spitWave, splitStop } from '../bosses/wormBossAttack';
 import { WORM_BROOD } from '../bosses/wormBrood';
@@ -90,22 +90,27 @@ describe("the slime's poses", () => {
 });
 
 describe("the geode's poses", () => {
-  it('sits shut between shots, and before it has a first shot lined up', () => {
-    expect(geodePose({ nextShotAt: 0 }, 100)).toEqual({});
-    expect(geodePose({ nextShotAt: 3000, firedAt: 1300 }, 2000)).toEqual({});
+  // Opened at 1000: its first shot is due at the end of the opening delay.
+  const opened = updateGeode(createGeode(0), 1, true, 1000).geode;
+  const firstShotAt = 1000 + GEODE.openDelayMs;
+  const fired = updateGeode(opened, 1, true, firstShotAt).geode;
+
+  it('is plain rock while shut, before it first opens and while it rests', () => {
+    expect(geodePose(undefined, 100)).toEqual({});
+    expect(geodePose(createGeode(500), 100)).toEqual({});
+    let g = fired;
+    for (let t = firstShotAt; g.open; t += 10) g = updateGeode(g, 1, true, t).geode;
+    expect(geodePose(g, firstShotAt + 5000)).toEqual({});
   });
 
-  it('cracks, then splits open, as the shot charges', () => {
-    expect(geodePose({ nextShotAt: 3000 }, 3000 - GEODE_CHARGE_MS + 10)).toEqual({ hold: { action: 'attack', frame: 0 } });
-    expect(geodePose({ nextShotAt: 3000 }, 2990)).toEqual({ hold: { action: 'attack', frame: 1 } });
+  it('cracks, then splits open, through the opening delay', () => {
+    expect(geodePose(opened, 1010)).toEqual({ hold: { action: 'attack', frame: 0 } });
+    expect(geodePose(opened, firstShotAt - 10)).toEqual({ hold: { action: 'attack', frame: 1 } });
   });
 
-  it('stays split open while it waits for a clear line on the player', () => {
-    expect(geodePose({ nextShotAt: 3000 }, 5000)).toEqual({ hold: { action: 'attack', frame: 1 } });
-  });
-
-  it('flares its core as it fires', () => {
-    expect(geodePose({ nextShotAt: 4700, firedAt: 3000 }, 3050)).toEqual({ hold: { action: 'attack', frame: 2 } });
+  it('flares its core just after a shot, then holds split open', () => {
+    expect(geodePose(fired, firstShotAt + 50)).toEqual({ hold: { action: 'attack', frame: 2 } });
+    expect(geodePose(fired, firstShotAt + 400)).toEqual({ hold: { action: 'attack', frame: 1 } });
   });
 });
 

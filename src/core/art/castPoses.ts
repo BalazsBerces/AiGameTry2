@@ -2,6 +2,7 @@ import type { Motion } from './animator';
 import type { GhoulState } from '../enemies/ghoul';
 import type { Bat } from '../enemies/bat';
 import { SLIME, type Slime } from '../enemies/slime';
+import { GEODE, type Geode, type GeodeRules } from '../enemies/geode';
 import { STEP, type Cell } from '../map/floorGenerator';
 import type { Worm } from '../bosses/wormChain';
 import { deathChain, isRoaring, type BossMoment, type SpitShot } from '../bosses/wormBossAttack';
@@ -67,25 +68,18 @@ export function slimePose(slime: Slime, at: { x: number; y: number }, time: numb
   }
 }
 
-/** How long before a shot the geode starts to crack open, and how long its core flares after. */
-export const GEODE_CHARGE_MS = 520;
+/** How long the geode's core flares after a shot. */
 const GEODE_FIRE_MS = 220;
 
-/** What a geode's pose reads off its firing timer: when the next shot is due (0 before it has one) and when it last fired. */
-export interface GeodeTimer {
-  nextShotAt: number;
-  firedAt?: number;
-}
-
 /**
- * The geode's pose from its firing timer: shut between shots; cracking, then split open to show
- * its crystal core as the shot charges (and held open while it waits for a clear line); its core
- * flaring as it fires.
+ * The geode's pose from its state (none yet before its first update): plain rock while shut;
+ * cracking, then split open to show its crystal core, through the opening delay; split open
+ * while it stays open; its core flaring just after each shot.
  */
-export function geodePose({ nextShotAt, firedAt }: GeodeTimer, time: number): Pose {
-  if (firedAt !== undefined && time - firedAt < GEODE_FIRE_MS) return { hold: { action: 'attack', frame: 2 } };
-  if (nextShotAt === 0 || time < nextShotAt - GEODE_CHARGE_MS) return {};
-  return { hold: { action: 'attack', frame: time < nextShotAt - GEODE_CHARGE_MS / 2 ? 0 : 1 } };
+export function geodePose(geode: Geode | undefined, time: number, rules: GeodeRules = GEODE): Pose {
+  if (!geode?.open) return {};
+  if (geode.firedAt !== undefined && time - geode.firedAt < GEODE_FIRE_MS) return { hold: { action: 'attack', frame: 2 } };
+  return { hold: { action: 'attack', frame: time - geode.openedAt < rules.openDelayMs / 2 ? 0 : 1 } };
 }
 
 /** The pieces a worm is drawn in: its head, its body segments and its tail. */

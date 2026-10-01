@@ -66,9 +66,11 @@ export type GlowTint = 'cyan' | 'violet';
 export const GLOW_COLOR: Record<GlowTint, string> = { cyan: '#3a78f0', violet: '#9a36e0' };
 /**
  * A coloured glower's light is its colour, not white: it lifts only `lift` of the gloom a white light
- * would, and lays its colour over the pool at `glow` strength.
+ * would, and lays its colour over the pool at `glow` strength, reaching `reach` times the pool's radius.
  */
-export const TINTED = { lift: 0.45, glow: 0.6 };
+export const TINTED = { lift: 0.6, glow: 0.6, reach: 1.6 };
+/** How coloured light falls off from its source ([share of its reach, strength]): bright, dropping fast, then a long faint tail. */
+export const FALLOFF: [number, number][] = [[0, 1], [0.1, 0.75], [0.25, 0.45], [0.5, 0.2], [0.75, 0.07], [1, 0]];
 /** How bright a coloured glower's bloom is: a small strong glow of its colour right on the thing itself. */
 export const BLOOM = 0.38;
 

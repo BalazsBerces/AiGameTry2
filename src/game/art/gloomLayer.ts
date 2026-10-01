@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { BLOOM, GLOOM, TINTED, WALL_SHADE, type LightPool } from '../../core/art/gloom';
+import { BLOOM, FALLOFF, GLOOM, TINTED, WALL_SHADE, type LightPool } from '../../core/art/gloom';
 import { DARK_DEPTH } from '../entities/bosses/candleWitch';
 
 /** Under the Candle Witch's own, deeper dark (and the HUD, a scene of its own), so her fight works as it always has. */
@@ -22,8 +22,6 @@ function makeBrush(scene: Phaser.Scene, key: string, stops: [number, number][]) 
 }
 /** Solid in the middle, fading to nothing at the rim: what light pools are cut out of the gloom with. */
 const POOL_STOPS: [number, number][] = [[0, 1], [0.45, 0.9], [1, 0]];
-/** Bright at the middle and dropping off fast, then a long faint tail, as light falls off from its source. */
-const FALLOFF_STOPS: [number, number][] = [[0, 1], [0.1, 0.7], [0.25, 0.35], [0.5, 0.12], [0.75, 0.04], [1, 0]];
 
 /**
  * A light pool placed in the world. A coloured one (a crystal's) casts its `tint`, and `core` is the
@@ -58,7 +56,7 @@ export class GloomLayer {
 
   constructor(private scene: Phaser.Scene) {
     makeBrush(scene, 'gloom-brush', POOL_STOPS);
-    makeBrush(scene, 'light-falloff', FALLOFF_STOPS);
+    makeBrush(scene, 'light-falloff', FALLOFF);
     const cam = scene.cameras.main;
     this.gloom = scene.add.renderTexture(0, 0, cam.width + MARGIN * 2, cam.height + MARGIN * 2).setOrigin(0).setDepth(GLOOM_DEPTH).setVisible(false);
     this.stamp = scene.make.image({ key: 'gloom-brush', add: false });
@@ -73,7 +71,7 @@ export class GloomLayer {
     this.shade.setVisible(!!frame);
     const tinted = pools?.filter((p) => p.tint !== undefined) ?? [];
     // Over the gloom: the pool is lit in the glower's colour, falling off fast from it, and the glower itself blooms.
-    this.place(this.glows, tinted, (g, p) => g.setScale((p.radius * 1.1) / BRUSH).setAlpha(TINTED.glow * p.intensity));
+    this.place(this.glows, tinted, (g, p) => g.setScale((p.radius * TINTED.reach) / BRUSH).setAlpha(TINTED.glow * p.intensity));
     this.place(this.blooms, tinted, (g, p) => g.setScale(((p.core ?? 0) * 1.8) / BRUSH).setAlpha(BLOOM * (0.5 + p.intensity)));
     if (!pools) return;
     const cam = this.scene.cameras.main;

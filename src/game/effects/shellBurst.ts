@@ -44,11 +44,11 @@ function fling(scene: Phaser.Scene, at: Point, piece: Phaser.GameObjects.Shape, 
 
 /**
  * The worm boss's shell bursting at `at`: shards of it (`color`, or each in turn of a palette of
- * them, its black glass) fly, spin and bounce, orange ichor sprays, sparks of its glow (`sparks`,
- * if given) fly off the shattering glass, and a splat of ichor is left on `marks` (the fight's
- * floor decals), if given, for good.
+ * them) fly, spin and bounce, orange ichor sprays, sparks of its glow (`glow.sparks`, if given)
+ * fly off the shattering shell with a few blobs of magma (`glow.blobs`, if it is molten), and a
+ * splat of ichor is left on `marks` (the fight's floor decals), if given, for good.
  */
-export function shellBurst(scene: Phaser.Scene, at: Point, size: BurstSize, color: number | readonly number[], marks?: Phaser.GameObjects.Graphics, sparks?: number) {
+export function shellBurst(scene: Phaser.Scene, at: Point, size: BurstSize, color: number | readonly number[], marks?: Phaser.GameObjects.Graphics, glow?: { sparks: number; blobs?: number }) {
   const spec = TUNING.shellBurst[size];
   const reach = spec.reachTiles * TUNING.tile;
   if (marks) splat(marks, at, (spec.splatTiles * TUNING.tile) / 2);
@@ -64,10 +64,16 @@ export function shellBurst(scene: Phaser.Scene, at: Point, size: BurstSize, colo
     fling(scene, at, shard, reach, true);
   }
   spray(scene, at, spec.drops, reach * 1.1);
-  if (sparks === undefined) return;
+  if (!glow) return;
   for (let i = 0; i < spec.sparks; i++) {
-    const spark = scene.add.circle(at.x, at.y, rand(0.8, 1.8), sparks).setDepth(DEPTH).setBlendMode('ADD');
+    const spark = scene.add.circle(at.x, at.y, rand(0.8, 1.8), glow.sparks).setDepth(DEPTH).setBlendMode('ADD');
     fling(scene, at, spark, reach * 1.25, false);
+  }
+  if (glow.blobs === undefined) return;
+  for (let i = 0; i < Math.ceil(spec.sparks / 3); i++) {
+    const blob = scene.add.circle(at.x, at.y, rand(2, 3.6), glow.blobs).setDepth(DEPTH);
+    blob.setStrokeStyle(1, glow.sparks, 0.9);
+    fling(scene, at, blob, reach * 0.8, false);
   }
 }
 

@@ -804,25 +804,26 @@ interface PlateLook {
 const MATTE: PlateLook = { plate: C.matte, light: C.matteLight, dark: C.matteDark, edge: C.matteEdge, mandible: C.mandible, mandibleTip: C.mandibleTip };
 /** A hatchling: pale, soft, half-translucent plates, no glow. */
 const PALE: PlateLook = { plate: C.pale, light: C.paleLight, dark: C.paleDark, edge: C.paleEdge, mandible: C.paleMandible, mandibleTip: C.paleMandibleTip, veil: 0.78 };
-/** The light in the worm boss's seams, and its bright core, in each glow. */
-const SEAM_LIGHT: Record<SeamGlow, { glow: string; core: string }> = {
-  blood: { glow: C.seamBlood, core: C.seamBloodLight },
-  ember: { glow: C.seamEmber, core: C.seamEmberLight },
-};
+/**
+ * What the worm boss shatters into, at its split and as it blows apart: the Obsidian Centipede
+ * into black-glass shards with sparks in its seam glow; the Molten Centipede into basalt chunks
+ * and obsidian slivers, with ember sparks and small blobs of magma.
+ */
+export const wormBossBurst = (glow: SeamGlow): { shards: readonly string[]; sparks: string; blobs?: string } =>
+  glow === 'blood'
+    ? { shards: [C.obsidian, C.obsidianLight, C.obsidian, C.obsidianEdge], sparks: C.seamBloodLight }
+    : { shards: [C.crust, C.crustDark, C.obsidian, C.crustLight], sparks: C.lavaCore, blobs: C.lava };
 
-/** What the worm boss shatters into, at its split and as it blows apart: black-glass shards, and sparks in its seam glow. */
-export const wormBossBurst = (glow: SeamGlow) => ({ shards: [C.obsidian, C.obsidianLight, C.obsidian, C.obsidianEdge], sparks: SEAM_LIGHT[glow].core });
-
-/** The worm boss, the Obsidian Centipede: black glass, dim light in its seams (blood red, or molten ember). */
-const obsidian = (glow: SeamGlow): PlateLook => ({
+/** The worm boss, the Obsidian Centipede: black glass, dim blood-red light in its seams. */
+const OBSIDIAN: PlateLook = {
   plate: C.obsidian,
   light: C.obsidianLight,
   dark: C.obsidianDark,
   edge: C.obsidianEdge,
   mandible: C.glassFang,
   mandibleTip: C.glassFangTip,
-  seam: SEAM_LIGHT[glow],
-});
+  seam: { glow: C.seamBlood, core: C.seamBloodLight },
+};
 
 /**
  * How a centipede piece moves in one frame: stretched along its spine and squeezed across it as
@@ -867,6 +868,43 @@ function mandible(x: number, y: number, s: 1 | -1, gape: number, look: PlateLook
   const hook = taper([{ x: 0, y: 0 }, { x: 9, y: 2.5 * s }, { x: 17, y: 1.5 * s }, { x: 21, y: -2.5 * s }], 5.5, 0.6);
   const tip = taper([{ x: 14, y: 2 * s }, { x: 17, y: 1.5 * s }, { x: 21, y: -2.5 * s }], 2.4, 0.4);
   return group(fill(hook, look.mandible) + fill(tip, look.mandibleTip), `translate(${n(x)} ${n(y)}) rotate(${n(s * (gape * 24 - 4))})`);
+}
+
+/** An open line through `pts`. */
+const linePath = (pts: readonly Pt[]) => `M${pts.map((q) => `${n(q.x)} ${n(q.y)}`).join('L')}`;
+
+/**
+ * A centipede piece's `plate` torn open at its split: its loose end (`off` 1 its front, -1 its
+ * back) snapped off along a jagged break, `edge` drawn along the break and `shard` the splinters
+ * left sticking out of it. Stretched `s` along its spine and `w` across it.
+ */
+function tearOff(plate: string, off: 1 | -1, s: number, w: number, edge: (d: string) => string, shard: (pts: Pt[], i: number) => string): string {
+  const half = PLATE_HALF;
+  const cut = off > 0 ? half - 17 : -half + 7;
+  const jag = [-24, -15, -10, -5, 0, 5, 10, 15, 24].map((y, i) => [cut + off * ((i % 2 ? 3.5 : -1.5) + ((i * 7) % 3) * 0.8), y] as const);
+  const kept = [...jag, [cut - off * 80, 24], [cut - off * 80, -24]] as const;
+  const shards = [[-12, 6, 4], [-2, 4.5, -3], [9, 5.5, 5]]
+    .map(([y, len, tilt], i) => {
+      const at = jag[2 + i * 2];
+      return shard(along([[at[0] - off * 1, y - 2], [at[0] + off * len, y + tilt * 0.3], [at[0] - off * 1, y + 2]], s, w), i);
+    })
+    .join('');
+  return `<clipPath id="torn"><path d="${polyPath(along(kept, s, w))}"/></clipPath><g clip-path="url(#torn)">${plate}</g>` + edge(linePath(along(jag.slice(1, -1), s, w))) + shards;
+}
+
+/**
+ * A centipede piece's `plate` parted down its keel `by` px either way as an egg heaves out of it:
+ * `gap` showing between the halves, and the egg's shell in it if it is still there. Stretched `s`
+ * along its spine.
+ */
+function partOpen(plate: string, { by, egg }: { by: number; egg: boolean }, s: number, gap: string): string {
+  const { x: cx, y: cy } = CENTIPEDE.foot;
+  const side = (id: string, y: number, h: number, dy: number) =>
+    `<clipPath id="${id}"><rect x="-40" y="${n(y)}" width="${CENTIPEDE.w + 80}" height="${n(h)}"/></clipPath>` + group(`<g clip-path="url(#${id})">${plate}</g>`, `translate(0 ${n(dy)})`);
+  const shell = egg
+    ? ellipse(cx, cy, 9 * s, by + 1.5, C.egg) + ellipse(cx + 2, cy + by * 0.4, 6 * s, by * 0.6, C.eggShade, 'opacity="0.7"') + ellipse(cx - 3, cy - by * 0.3, 3, by * 0.35, C.eggLight, 'opacity="0.8"')
+    : '';
+  return gap + shell + side('upper', -40, 40 + cy, -by) + side('lower', cy, 40 + CENTIPEDE.h, by);
 }
 
 /**
@@ -919,7 +957,7 @@ function centipedePiece(piece: WormPieceArt, c: Ripple, champion: boolean, look:
   // Blazing, light spills out all round its rim.
   const blaze = look.seam && g > 1.2 ? `<path d="${plateD}" stroke="${look.seam.glow}" stroke-width="6" fill="none" opacity="${n(Math.min(0.6, (g - 1.2) * 0.45))}" stroke-linejoin="round"/>` : '';
   // About to pop: light splintering out from its keel through the glass.
-  const zigzag = (list: readonly (readonly [number, number])[]) => `M${along(list, s, w).map((q) => `${n(q.x)} ${n(q.y)}`).join('L')}`;
+  const zigzag = (list: readonly (readonly [number, number])[]) => linePath(along(list, s, w));
   const splinters = c.splinter
     ? [[[-6, 0], [-2, -5], [-6, -9], [-3, -13]], [[3, 1], [8, 5], [5, 9], [9, 13]], [[-1, -1], [5, -6], [3, -11]], [[-9, 1], [-13, 6], [-10, 11]]]
         .map((line) => lit(zigzag(line as [number, number][]), 0.9, 1.2))
@@ -930,32 +968,12 @@ function centipedePiece(piece: WormPieceArt, c: Ripple, champion: boolean, look:
   const gut = look.veil ? ellipse(cx - 2 * s, cy + 1, (half - 9) * s, 4.5 * w, look.dark, 'opacity="0.3"') : '';
   let plate = seam + leak + blaze + trim(plateD, champion) + spikes + fill(plateD, look.plate, veil) + gut + shade + keel + groove + grooveGlow + rim + sheen + splinters;
   // Torn open at its split: its loose end snapped off in jagged glass, light leaking from the break.
-  const tornOff = c.torn ? (piece === 'head' ? 1 : -1) : 0;
-  if (tornOff) {
-    const cut = tornOff > 0 ? half - 17 : -half + 7;
-    const jag = [-24, -15, -10, -5, 0, 5, 10, 15, 24].map((y, i) => [cut + tornOff * ((i % 2 ? 3.5 : -1.5) + ((i * 7) % 3) * 0.8), y] as const);
-    const kept = [...jag, [cut - tornOff * 80, 24], [cut - tornOff * 80, -24]] as const;
-    const edge = zigzag(jag.slice(1, -1));
-    const shards = [[-12, 6, 4], [-2, 4.5, -3], [9, 5.5, 5]]
-      .map(([y, len, tilt], i) => {
-        const at = jag[2 + i * 2];
-        const pts = along([[at[0] - tornOff * 1, y - 2], [at[0] + tornOff * len, y + tilt * 0.3], [at[0] - tornOff * 1, y + 2]], s, w);
-        return fill(cutPoly(r(`shard${i}`), pts, 0.3), look.plate, `stroke="${look.edge}" stroke-width="0.6"`);
-      })
-      .join('');
-    plate = `<clipPath id="torn"><path d="${polyPath(along(kept, s, w))}"/></clipPath><g clip-path="url(#torn)">${plate}</g>` + lit(edge, 2.2, 1.5) + shards;
+  if (c.torn) {
+    const shard = (pts: Pt[], i: number) => fill(cutPoly(r(`shard${i}`), pts, 0.3), look.plate, `stroke="${look.edge}" stroke-width="0.6"`);
+    plate = tearOff(plate, piece === 'head' ? 1 : -1, s, w, (edge) => lit(edge, 2.2, 1.5), shard);
   }
   // Heaving out an egg: its plate parted down its keel, light and the egg's shell showing in the gap.
-  if (c.parted) {
-    const { by, egg } = c.parted;
-    const side = (id: string, y: number, h: number, dy: number) =>
-      `<clipPath id="${id}"><rect x="-40" y="${n(y)}" width="${CENTIPEDE.w + 80}" height="${n(h)}"/></clipPath>` + group(`<g clip-path="url(#${id})">${plate}</g>`, `translate(0 ${n(dy)})`);
-    const gap = ellipse(cx, cy, (half - 6) * s, by + 2, look.dark) + lit(zigzag([[-half + 8, 0], [half - 8, 0]]), 1.6, 1.4);
-    const shell = egg
-      ? ellipse(cx, cy, 9 * s, by + 1.5, C.egg) + ellipse(cx + 2, cy + by * 0.4, 6 * s, by * 0.6, C.eggShade, 'opacity="0.7"') + ellipse(cx - 3, cy - by * 0.3, 3, by * 0.35, C.eggLight, 'opacity="0.8"')
-      : '';
-    plate = gap + shell + side('upper', -40, 40 + cy, -by) + side('lower', cy, 40 + CENTIPEDE.h, by);
-  }
+  if (c.parted) plate = partOpen(plate, c.parted, s, ellipse(cx, cy, (half - 6) * s, c.parted.by + 2, look.dark) + lit(zigzag([[-half + 8, 0], [half - 8, 0]]), 1.6, 1.4));
   let ends = '';
   if (piece === 'head' && !c.torn) {
     const front = cx + (half - 14) * s;
@@ -1018,7 +1036,7 @@ function bossRipple(action: Action, frame: number): Ripple {
     case 'charge':
       return { ...base, stretch: [0.94, 0.92][frame], squeeze: [1.05, 1.07][frame], wobble: [1.5, -1.5][frame], gape: [1.5, 1.7][frame], glow: [1, 1.2][frame] };
     case 'lunge':
-      return { ...base, stretch: [1.06, 1.08][frame], squeeze: [0.95, 0.93][frame], wobble: [1, -1][frame], gape: [-0.25, -0.3][frame], glow: [0.6, 0.7][frame] };
+      return { ...base, stretch: [1.06, 1.08][frame], squeeze: [0.95, 0.93][frame], wobble: [1, -1][frame], gape: [-0.25, -0.3][frame], glow: [0.2, 0.25][frame] };
     case 'lob':
       return { ...base, squeeze: [1.08, 1.03][frame], gape: [0.5, 0.4][frame], glow: [0.9, 0.6][frame], parted: { by: [5, 2.5][frame], egg: frame === 0 } };
     case 'split':
@@ -1030,13 +1048,175 @@ function bossRipple(action: Action, frame: number): Ripple {
   }
 }
 
+/** A crack wandering from `from` (along the spine, across it) the way `dir` points, for `steps` steps of about `len`, kept within `reach` of the plate's middle. */
+function crackLine(r: ReturnType<typeof pieceRng>, from: readonly [number, number], dir: readonly [number, number], steps: number, len: number, reach: Pt): [number, number][] {
+  const pts: [number, number][] = [[from[0], from[1]]];
+  let [x, y] = from;
+  for (let i = 0; i < steps; i++) {
+    const a = Math.atan2(dir[1], dir[0]) + (r.next() - 0.5) * 1.1;
+    x = Math.max(-reach.x, Math.min(reach.x, x + Math.cos(a) * len * (0.7 + r.next() * 0.6)));
+    y = Math.max(-reach.y, Math.min(reach.y, y + Math.sin(a) * len * (0.7 + r.next() * 0.6)));
+    pts.push([x, y]);
+  }
+  return pts;
+}
+
+/**
+ * The cracks across one of the Molten Centipede's plates, by piece and (for its body) which of
+ * its three patterns: a few running out from its keel to its flanks, each branching once.
+ */
+function moltenCracks(piece: WormPieceArt, variant: number): [number, number][][] {
+  const r = pieceRng('wormBossMolten', piece, variant, 'cracks');
+  const reach = { x: PLATE_HALF - 7, y: 11.5 };
+  const starts = piece === 'head' ? [-14, -2] : piece === 'tail' ? [-12, 2] : [-18, -6, 6, 16];
+  return starts.flatMap((x, i) => {
+    const side = (i + variant) % 2 ? 1 : -1;
+    const main = crackLine(r, [x + (r.next() - 0.5) * 4, (r.next() - 0.5) * 2], [(r.next() - 0.5) * 1.4, side], piece === 'body' ? 4 : 3, 3, reach);
+    const branch = crackLine(r, main[2], [r.next() > 0.5 ? 1 : -1, side * 0.4], 2, 3, reach);
+    return [main, branch];
+  });
+}
+
+/**
+ * One piece of the Molten Centipede from above, pointing right: a slab of cooled basalt crust,
+ * broad as its segments, broken-edged and faceted (a lit top plane, its sides falling away into
+ * shadow), shards of obsidian fused into it and a ridge of rock spikes down its keel, taller
+ * toward the head. Lava cracks run across it, a deep red rim round orange round a yellow-hot
+ * core, opening as wide as its `glow` says; lava oozes out from under its back rim and drips onto
+ * the plate behind. The head is a craggy skull with molten eye pits and obsidian-shard mandibles
+ * edged in lava; the tail trails an obsidian stinger with a lava vein, dripping at its tip.
+ */
+function moltenPiece(piece: WormPieceArt, c: Ripple, variant: number, r: PieceRng): string {
+  const s = c.stretch;
+  const w = c.squeeze * BOSS_BREADTH;
+  const half = PLATE_HALF;
+  const { x: cx, y: cy } = CENTIPEDE.foot;
+  const heat = c.glow ?? 0.4;
+  const at = (list: readonly (readonly [number, number])[]) => along(list, s, w);
+  // A crack of lava, layered from its rim in: the hotter, the wider it runs.
+  const crack = (d: string, k = 1) => {
+    const width = (0.5 + heat * 1.1) * k;
+    const line = (color: string, wide: number, extra = '') => `<path d="${d}" stroke="${color}" stroke-width="${n(width * wide)}" fill="none" stroke-linejoin="round" stroke-linecap="round"${extra}/>`;
+    return line(C.crustDark, 3.4, ' opacity="0.75"') + line(C.lavaDeep, 2.2, ' opacity="0.9"') + line(C.lava, 1.3) + line(C.lavaCore, 0.55) + (heat > 1.4 ? line(C.lavaHot, 0.22) : '');
+  };
+  const outline =
+    piece === 'head'
+      ? ([[half - 10, 0], [half - 13, -8], [half - 20, -13], [-4, -15.5], [-half + 7, -14], [-half + 1, -8], [-half - 1, 0], [-half + 1, 8], [-half + 7, 14], [-4, 15.5], [half - 20, 13], [half - 13, 8]] as const)
+      : piece === 'tail'
+        ? ([[half + 1, 0], [half - 3, -9], [half - 13, -14], [0, -13.5], [-half + 13, -10], [-half + 7, -5], [-half + 5, 0], [-half + 7, 5], [-half + 13, 10], [0, 13.5], [half - 13, 14], [half - 3, 9]] as const)
+        : ([[half + 1, 0], [half - 3, -10], [half - 13, -15], [0, -16], [-half + 9, -15.5], [-half + 1, -10], [-half - 1, 0], [-half + 1, 10], [-half + 9, 15.5], [0, 16], [half - 13, 15], [half - 3, 10]] as const);
+  // Its slab: the sides and underside, then the top plane set up off them, then a lit facet on that.
+  const slab = cutPoly(r('slab'), at(outline.map(([x, y]) => [x, y + 2.2] as const)), 0.9);
+  const top = cutPoly(r('top'), at(outline.map(([x, y]) => [x * 0.9 - 0.5, y * 0.84 - 1] as const)), 0.8);
+  const facet = cutPoly(r('facet'), at([[half - 8, -3], [half - 15, -10], [-2, -12.5], [-half + 9, -11], [-half + 6, -5], [-6, -2.5]]), 0.7);
+  const underside = cutPoly(r('under'), at([[half - 4, 6], [half - 14, 13], [0, 14], [-half + 8, 13], [-half + 2, 7], [-4, 9]]), 0.7);
+  // Two big soft shadows: it stands up off the floor.
+  const shadow = ellipse(cx + 2, cy + 4, half * s + 7, 21 * w, P.shadow, 'opacity="0.14"') + ellipse(cx + 1.5, cy + 3, half * s + 3, 19 * w, P.shadow, 'opacity="0.4"');
+  // Lava oozing out from under its back rim, dripping onto the plate behind.
+  const ooze = 0.6 + Math.min(heat, 2) * 0.35;
+  const back = -half - 1;
+  const welling = at([[-half + 10, -14], [back - 1.5 * ooze, -8], [back - 2.5 * ooze, 0], [back - 1.5 * ooze, 8], [-half + 10, 14]]);
+  const oozeLobes =
+    `<path d="${linePath(welling)}" stroke="${C.lavaDeep}" stroke-width="${n(3 + ooze * 2)}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>` +
+    `<path d="${linePath(welling)}" stroke="${C.lava}" stroke-width="${n(1.4 + ooze * 1.4)}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>` +
+    `<path d="${linePath(welling.slice(1, 4))}" stroke="${C.lavaCore}" stroke-width="${n(0.5 + ooze * 0.6)}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
+  // Drips run back off the crescent, each a bead on the end of a thin trail.
+  const drips = [[-6, 4.5, 1.3], [4, 6.5, 1], [10, 3.5, 0.8]]
+    .map(([y, len, size]) => {
+      const [from, to] = at([[back - 2 * ooze, y], [back - 2 * ooze - len * ooze, y + 0.6]]);
+      return `<path d="${linePath([from, to])}" stroke="${C.lava}" stroke-width="${n(size * 0.9)}" stroke-linecap="round"/>` +
+        ellipse(to.x, to.y, size * 1.15 * ooze, size * ooze, C.lava) + ellipse(to.x + 0.3, to.y - 0.2, size * 0.5 * ooze, size * 0.45 * ooze, C.lavaCore);
+    })
+    .join('');
+  // Shards of obsidian fused into the crust, their edges catching the light.
+  const inlays = (piece === 'tail' ? [[6, 6, 0]] : [[-10, -7, 1], [9, 7, -1]])
+    .map(([x, y, tilt], i) => {
+      const pts = at([[x - 6.5, y - 1 + tilt], [x + 1, y - 4.5], [x + 7, y + 0.5 - tilt], [x - 1, y + 4]]);
+      return fill(cutPoly(r(`inlay${i}`), pts, 0.3), C.obsidian) + `<path d="${linePath([pts[0], pts[1], pts[2]])}" stroke="${C.obsidianLight}" stroke-width="1.1" fill="none" stroke-linejoin="round"/>`;
+    })
+    .join('');
+  // A ridge of rock spikes down its keel, taller toward the head, each lit on one side and dark on the other.
+  const tall = piece === 'head' ? 0.85 : piece === 'tail' ? 0.65 : 1;
+  const ridge = (piece === 'head' ? [-18, -9] : piece === 'tail' ? [-10, 2] : [-17, -6, 5])
+    .map((x, i) => {
+      const h = (6.5 + (i % 2) * 1.8) * tall;
+      const [tip, left, right, base] = at([[x - h, 0.5], [x + 2.5, -h * 0.55], [x + 2.5, h * 0.55], [x + 4, 0]]);
+      // Its shadow falls to one side, down-right like every sheet's.
+      const [st, sl, sr] = at([[x - h + 1.5, 2.5], [x + 3.5, -h * 0.35 + 2], [x + 3.5, h * 0.55 + 2.5]]);
+      return fill(polyPath([st, sl, sr]), P.shadow, 'opacity="0.45"') + fill(polyPath([tip, left, right]), C.crustDark) +
+        fill(polyPath([tip, left, base]), C.crustLight) + fill(polyPath([tip, base, right]), C.crustDark) +
+        `<path d="${linePath([left, tip, right])}" stroke="${C.crustEdge}" stroke-width="0.7" fill="none" opacity="0.9" stroke-linejoin="round"/>`;
+    })
+    .join('');
+  const rim = `<path d="${linePath(at([[-half + 9, -14.5], [-half + 2, -9], [-half, 0], [-half + 2, 9], [-half + 9, 14.5]]))}" stroke="${C.crustEdge}" stroke-width="1.3" fill="none" opacity="0.8" stroke-linejoin="round"/>`;
+  const cracks = moltenCracks(piece, variant).map((line, i) => crack(linePath(at(line)), i % 2 ? 0.7 : 1)).join('');
+  // About to pop: lava floods up through new cracks all over it.
+  const flood = c.splinter ? moltenCracks(piece, variant + 3).map((line, i) => crack(linePath(at(line)), i % 2 ? 0.8 : 1.1)).join('') : '';
+  let plate = oozeLobes + drips + fill(slab, C.crustDark) + fill(underside, C.crustDark, 'opacity="0.9"') + fill(top, C.crust) + fill(facet, C.crustLight, 'opacity="0.75"') + inlays + cracks + flood + ridge + rim;
+  // Broken off at its split, its raw molten core showing at the break.
+  if (c.torn) {
+    const chunk = (pts: Pt[], i: number) => fill(cutPoly(r(`chunk${i}`), pts, 0.4), i % 2 ? C.obsidian : C.crustLight, `stroke="${C.crustEdge}" stroke-width="0.5"`);
+    plate = tearOff(plate, piece === 'head' ? 1 : -1, s, w, (edge) => crack(edge, 1.8), chunk);
+  }
+  // Heaving out an egg, its crust split on magma.
+  if (c.parted) {
+    const { by } = c.parted;
+    plate = partOpen(plate, c.parted, s, ellipse(cx, cy, (half - 5) * s, by + 2.5, C.lavaDeep) + ellipse(cx, cy, (half - 8) * s, by + 1, C.lava) + crack(linePath(at([[-half + 8, 0], [half - 8, 0]]))));
+  }
+  let ends = '';
+  let face = '';
+  if (piece === 'head' && !c.torn) {
+    const front = cx + (half - 12) * s;
+    // A brow ridge over each molten eye pit.
+    const eye = (side: number) => {
+      const y = cy + side * 7 * w;
+      return (
+        ellipse(front - 7, y, 2.4, 1.8, C.crustDark) + ellipse(front - 7, y, 1.7, 1.2, C.lavaDeep) + ellipse(front - 7, y, 1, 0.7, heat > 1.4 ? C.lavaHot : C.lavaCore) +
+        `<path d="M${n(front - 10)} ${n(y - side * 2.6)}Q${n(front - 7)} ${n(y - side * 4)} ${n(front - 4)} ${n(y - side * 2.2)}" stroke="${C.crustEdge}" stroke-width="1.2" fill="none"/>`
+      );
+    };
+    // An obsidian shard of a mandible, its inner edge molten, a glint down its back.
+    const jaw = (side: 1 | -1) => {
+      const hook = taper([{ x: -4, y: 0 }, { x: 8, y: 3 * side }, { x: 17, y: 2 * side }, { x: 23, y: -3.5 * side }], 8, 0.6);
+      const edge = `M0 ${n(2.4 * side)}L9 ${n(4.8 * side)}L17 ${n(3.4 * side)}L22.5 ${n(-3 * side)}`;
+      return group(
+        fill(hook, C.obsidian, `stroke="${C.obsidianLight}" stroke-width="0.8" stroke-linejoin="round"`) +
+          `<path d="${edge}" stroke="${C.lava}" stroke-width="1.1" fill="none" opacity="0.95" stroke-linejoin="round"/>` +
+          `<path d="M2 ${n(-1.4 * side)}L14 ${n(0.4 * side)}" stroke="${C.obsidianGlint}" stroke-width="0.9" opacity="0.85"/>`,
+        `translate(${n(front)} ${n(cy + side * 5 * w)}) rotate(${n(side * (c.gape * 24 - 4))})`,
+      );
+    };
+    ends = jaw(-1) + jaw(1);
+    // Its face: a heavy brow of crust across its front, the eyes burning under it.
+    const brow = cutPoly(r('brow'), at([[half - 12, -11], [half - 8, -4], [half - 7, 4], [half - 12, 11], [half - 22, 12], [half - 19, 0], [half - 22, -12]]), 0.6);
+    face = fill(brow, C.crustDark, 'opacity="0.85"') + `<path d="${linePath(at([[half - 21, -12], [half - 18, 0], [half - 21, 12]]))}" stroke="${C.crustEdge}" stroke-width="1" fill="none" opacity="0.8"/>` + [-1, 1].map(eye).join('');
+  }
+  if (piece === 'tail' && !c.torn) {
+    const root = cx - (half - 8) * s;
+    const sting = [{ x: root + 4, y: cy }, { x: root - 12, y: cy + 1 }, { x: root - 26, y: cy - 0.5 }, { x: root - 38, y: cy - 3.5 }];
+    ends =
+      fill(taper(sting, 7.5, 0.6), C.obsidian) +
+      `<path d="${linePath(sting.slice(0, 3))}" stroke="${C.lava}" stroke-width="1.1" fill="none" opacity="0.9"/>` +
+      `<path d="${linePath([{ x: root - 4, y: cy - 2.4 }, { x: root - 22, y: cy - 2.2 }])}" stroke="${C.obsidianGlint}" stroke-width="0.7" opacity="0.8"/>` +
+      ellipse(root - 38.5, cy - 2, 1.3, 1.6, C.lava) + ellipse(root - 38.5, cy - 2.2, 0.6, 0.7, C.lavaCore);
+  }
+  const body = shadow + ends + plate + face;
+  const chips = c.hurt
+    ? [[-14, -20, 25], [12, 19, -40], [20, -18, 70]].map(([x, y, a], i) => group(fill(cutPoly(r(`chip${i}`), [{ x: -2.2, y: -1.5 }, { x: 2.2, y: -1 }, { x: 1, y: 2 }, { x: -1.6, y: 1.3 }], 0.3), C.crustLight), `translate(${n(cx + x)} ${n(cy + y)}) rotate(${a})`)).join('')
+    : '';
+  return group(body, `rotate(${n(c.wobble)} ${cx} ${cy})`) + chips;
+}
+
 /**
  * A piece of the worm boss acting out its fight from above, pointing right and turned along its
- * spine: the centipede's own piece in black glass, broad as its segments.
+ * spine, broad as its segments: in blood red, the centipede's own piece in black glass; in molten
+ * ember, the Molten Centipede's rock and lava, its body cracked in pattern `variant` (0–2).
  */
-function drawWormBoss(piece: WormPieceArt, action: Action, frame: number, glow: SeamGlow): string {
-  const r: PieceRng = (part) => pieceRng('wormBoss', piece, part);
-  const body = centipedePiece(piece, bossRipple(action, frame), false, obsidian(glow), r, BOSS_BREADTH);
+function drawWormBoss(piece: WormPieceArt, action: Action, frame: number, glow: SeamGlow, variant = 0): string {
+  const body =
+    glow === 'blood'
+      ? centipedePiece(piece, bossRipple(action, frame), false, OBSIDIAN, (part) => pieceRng('wormBoss', piece, part), BOSS_BREADTH)
+      : moltenPiece(piece, bossRipple(action, frame), variant, (part) => pieceRng('wormBossMolten', piece, variant, part));
   const { x: cx, y: cy } = CENTIPEDE.foot;
   // Its own canvas is bigger than a worm's: the piece sits in the middle of it.
   return group(body, `translate(${WORM_BOSS.foot.x - cx} ${WORM_BOSS.foot.y - cy})`);
@@ -1307,9 +1487,11 @@ export const CHARACTERS: Readonly<Record<string, CharacterArt>> = {
   wormBossHead: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('head', a, f, 'blood'), 41, BOSS_ACTIONS),
   wormBossBody: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('body', a, f, 'blood'), 41, BOSS_ACTIONS),
   wormBossTail: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('tail', a, f, 'blood'), 41, BOSS_ACTIONS),
-  // The worm boss in molten ember, beside blood red to compare (core/art/seamGlow).
+  // The worm boss as the Molten Centipede, beside the blood-red glass to compare (core/art/seamGlow): its body in three crack patterns.
   wormBossHeadEmber: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('head', a, f, 'ember'), 41, BOSS_ACTIONS),
-  wormBossBodyEmber: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('body', a, f, 'ember'), 41, BOSS_ACTIONS),
+  wormBossBodyEmber0: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('body', a, f, 'ember', 0), 41, BOSS_ACTIONS),
+  wormBossBodyEmber1: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('body', a, f, 'ember', 1), 41, BOSS_ACTIONS),
+  wormBossBodyEmber2: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('body', a, f, 'ember', 2), 41, BOSS_ACTIONS),
   wormBossTailEmber: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('tail', a, f, 'ember'), 41, BOSS_ACTIONS),
   wormEgg: art(EGG, ['down'], (a, f) => drawEgg(a, f), 43),
   treantBoss: art(TREANT, ['down'], (a, f) => drawTreant(a, f), 17),

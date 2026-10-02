@@ -22,7 +22,16 @@ describe("the worm boss's seam glow", () => {
   });
 
   it("draws the boss's pieces from the art baked in the glow shown", () => {
-    expect(wormBossKind('wormBossHead', 'blood')).toBe('wormBossHead');
-    expect(wormBossKind('wormBossTail', 'ember')).toBe('wormBossTailEmber');
+    for (const index of [0, 1, 4]) {
+      expect(wormBossKind('wormBossHead', 'blood', index)).toBe('wormBossHead');
+      expect(wormBossKind('wormBossBody', 'blood', index)).toBe('wormBossBody');
+      expect(wormBossKind('wormBossHead', 'ember', index)).toBe('wormBossHeadEmber');
+      expect(wormBossKind('wormBossTail', 'ember', index)).toBe('wormBossTailEmber');
+    }
+  });
+
+  it("gives the Molten Centipede's body three crack patterns in turn down its length, so it never repeats plate to plate", () => {
+    const body = [1, 2, 3, 4, 5, 6, 7].map((i) => wormBossKind('wormBossBody', 'ember', i));
+    expect(body).toEqual(['wormBossBodyEmber1', 'wormBossBodyEmber2', 'wormBossBodyEmber0', 'wormBossBodyEmber1', 'wormBossBodyEmber2', 'wormBossBodyEmber0', 'wormBossBodyEmber1']);
   });
 });

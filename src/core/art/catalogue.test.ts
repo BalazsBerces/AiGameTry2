@@ -254,7 +254,9 @@ describe('the art catalogue', () => {
       wormBossBody: { views: ['top'], actions: BOSS_ACTIONS, champion: false },
       wormBossTail: { views: ['top'], actions: BOSS_ACTIONS, champion: false },
       wormBossHeadEmber: { views: ['top'], actions: BOSS_ACTIONS, champion: false },
-      wormBossBodyEmber: { views: ['top'], actions: BOSS_ACTIONS, champion: false },
+      wormBossBodyEmber0: { views: ['top'], actions: BOSS_ACTIONS, champion: false },
+      wormBossBodyEmber1: { views: ['top'], actions: BOSS_ACTIONS, champion: false },
+      wormBossBodyEmber2: { views: ['top'], actions: BOSS_ACTIONS, champion: false },
       wormBossTailEmber: { views: ['top'], actions: BOSS_ACTIONS, champion: false },
       wormEgg: { views: ['down'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 }, champion: false },
     } as const;
@@ -428,41 +430,87 @@ describe('the art catalogue', () => {
       });
 
       it('shatters into black-glass shards with sparks in its seam glow', () => {
-        const { obsidian, obsidianLight, obsidianEdge, seamBlood: glow, seamBloodLight, seamEmber, seamEmberLight, crystal, crystalLight, chitin } = PAPER.caves;
-        for (const g of ['blood', 'ember'] as const) {
-          expect(wormBossBurst(g).shards).toEqual([obsidian, obsidianLight, obsidian, obsidianEdge]);
-          for (const old of [crystal, crystalLight, chitin]) expect(wormBossBurst(g).shards).not.toContain(old);
-        }
+        const { obsidian, obsidianLight, obsidianEdge, seamBlood: glow, seamBloodLight, crystal, crystalLight, chitin } = PAPER.caves;
+        expect(wormBossBurst('blood').shards).toEqual([obsidian, obsidianLight, obsidian, obsidianEdge]);
+        for (const old of [crystal, crystalLight, chitin]) expect(wormBossBurst('blood').shards).not.toContain(old);
         expect([glow, seamBloodLight]).toContain(wormBossBurst('blood').sparks);
-        expect([seamEmber, seamEmberLight]).toContain(wormBossBurst('ember').sparks);
+        expect(wormBossBurst('blood').blobs).toBeUndefined();
       });
     });
 
-    describe('in molten ember, beside blood red, to compare', () => {
-      const { seamBlood, seamBloodLight, seamEmber, seamEmberLight, obsidian } = PAPER.caves;
-      const ember = ['wormBossHeadEmber', 'wormBossBodyEmber', 'wormBossTailEmber'] as const;
-      const blood = ['wormBossHead', 'wormBossBody', 'wormBossTail'] as const;
+    describe('as the Molten Centipede, beside the blood-red glass, to compare', () => {
+      const { seamBlood, seamBloodLight, crust, crustDark, crustLight, obsidian, lava, lavaCore, lavaDeep } = PAPER.caves;
+      const molten = ['wormBossHeadEmber', 'wormBossBodyEmber0', 'wormBossBodyEmber1', 'wormBossBodyEmber2', 'wormBossTailEmber'] as const;
+      const bodies = ['wormBossBodyEmber0', 'wormBossBodyEmber1', 'wormBossBodyEmber2'] as const;
+      /** How wide its lava cracks run in a frame: the stroke widths of the strokes in the lava's colour, added up. */
+      const lavaOf = (action: Action, frame: number, kind = 'wormBossBodyEmber0') =>
+        [...svgOf(charKey(kind, action, frame, 'top')).matchAll(new RegExp(`stroke="${lava}" stroke-width="([\\d.]+)"`, 'gi'))].reduce((a, m) => a + Number(m[1]), 0);
+      const crawl = (kind?: string) => [0, 1, 2, 3].map((f) => lavaOf('move', f, kind));
 
-      it('has every frame of every beat baked in both glows, the same black glass', () => {
-        ember.forEach((kind, i) => {
-          expect(CHARACTERS[kind].actions, kind).toEqual(CHARACTERS[blood[i]].actions);
-          expect(keysOf(kind, false).length, kind).toBe(keysOf(blood[i], false).length);
-          for (const key of keysOf(kind, false)) {
-            const svg = svgOf(key).toLowerCase();
-            for (const own of [obsidian, seamEmber]) expect(svg, key).toContain(own.toLowerCase());
-            for (const other of [seamBlood, seamBloodLight]) expect(svg, key).not.toContain(other.toLowerCase());
-          }
-          for (const key of keysOf(blood[i], false)) for (const other of [seamEmber, seamEmberLight]) expect(svgOf(key).toLowerCase(), key).not.toContain(other.toLowerCase());
-        });
+      it('acts out every beat of the fight, frame for frame with the glass', () => {
+        for (const kind of molten) expect(CHARACTERS[kind].actions, kind).toEqual(CHARACTERS.wormBossBody.actions);
       });
 
-      it('draws the same pieces and beats, only the light in them changed', () => {
-        ember.forEach((kind, i) => {
-          for (const [a, b] of keysOf(kind, false).map((key, k) => [key, keysOf(blood[i], false)[k]])) {
-            const swapped = svgOf(b).replaceAll(seamBlood, seamEmber).replaceAll(seamBloodLight, seamEmberLight);
-            expect(svgOf(a), a).toBe(swapped);
+      it('is basalt crust fused with obsidian, lava cracks layered deep red, orange and a yellow-hot core: none of the blood-red light', () => {
+        for (const kind of molten) {
+          for (const key of keysOf(kind, false)) {
+            const svg = svgOf(key).toLowerCase();
+            for (const own of [crust, crustDark, crustLight, obsidian, lava, lavaCore, lavaDeep]) expect(svg, `${key} ${own}`).toContain(own.toLowerCase());
+            for (const other of [seamBlood, seamBloodLight]) expect(svg, key).not.toContain(other.toLowerCase());
           }
-        });
+        }
+        // And the glass boss has none of its rock or lava.
+        for (const key of keysOf('wormBossBody', false)) for (const other of [crust, lava, lavaCore]) expect(svgOf(key).toLowerCase(), key).not.toContain(other.toLowerCase());
+      });
+
+      it('cracks each of its three body plates its own way', () => {
+        for (const [action, frame] of [['idle', 0], ['move', 2], ['attack', 1], ['die', 1]] as const) {
+          expect(new Set(bodies.map((kind) => svgOf(charKey(kind, action, frame, 'top')))).size, `${action} ${frame}`).toBe(3);
+        }
+      });
+
+      it('breathes as it crawls, its cracks oozing a little wider and narrower frame by frame', () => {
+        for (const kind of molten) expect(new Set(crawl(kind)).size, kind).toBeGreaterThan(1);
+      });
+
+      it('widens its cracks as it charges up, blows them wide open as it roars, narrows them to slits as it lunges', () => {
+        for (const kind of molten) {
+          const most = Math.max(...crawl(kind));
+          for (const f of [0, 1]) expect(lavaOf('charge', f, kind), `${kind} charge ${f}`).toBeGreaterThan(most);
+          expect(lavaOf('attack', 1, kind), kind).toBeGreaterThan(lavaOf('charge', 1, kind));
+          for (const f of [0, 1]) expect(lavaOf('lunge', f, kind), `${kind} lunge ${f}`).toBeLessThan(Math.min(...crawl(kind)));
+        }
+      });
+
+      it("flares a segment's cracks as its spit shot leaves it", () => {
+        expect(lavaOf('spit', 1)).toBeGreaterThan(lavaOf('spit', 0));
+        expect(lavaOf('spit', 1)).toBeGreaterThan(Math.max(...crawl()));
+      });
+
+      it('floods every dying segment with lava just before it pops', () => {
+        for (const kind of molten) {
+          expect(lavaOf('die', 1, kind), kind).toBeGreaterThan(2 * lavaOf('die', 0, kind));
+          expect(lavaOf('die', 1, kind), kind).toBeGreaterThan(lavaOf('attack', 1, kind));
+        }
+      });
+
+      it("splits its crust on magma as an egg heaves out, and shows a molten core at its torn end with no stinger or mandibles", () => {
+        const { egg, obsidianGlint } = PAPER.caves;
+        expect(svgOf(charKey('wormBossBodyEmber0', 'lob', 0, 'top')).toLowerCase()).toContain(egg.toLowerCase());
+        expect(svgOf(charKey('wormBossBodyEmber0', 'lob', 1, 'top')).toLowerCase()).not.toContain(egg.toLowerCase());
+        for (const kind of ['wormBossHeadEmber', 'wormBossTailEmber']) {
+          expect(lavaOf('split', 0, kind), kind).toBeGreaterThan(Math.max(...crawl(kind)));
+          // Its mandibles and stinger are obsidian, glinting; torn, they are gone.
+          expect(svgOf(charKey(kind, 'move', 0, 'top')).toLowerCase(), kind).toContain(obsidianGlint.toLowerCase());
+          for (const f of [0, 1]) expect(svgOf(charKey(kind, 'split', f, 'top')).toLowerCase(), kind).not.toContain(obsidianGlint.toLowerCase());
+        }
+      });
+
+      it('shatters into basalt chunks and obsidian slivers, with ember sparks and small magma blobs', () => {
+        const burst = wormBossBurst('ember');
+        expect(new Set(burst.shards)).toEqual(new Set([crust, crustDark, crustLight, obsidian]));
+        expect(burst.sparks).toBe(lavaCore);
+        expect(burst.blobs).toBe(lava);
       });
     });
 

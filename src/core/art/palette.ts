@@ -205,9 +205,18 @@ export const PAPER = {
     glassFangTip: '#b8b2c4',
     seamBlood: '#a3121f',
     seamBloodLight: '#ff4a3d',
-    // Its seams in molten ember instead, to compare: deep orange round a yellow-hot core.
-    seamEmber: '#c2440c',
-    seamEmberLight: '#ffa63a',
+    // Or, to compare, the Molten Centipede: charcoal basalt crust fused with blue-black obsidian
+    // (a violet-white glint on its mandibles and stinger), cracked on lava: a deep red rim, orange,
+    // a yellow-hot core and, at its hottest, near white.
+    crust: '#3b2f2a',
+    crustLight: '#5e4b41',
+    crustDark: '#1d1613',
+    crustEdge: '#806657',
+    obsidianGlint: '#ddd0ff',
+    lavaDeep: '#a8240b',
+    lava: '#ff6614',
+    lavaCore: '#ffcf3f',
+    lavaHot: '#fff4c8',
     // The worm boss's eggs: dark, leathery pods, thin veins glowing in its seam light.
     egg: '#2c2023',
     eggLight: '#4e3c40',

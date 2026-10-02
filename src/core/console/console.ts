@@ -331,7 +331,7 @@ const COMMANDS: Command[] = [
   },
   {
     name: 'glow',
-    usage: "glow blood|ember — show the worm boss's seams blood red or molten ember, to compare",
+    usage: 'glow blood|ember — show the worm boss as the blood-red Obsidian Centipede or the Molten Centipede, to compare',
     args: () => SEAM_GLOWS.map((g) => g.id),
     run: ([value = '', ...rest], _ctx, out) => {
       const glow = findSeamGlow([value, ...rest].join(' '));

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { artCatalogue, charKey, decorKey, doorKey, floorKey, floorLook, giantKey, groundKey, joinKey, shotKey, tileKey, tileLook, wallJoinKey, wallKey, type DoorSide, type FloorKind } from './catalogue';
+import { WORM_BOSS_LIP_KEY, artCatalogue, charKey, decorKey, doorKey, floorKey, floorLook, giantKey, groundKey, joinKey, shotKey, tileKey, tileLook, wallJoinKey, wallKey, type DoorSide, type FloorKind } from './catalogue';
 import { CHARACTERS, type Action } from './characters';
 import { PAPER } from './palette';
 import { CAVE_FLOOR_LOOKS, GIANT_LOOKS, GIANT_VARIANTS, JOIN_LOOKS, TILE, WALL_JOIN_LOOKS, WALL_JOIN_SIDES, WALL_STYLES, tileLooks, wallGems, type WallSide } from './terrain';
@@ -237,8 +237,8 @@ describe('the art catalogue', () => {
   });
 
   describe('the cave cast', () => {
-    /** The worm boss acts out its fight: crawl, roar (rearing), spit, charge, burrow, lob, split and die. */
-    const BOSS_ACTIONS = { idle: 2, move: 4, attack: 3, hurt: 1, spit: 2, charge: 2, burrow: 2, lob: 2, split: 2, die: 2 } as const;
+    /** The worm boss acts out its fight: crawl (tunnelling too), roar (rearing), spit, charge, lob, split and die. */
+    const BOSS_ACTIONS = { idle: 2, move: 4, attack: 3, hurt: 1, spit: 2, charge: 2, lob: 2, split: 2, die: 2 } as const;
     const CAST = {
       ghoul: { views: ['side'], actions: { idle: 2, move: 4, attack: 3, hurt: 1, recover: 2 } },
       bat: { views: ['side'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 } },
@@ -325,6 +325,14 @@ describe('the art catalogue', () => {
       const crawl = [0, 1, 2, 3].map((f) => glowOf('move', f));
       expect(new Set(crawl).size).toBeGreaterThan(1);
       expect(Math.max(...crawl)).toBeLessThan(glowOf('attack', 1));
+    });
+
+    it('lays a rubble lip of broken rock over the cut where it slides into a wall or out of it', () => {
+      const lip = artCatalogue().find((e) => e.key === WORM_BOSS_LIP_KEY)!;
+      expect(lip).toBeDefined();
+      const svg = lip.svg().toLowerCase();
+      for (const rock of [PAPER.caves.rock, PAPER.caves.rockLight]) expect(svg).toContain(rock.toLowerCase());
+      expect(lip.svg()).toBe(lip.svg());
     });
 
     it('comes out the same when built twice', () => {

@@ -1,7 +1,7 @@
 import type Phaser from 'phaser';
 import { createAnimator, type Animator } from '../../core/art/animator';
-import { charKey } from '../../core/art/catalogue';
-import { CHARACTERS, type Action } from '../../core/art/characters';
+import { WORM_BOSS_LIP_KEY, charKey } from '../../core/art/catalogue';
+import { CHARACTERS, WORM_BOSS_LIP, type Action } from '../../core/art/characters';
 import { footDepth } from '../../core/art/depth';
 import { ART_SCALE, bakedArt } from './bake';
 import { FLASH_MS, HIT_EVENT, type OnSpine, type Visual } from '../entities/enemy';
@@ -49,9 +49,13 @@ export class PaperActor {
   aloft?: () => boolean;
   /** The action and frame it showed last (a geode's light follows its art's glow). */
   shown: { action: Action; frame: number } = { action: 'idle', frame: 0 };
+  /** Burrowing: what keeps only the room side of the wall's edge showing. */
+  private cut?: { edge: Phaser.GameObjects.Graphics; mask: Phaser.Display.Masks.GeometryMask };
+  /** Burrowing, where the rubble lip goes over its cut this frame (the layer lays one per hole): none while it is whole. */
+  lip?: Lip;
 
   constructor(
-    scene: Phaser.Scene,
+    private scene: Phaser.Scene,
     readonly shape: Shape,
     private kind: string,
     private opts: ActorOptions,
@@ -83,6 +87,7 @@ export class PaperActor {
     const { shape, sprite } = this;
     if (!shape.active) {
       sprite.destroy();
+      this.cut?.edge.destroy();
       return false;
     }
     const body = shape.body as Phaser.Physics.Arcade.Body | null;
@@ -110,6 +115,7 @@ export class PaperActor {
         .setFlipX(false)
         .setRotation(spine.angle)
         .setDepth(footDepth(spine.footY, spine.rank));
+      this.clip(spine);
     } else {
       sprite
         .setPosition(shape.x, footY)
@@ -121,7 +127,44 @@ export class PaperActor {
     else sprite.clearTint();
     return true;
   }
+
+  /**
+   * Burrowing, only what is on the room side of the wall's edge shows, a rubble lip to go along
+   * the edge over the cut, just above the piece; all in the wall, none of it shows.
+   */
+  private clip({ clip, footY, rank }: OnSpine) {
+    const { sprite, shape } = this;
+    this.lip = undefined;
+    if (clip === 'hidden') sprite.setVisible(false);
+    if (!clip || clip === 'hidden') {
+      if (this.cut) sprite.clearMask();
+      return;
+    }
+    if (!this.cut) {
+      // Everything on the room side of the edge, as far as any piece could reach: the edge runs along its right side.
+      const edge = this.scene.make.graphics({}, false).fillStyle(0xffffff).fillRect(-CUT_REACH, -CUT_REACH, CUT_REACH, CUT_REACH * 2);
+      this.cut = { edge, mask: edge.createGeometryMask() };
+    }
+    const x = shape.x + clip.x;
+    const y = shape.y + clip.y;
+    this.cut.edge.setPosition(x, y).setRotation(clip.angle);
+    sprite.setMask(this.cut.mask);
+    if (shape.visible) this.lip = { x, y, angle: clip.angle, scale: (this.opts.scale ?? 1) / ART_SCALE, alpha: shape.alpha, depth: footDepth(footY, rank + 0.5) };
+  }
 }
+
+/** Where a rubble lip goes over a burrowing piece's cut, and how it is drawn there. */
+interface Lip {
+  x: number;
+  y: number;
+  angle: number;
+  scale: number;
+  alpha: number;
+  depth: number;
+}
+
+/** How far past the wall's edge (in px) the room side of a cut reaches: well past any piece. */
+const CUT_REACH = 512;
 
 /** Where a piece's canvas is pinned: its anchor point goes on the spot it is placed at. */
 export interface PieceFrame {
@@ -137,6 +180,8 @@ export class PaperLayer {
   private actors: PaperActor[] = [];
   /** Pieces that move with a shape (sliding logs, sprouting bushes): kept on it every frame. */
   private followers: { shape: Shape; art: Art; footOffset?: number; scale: number; alpha: number }[] = [];
+  /** The rubble lips laid over burrowing pieces' cuts, reused frame to frame. */
+  private lips: Art[] = [];
   private serial = 0;
 
   constructor(private scene: Phaser.Scene) {}
@@ -188,6 +233,7 @@ export class PaperLayer {
 
   update(time: number) {
     this.actors = this.actors.filter((a) => a.sync(time));
+    this.layLips();
     this.followers = this.followers.filter(({ shape, art, footOffset, scale, alpha }) => {
       if (!shape.active) return false;
       art
@@ -198,5 +244,26 @@ export class PaperLayer {
       if (footOffset !== undefined && art.depth >= 1) art.setDepth(footDepth(shape.y + footOffset, 0));
       return true;
     });
+  }
+
+  /**
+   * One rubble lip over each hole a body is burrowing through: the pieces cut at the same mouth
+   * share it, over the topmost of them, so it never piles up on itself.
+   */
+  private layLips() {
+    const art = bakedArt(WORM_BOSS_LIP_KEY);
+    const mouths = new Map<string, Lip>();
+    for (const { lip } of this.actors) {
+      if (!lip) continue;
+      const at = `${Math.round(lip.x)},${Math.round(lip.y)}`;
+      const there = mouths.get(at);
+      if (!there || lip.depth > there.depth) mouths.set(at, lip);
+    }
+    let i = 0;
+    for (const lip of art ? mouths.values() : []) {
+      this.lips[i] ??= this.scene.add.image(0, 0, art!.texture, WORM_BOSS_LIP_KEY).setOrigin(WORM_BOSS_LIP.foot.x / WORM_BOSS_LIP.w, WORM_BOSS_LIP.foot.y / WORM_BOSS_LIP.h);
+      this.lips[i++].setPosition(lip.x, lip.y).setRotation(lip.angle).setScale(lip.scale).setAlpha(lip.alpha).setDepth(lip.depth).setVisible(true);
+    }
+    for (; i < this.lips.length; i++) this.lips[i].setVisible(false);
   }
 }

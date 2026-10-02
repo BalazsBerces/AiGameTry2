@@ -530,9 +530,9 @@ const POSE_NAMES: Record<string, Partial<Record<Action, string>>> = {
   wormHead: { move: 'crawl', attack: 'mandibles spread, snapping' },
   wormBody: { move: 'crawl', attack: 'tensing' },
   wormTail: { move: 'crawl', attack: 'tensing' },
-  wormBossHead: { idle: 'seams pulsing', move: 'crawl, seams pulsing', attack: 'roar: mandibles splayed, seams blazing', spit: 'seams flaring (stand-in)', charge: 'mandibles spread (stand-in)', burrow: 'diving in, climbing out (stand-in)', lob: 'heave, let go (stand-in)', split: 'twitching (stand-in)', die: 'seams burning brighter (stand-in)' },
-  wormBossBody: { idle: 'seams pulsing', move: 'crawl, seams pulsing', attack: 'roar: seams blazing', spit: 'seams flaring (stand-in)', charge: 'tensing (stand-in)', burrow: 'diving in, climbing out (stand-in)', lob: 'heave, let go (stand-in)', split: 'twitching (stand-in)', die: 'seams burning brighter (stand-in)' },
-  wormBossTail: { idle: 'seams pulsing', move: 'crawl, seams pulsing', attack: 'roar: seams blazing', spit: 'seams flaring (stand-in)', charge: 'tensing (stand-in)', burrow: 'diving in, climbing out (stand-in)', lob: 'heave, let go (stand-in)', split: 'twitching (stand-in)', die: 'seams burning brighter (stand-in)' },
+  wormBossHead: { idle: 'seams pulsing', move: 'crawl, seams pulsing', attack: 'roar: mandibles splayed, seams blazing', spit: 'seams flaring (stand-in)', charge: 'mandibles spread (stand-in)', lob: 'heave, let go (stand-in)', split: 'twitching (stand-in)', die: 'seams burning brighter (stand-in)' },
+  wormBossBody: { idle: 'seams pulsing', move: 'crawl, seams pulsing', attack: 'roar: seams blazing', spit: 'seams flaring (stand-in)', charge: 'tensing (stand-in)', lob: 'heave, let go (stand-in)', split: 'twitching (stand-in)', die: 'seams burning brighter (stand-in)' },
+  wormBossTail: { idle: 'seams pulsing', move: 'crawl, seams pulsing', attack: 'roar: seams blazing', spit: 'seams flaring (stand-in)', charge: 'tensing (stand-in)', lob: 'heave, let go (stand-in)', split: 'twitching (stand-in)', die: 'seams burning brighter (stand-in)' },
   wormEgg: { idle: 'resting', move: 'tumbling through the air', attack: 'wobbling: hairline, spreading, splitting' },
 };
 

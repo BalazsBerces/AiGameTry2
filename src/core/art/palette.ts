@@ -185,7 +185,7 @@ export const PAPER = {
     batEar: '#e89aa8',
     batEarInner: '#c4687e',
     batEye: '#d8445a',
-    // The old worm's chitin, still what its pieces burst into, and the dark of a burrow hole's depths.
+    // The old worm's chitin, still what its pieces burst into, and the dark deep in a cracking egg.
     chitin: '#3e3438',
     chitinEdge: '#a08a7a',
     mawDeep: '#2a0a0e',

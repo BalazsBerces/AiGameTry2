@@ -8,9 +8,9 @@ export type BaseAction = 'idle' | 'move' | 'attack' | 'hurt';
 /**
  * Base actions plus the ones only some characters have: a goblin healing its partner, being
  * healed, a ghoul catching its breath, a slime splatting down; the worm boss spitting, charging
- * up a lunge, burrowing, lobbing an egg, torn open at its split and blowing apart as it dies.
+ * up a lunge, lobbing an egg, torn open at its split and blowing apart as it dies.
  */
-export type Action = BaseAction | 'heal' | 'healed' | 'recover' | 'land' | 'spit' | 'charge' | 'burrow' | 'lob' | 'split' | 'die';
+export type Action = BaseAction | 'heal' | 'healed' | 'recover' | 'land' | 'spit' | 'charge' | 'lob' | 'split' | 'die';
 /**
  * The way a character faces: `side` looks right (left is the mirror image), `down` at the camera,
  * `up` away; `top` is seen from straight above, pointing right, and turned whichever way its pose says.
@@ -20,7 +20,7 @@ export type View = 'side' | 'down' | 'up' | 'top';
 /** Frames per base action, the same for every character. */
 export const FRAMES: Readonly<Record<BaseAction, number>> = { idle: 2, move: 4, attack: 3, hurt: 1 };
 /** Frames of the extra actions a character may add. */
-const EXTRA_FRAMES: Readonly<Record<Exclude<Action, BaseAction>, number>> = { heal: 2, healed: 2, recover: 2, land: 2, spit: 2, charge: 2, burrow: 2, lob: 2, split: 2, die: 2 };
+const EXTRA_FRAMES: Readonly<Record<Exclude<Action, BaseAction>, number>> = { heal: 2, healed: 2, recover: 2, land: 2, spit: 2, charge: 2, lob: 2, split: 2, die: 2 };
 
 export interface CharacterArt {
   /** Canvas size in game px. */
@@ -950,8 +950,6 @@ function bossRipple(action: Action, frame: number): Ripple {
       return { ...base, stretch: [1, 0.97][frame], squeeze: [1, 1.05][frame], gape: [0.9, 1.3][frame], glow: [0.6, 1.25][frame] };
     case 'charge':
       return { ...base, stretch: [0.93, 0.91][frame], squeeze: [1.05, 1.07][frame], wobble: [1.5, -1.5][frame], gape: [1.35, 1.5][frame], glow: [0.75, 0.95][frame] };
-    case 'burrow':
-      return { ...base, stretch: [1.03, 1][frame], gape: [0.6, 0.45][frame], glow: [0.38, 0.5][frame] };
     case 'lob':
       return { ...base, stretch: [0.94, 1.04][frame], squeeze: [1.08, 0.98][frame], gape: [0.5, 0.4][frame], glow: [0.85, 0.5][frame] };
     case 'split':
@@ -963,37 +961,47 @@ function bossRipple(action: Action, frame: number): Ripple {
   }
 }
 
-/** Rock chips round x,y, `spread` px across: rubble thrown up as it burrows. */
-const rubble = (r: PieceRng, x: number, y: number, spread: number) =>
-  [[-0.9, -0.2, 2.6, 20], [-0.5, 0.6, 2, -35], [0.1, 0.9, 2.8, 60], [0.7, 0.5, 2.2, -10], [0.95, -0.3, 1.8, 45], [0.3, -0.85, 2.1, -60], [-0.4, -0.8, 1.6, 80]]
-    .map(([dx, dy, size, a], i) =>
-      group(
-        fill(cutPoly(r(`rubble${i}`), [{ x: -size, y: -size * 0.7 }, { x: size, y: -size * 0.8 }, { x: size * 0.8, y: size * 0.7 }, { x: -size * 0.7, y: size * 0.9 }], 0.3), i % 3 ? C.rock : C.rockLight),
-        `translate(${n(x + dx * spread)} ${n(y + dy * spread * 0.7)}) rotate(${a})`,
-      ),
-    )
-    .join('');
-
-/** The hole it burrows into or out of at x,y, `rx` by `ry`, with its rubble round the rim. */
-const burrowHole = (r: PieceRng, x: number, y: number, rx: number, ry: number) =>
-  sheet(fill(ragged(r('hole'), x, y, rx, ry, 10, 0.25), C.rockDeep) + ellipse(x, y, rx * 0.6, ry * 0.6, C.mawDeep, 'opacity="0.7"')) + sheet(rubble(r, x, y, Math.max(rx, ry) * 1.1));
-
 /**
  * A piece of the worm boss acting out its fight from above, pointing right and turned along its
- * spine: the centipede's own piece in black glass, broad as its segments. Burrowing, the hole it
- * dives into lies over its front, or the one it climbs out of under its back.
+ * spine: the centipede's own piece in black glass, broad as its segments.
  */
 function drawWormBoss(piece: WormPieceArt, action: Action, frame: number): string {
   const r: PieceRng = (part) => pieceRng('wormBoss', piece, part);
   const body = centipedePiece(piece, bossRipple(action, frame), false, OBSIDIAN, r, BOSS_BREADTH);
   const { x: cx, y: cy } = CENTIPEDE.foot;
-  let drawn = body;
-  if (action === 'burrow') {
-    drawn = frame ? burrowHole(r, cx - PLATE_HALF, cy, 9, 18) + body : body + burrowHole(r, cx + PLATE_HALF, cy, 9, 18);
-  }
   // Its own canvas is bigger than a worm's: the piece sits in the middle of it.
-  return group(drawn, `translate(${WORM_BOSS.foot.x - cx} ${WORM_BOSS.foot.y - cy})`);
+  return group(body, `translate(${WORM_BOSS.foot.x - cx} ${WORM_BOSS.foot.y - cy})`);
 }
+
+/**
+ * The rubble lip laid over the cut where the worm boss slides into the wall or out of it, seen
+ * from above: broken rock heaped along the hole's mouth across its spine, the wall to its right,
+ * turned the way the wall lies. The cut runs down the middle of its canvas, under the heap.
+ */
+export const WORM_BOSS_LIP = { w: 44, h: 84, foot: { x: 26, y: 42 } };
+
+function drawWormBossLip(): string {
+  const r: PieceRng = (part) => pieceRng('wormBossLip', part);
+  const { x, y } = WORM_BOSS_LIP.foot;
+  // Its shadow falls on the plates sliding under it, on the room side.
+  const shadow = ellipse(x - 7, y, 13, 38, P.shadow, 'opacity="0.45"');
+  const bank = fill(ragged(r('bank'), x - 2, y, 10, 35, 18, 0.3), C.rockDeep);
+  const heap = fill(ragged(r('heap'), x - 3.5, y, 8, 32, 16, 0.35), C.rock);
+  const crest = fill(ragged(r('crest'), x - 5, y, 3.5, 26, 12, 0.4), C.rockLight, 'opacity="0.8"');
+  // Chips broken off the rock, strewn along the heap and spilling a little into the room.
+  const chips = [[-33, -2, 2.8, 20], [-26, -9, 2.2, -35], [-19, 1, 3.2, 60], [-11, -8, 2.4, -10], [-3, -1, 2, 45], [4, -10, 2.8, -60], [12, 0, 2.2, 80], [19, -7, 3, 15], [27, -1, 2.3, -40], [33, -6, 1.9, 30], [-22, -16, 1.8, 10], [9, -17, 1.9, -20], [-6, -19, 1.5, 50], [24, -15, 1.6, -70]]
+    .map(([dy, dx, size, a], i) =>
+      group(
+        fill(cutPoly(r(`chip${i}`), [{ x: -size, y: -size * 0.7 }, { x: size, y: -size * 0.8 }, { x: size * 0.8, y: size * 0.7 }, { x: -size * 0.7, y: size * 0.9 }], 0.3), i % 3 ? C.rock : C.rockLight),
+        `translate(${n(x + dx)} ${n(y + dy)}) rotate(${a})`,
+      ),
+    )
+    .join('');
+  return shadow + sheet(bank + heap + crest) + sheet(chips);
+}
+
+/** The worm boss's rubble lip as a finished drawing, grained like the boss. */
+export const wormBossLipSvg = () => svgDoc(WORM_BOSS_LIP.w, WORM_BOSS_LIP.h, drawWormBossLip(), 41);
 
 // ---------------------------------------------------------------------------------------------
 // The worm boss's eggs
@@ -1193,8 +1201,8 @@ const art = (
   draw: (action, frame, view, champion) => svgDoc(size.w, size.h, draw(action, frame, view, champion), grainSeed),
 });
 
-/** What the worm boss acts out besides crawling, rearing (its roar) and flinching. */
-const BOSS_ACTIONS = ['spit', 'charge', 'burrow', 'lob', 'split', 'die'] as const;
+/** What the worm boss acts out besides crawling, rearing (its roar) and flinching; it tunnels as it crawls. */
+const BOSS_ACTIONS = ['spit', 'charge', 'lob', 'split', 'die'] as const;
 
 /** Every character with paper art, by entity kind. */
 export const CHARACTERS: Readonly<Record<string, CharacterArt>> = {

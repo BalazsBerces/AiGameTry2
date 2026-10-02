@@ -146,6 +146,12 @@ export interface OnSpine {
   footY: number;
   /** Over pieces of the same body with a lower rank (the head over its neck). */
   rank: number;
+  /**
+   * Burrowing, where the wall cuts it: at the edge x,y px from its shape's centre, `angle`
+   * (radians) pointing into the wall, only the room side showing, under a rubble lip; or none of
+   * it showing, all in the wall.
+   */
+  clip?: { x: number; y: number; angle: number } | 'hidden';
 }
 
 /** Emitted on an enemy part when it takes a hit (with the time), so its paper art can flash and flinch. */

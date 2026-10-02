@@ -195,6 +195,50 @@ export const LOB_HEAVE_MS = 300;
 /** How long before it pops a dying segment's crystals blaze, splintering through its plates. */
 export const POP_WARN_MS = 250;
 
+/** How far a piece of the worm boss's art reaches from its plate's centre, in cells: half its canvas's length. */
+export const WORM_BOSS_REACH = 1.5;
+
+/**
+ * How much of a plate shows as it burrows: cut at the edge of the hole's mouth, `at` (in cells)
+ * from its shape's centre, `into` pointing into the wall, showing only what is on the room side;
+ * or none of it, all inside the wall. A plate with no clip is all in the room.
+ */
+export type WallClip = { at: Vec; into: Vec } | 'hidden';
+
+/**
+ * Where the wall cuts the worm's `index`th segment's plate (lying `spine` from its shape's
+ * centre), if it does: at the mouth of a hole its body runs through near it, wherever its spine
+ * crosses from a cell in the room to one in the wall. All of it is hidden once it is out of
+ * reach of the mouth inside the wall, or racing through the rock from one hole to the other.
+ */
+function wallClip(worm: Worm, index: number, glide: WormGlide | undefined, room: { w: number; h: number }, spine: Spine): WallClip | undefined {
+  const inWall = (c: Cell) => c.x < 0 || c.y < 0 || c.x >= room.w || c.y >= room.h;
+  const segs = worm.segments;
+  const b = segs[index];
+  const a = glide?.from[index] ?? b;
+  const k = Math.min(1, Math.max(0, glide?.progress ?? 1));
+  const still = a.x === b.x && a.y === b.y;
+  if (!still && !stepBetween(a, b)) return inWall(a) && inWall(b) ? 'hidden' : undefined;
+  const centre = { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k };
+  const plate = { x: centre.x + spine.offset.x, y: centre.y + spine.offset.y };
+  // The spine runs head to tail through its cells, and on to the cell its tail glides from.
+  const chain = glide ? [...segs, glide.from[segs.length - 1]] : segs;
+  const mouths = [-2, -1, 0, 1, 2].flatMap((j) => {
+    const [p, q] = [chain[index + j], chain[index + j + 1]];
+    if (!stepBetween(p, q) || inWall(p) === inWall(q)) return [];
+    const [open, wall] = inWall(q) ? [p, q] : [q, p];
+    const at = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
+    const into = { x: wall.x - open.x, y: wall.y - open.y };
+    return [{ at, into, depth: (plate.x - at.x) * into.x + (plate.y - at.y) * into.y, far: Math.hypot(plate.x - at.x, plate.y - at.y) }];
+  });
+  const mouth = mouths.sort((m, n) => m.far - n.far)[0];
+  if (!mouth) return inWall(a) && inWall(b) ? 'hidden' : undefined;
+  if (mouth.depth >= WORM_BOSS_REACH) return 'hidden';
+  if (mouth.depth <= -WORM_BOSS_REACH) return undefined;
+  const clean = (v: number) => (Math.abs(v) < 1e-12 ? 0 : v);
+  return { at: { x: clean(mouth.at.x - centre.x), y: clean(mouth.at.y - centre.y) }, into: mouth.into };
+}
+
 /** What the worm boss's paper puppet reads off one of its pieces (a whole worm, or a half of it). */
 export interface WormBossLook {
   worm: Worm;
@@ -223,15 +267,17 @@ export interface WormBossLook {
  * holding still while its twin blows apart; roaring through its last stand's roar, maw splayed
  * and crystals flaring; its maw pulsing through a spit wave as each segment flares in turn; its
  * head tucked and shards forward while it charges up and between lunges; a segment heaving as it
- * lobs an egg; burrowing into the walls and out of them. Otherwise it crawls like any worm.
- * Whatever it does, its plate lies on its spine like any worm's (`wormSpine`).
+ * lobs an egg. Otherwise it crawls like any worm. Whatever it does, its plate lies on its spine
+ * like any worm's (`wormSpine`), and burrowing it slides into the rock, cut off at the hole's
+ * mouth, and out of the far wall the same way (`clip`).
  */
-export function wormBossPose(look: WormBossLook, index: number, time: number): Pose & Spine & { piece: WormBossPiece } {
+export function wormBossPose(look: WormBossLook, index: number, time: number): Pose & Spine & { piece: WormBossPiece; clip?: WallClip } {
   const { worm, room, moment } = look;
   const last = worm.segments.length - 1;
   const piece = index === 0 ? 'wormBossHead' : index === last ? 'wormBossTail' : 'wormBossBody';
   const spine = wormSpine(worm, index, look.glide);
-  const pose = (hold?: Pose['hold']) => ({ piece, ...(hold ? { hold } : {}), ...spine }) as Pose & Spine & { piece: WormBossPiece };
+  const clip = wallClip(worm, index, look.glide, room, spine);
+  const pose = (hold?: Pose['hold']) => ({ piece, ...(hold ? { hold } : {}), ...spine, ...(clip ? { clip } : {}) }) as Pose & Spine & { piece: WormBossPiece; clip?: WallClip };
   const beat = (ms: number) => Math.floor(time / ms) % 2;
   if (look.dying) {
     const pop = deathChain(worm.segments.length).pops.find((p) => p.segment === index)!;
@@ -257,9 +303,6 @@ export function wormBossPose(look: WormBossLook, index: number, time: number): P
   if (heave && heave.segments.includes(index) && time - heave.start < LOB_HEAVE_MS) {
     return pose({ action: 'lob', frame: time - heave.start < LOB_HEAVE_MS / 2 ? 0 : 1 });
   }
-  const inWall = (c: Cell | undefined) => !!c && (c.x < 0 || c.y < 0 || c.x >= room.w || c.y >= room.h);
-  if (inWall(worm.segments[index])) return pose({ action: 'burrow', frame: 0 });
-  if (inWall(worm.segments[index + 1])) return pose({ action: 'burrow', frame: 1 });
   return pose(wormPose(worm, index, time).hold);
 }
 

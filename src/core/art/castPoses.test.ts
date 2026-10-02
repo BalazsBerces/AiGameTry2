@@ -345,18 +345,52 @@ describe("the worm boss's poses", () => {
     expect(wormBossPose(lobbing, 1, 1000).hold).toEqual(wormPose(worm, 1, 1000).hold);
   });
 
-  it('burrows into the wall where it is in the wall, and out of it where the segment behind still is', () => {
-    // Diving up through the top wall: its head in it, the rest still in the room.
-    const diving = createWorm([{ x: 4, y: -1 }, { x: 4, y: 0 }, { x: 4, y: 1 }, { x: 4, y: 2 }], 'up');
-    expect([0, 1, 2, 3].map((i) => wormBossPose(look({ worm: diving }), i, 0).hold?.action)).toEqual(['burrow', 'move', 'move', 'move']);
-    expect(wormBossPose(look({ worm: diving }), 0, 0).hold?.frame).toBe(0);
-    // Coming out of the left wall: its head in the room, the rest still in the wall.
-    const emerging = createWorm([{ x: 0, y: 3 }, { x: -1, y: 3 }, { x: -2, y: 3 }], 'right');
-    expect([0, 1, 2].map((i) => wormBossPose(look({ worm: emerging }), i, 0).hold)).toEqual([
-      { action: 'burrow', frame: 1 },
-      { action: 'burrow', frame: 0 },
-      { action: 'burrow', frame: 0 },
-    ]);
+  describe('burrowing', () => {
+    const clips = (l: WormBossLook, count: number) => Array.from({ length: count }, (_, i) => wormBossPose(l, i, 0).clip);
+    /** Cut at the edge of the hole's mouth, `at` cells from the shape's centre, `into` pointing into the wall. */
+    const cut = (at: { x: number; y: number }, into: { x: number; y: number }) => ({ at, into });
+
+    it('slides into the wall, each plate crossing its edge cut off cleanly there, those well in the room whole', () => {
+      // Diving up through the top wall: its head in it, the rest still in the room.
+      const diving = createWorm([{ x: 4, y: -1 }, { x: 4, y: 0 }, { x: 4, y: 1 }, { x: 4, y: 2 }, { x: 4, y: 3 }], 'up');
+      const up = { x: 0, y: -1 };
+      expect(clips(look({ worm: diving }), 5)).toEqual([cut({ x: 0, y: 0.5 }, up), cut({ x: 0, y: -0.5 }, up), undefined, undefined, undefined]);
+      // Further in, nothing of it shows where it is all inside the wall.
+      const deep = createWorm([{ x: 4, y: -3 }, { x: 4, y: -2 }, { x: 4, y: -1 }, { x: 4, y: 0 }, { x: 4, y: 1 }, { x: 4, y: 2 }, { x: 4, y: 3 }], 'up');
+      expect(clips(look({ worm: deep }), 7)).toEqual(['hidden', 'hidden', cut({ x: 0, y: 0.5 }, up), cut({ x: 0, y: -0.5 }, up), undefined, undefined, undefined]);
+    });
+
+    it('keeps the cut on the edge as its plates glide through it', () => {
+      const diving = createWorm([{ x: 4, y: -1 }, { x: 4, y: 0 }, { x: 4, y: 1 }, { x: 4, y: 2 }], 'up');
+      const glide: WormGlide = { from: [{ x: 4, y: 0 }, { x: 4, y: 1 }, { x: 4, y: 2 }, { x: 4, y: 3 }], progress: 0.5 };
+      // The head's shape is halfway into the wall: right on the edge.
+      expect(clips(look({ worm: diving, glide }), 4)).toEqual([cut({ x: 0, y: 0 }, { x: 0, y: -1 }), cut({ x: 0, y: -1 }, { x: 0, y: -1 }), undefined, undefined]);
+    });
+
+    it('comes out of the far wall the same way, and shows nothing of a segment racing from one hole to the other', () => {
+      // In at the right wall at 10,3, out of the left wall at -1,5 heading right; its head halfway out.
+      const out = createWorm([{ x: 0, y: 5 }, { x: -1, y: 5 }, { x: 10, y: 3 }, { x: 9, y: 3 }], 'right');
+      const glide: WormGlide = { from: [{ x: -1, y: 5 }, { x: 10, y: 3 }, { x: 9, y: 3 }, { x: 8, y: 3 }], progress: 0.5 };
+      expect(clips(look({ worm: out, glide }), 4)).toEqual([
+        cut({ x: 0, y: 0 }, { x: -1, y: 0 }),
+        'hidden',
+        cut({ x: 0, y: 0 }, { x: 1, y: 0 }),
+        cut({ x: 1, y: 0 }, { x: 1, y: 0 }),
+      ]);
+    });
+
+    it('is cut the same whatever it is doing, both halves after its split and through its endless rampage', () => {
+      const emerging = createWorm([{ x: 0, y: 3 }, { x: -1, y: 3 }, { x: -2, y: 3 }], 'right');
+      const plain = clips(look({ worm: emerging }), 3);
+      expect(plain).toEqual([cut({ x: -0.5, y: 0 }, { x: -1, y: 0 }), cut({ x: 0.5, y: 0 }, { x: -1, y: 0 }), 'hidden']);
+      const moments: Partial<WormBossLook>[] = [{ rawEnd: 'head', moment: splitStop(0) }, { rampage: 'lunging' }, { rampage: 'pausing' }, { spit: { start: 0, shots: spitWave(emerging.segments, 'right') } }, { dying: { at: 0 } }];
+      for (const more of moments) expect(clips(look({ worm: emerging, ...more }), 3), JSON.stringify(more)).toEqual(plain);
+    });
+
+    it('no longer has burrow poses: it crawls as it tunnels', () => {
+      const diving = createWorm([{ x: 4, y: -1 }, { x: 4, y: 0 }, { x: 4, y: 1 }], 'up');
+      for (const i of [0, 1, 2]) expect(wormBossPose(look({ worm: diving }), i, 0).hold).toEqual(wormPose(diving, i, 0).hold);
+    });
   });
 
   it('cracks as it dies, each segment bursting into crystal from its tail to its head, timed to the death chain', () => {

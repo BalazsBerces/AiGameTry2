@@ -721,7 +721,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
       const index = Math.max(0, state.parts.indexOf(part));
       const b = state.boss;
       const glide = state.glide && { from: state.glide.from, progress: glideProgress(state.parts, state.glide) };
-      const { piece: kind, offset, angle, ...look } = b
+      const { piece: kind, offset, angle, clip, ...look } = b
         ? wormBossPose(
             {
               worm: state.worm,
@@ -737,11 +737,13 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
             index,
             time,
           )
-        : wormPose(state.worm, index, time, glide);
+        : { ...wormPose(state.worm, index, time, glide), clip: undefined };
       const t = TUNING.tile;
       // The whole body sorts by its lowest plate, the head on top of its neck and so on down to the tail.
       const footY = Math.max(...state.parts.map((p) => p.y)) + t / 2;
-      return { kind, ...look, spine: { offset: { x: offset.x * t, y: offset.y * t }, angle, footY, rank: bodyId * 64 + state.parts.length - index } };
+      // Burrowing, cut off at the hole's mouth.
+      const cut = clip && clip !== 'hidden' ? { x: clip.at.x * t, y: clip.at.y * t, angle: Math.atan2(clip.into.y, clip.into.x) } : clip;
+      return { kind, ...look, spine: { offset: { x: offset.x * t, y: offset.y * t }, angle, footY, rank: bodyId * 64 + state.parts.length - index, clip: cut } };
     },
     // The boss's art is drawn at its own size.
     art: state.boss ? { scale: 1, champion: false } : undefined,

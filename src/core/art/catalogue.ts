@@ -1,4 +1,4 @@
-import { CHARACTERS, type Action, type View } from './characters';
+import { CHARACTERS, WORM_BOSS_LIP, wormBossLipSvg, type Action, type View } from './characters';
 import { DECOR_CANVAS, DECOR_KINDS, GIANT_CANVAS, GIANT_LOOKS, GIANT_VARIANTS, JOIN_LOOKS, MASKED_LOOKS, TILE_CANVAS, TILE_LOOKS, WALL_JOIN_LOOKS, WALL_JOIN_SIDES, WALL_STYLES, floorCanvas, floorLooks, hasGround, terrainSvg, tileLooks, wallCanvas, type Shell, type WallSide, type WallStyle } from './terrain';
 import type { Mask } from './autotile';
 import type { Direction } from '../map/floorGenerator';
@@ -155,7 +155,11 @@ function hudEntries(): ArtEntry[] {
   ];
 }
 
+/** The rubble lip over the cut where the worm boss's body slides into a wall or out of it. */
+export const WORM_BOSS_LIP_KEY = 'l:wormBossLip';
+
 /** The whole catalogue, in a fixed order. */
 export function artCatalogue(): ArtEntry[] {
-  return [...characterEntries(), ...terrainEntries(), ...shotEntries(), ...pickupEntries(), ...hudEntries()];
+  const lip = { key: WORM_BOSS_LIP_KEY, w: WORM_BOSS_LIP.w, h: WORM_BOSS_LIP.h, svg: wormBossLipSvg };
+  return [...characterEntries(), lip, ...terrainEntries(), ...shotEntries(), ...pickupEntries(), ...hudEntries()];
 }

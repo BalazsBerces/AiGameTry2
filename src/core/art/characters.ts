@@ -2,6 +2,7 @@ import { PAPER as P } from './palette';
 import { blob, cutPoly, fill, group, n, pieceRng, polyPath, ragged, sheet, smoothPath, svgDoc } from './svg';
 import { TILE } from './terrain';
 import { WORM_PLATE_CELLS } from './castPoses';
+import type { SeamGlow } from './seamGlow';
 
 /** What every character does, each drawn as a short stop-motion loop. */
 export type BaseAction = 'idle' | 'move' | 'attack' | 'hurt';
@@ -803,19 +804,25 @@ interface PlateLook {
 const MATTE: PlateLook = { plate: C.matte, light: C.matteLight, dark: C.matteDark, edge: C.matteEdge, mandible: C.mandible, mandibleTip: C.mandibleTip };
 /** A hatchling: pale, soft, half-translucent plates, no glow. */
 const PALE: PlateLook = { plate: C.pale, light: C.paleLight, dark: C.paleDark, edge: C.paleEdge, mandible: C.paleMandible, mandibleTip: C.paleMandibleTip, veil: 0.78 };
-/** What the worm boss shatters into, at its split and as it blows apart: black-glass shards, and sparks in its seam glow. */
-export const WORM_BOSS_BURST = { shards: [C.obsidian, C.obsidianLight, C.obsidian, C.obsidianEdge], sparks: C.seamBloodLight } as const;
+/** The light in the worm boss's seams, and its bright core, in each glow. */
+const SEAM_LIGHT: Record<SeamGlow, { glow: string; core: string }> = {
+  blood: { glow: C.seamBlood, core: C.seamBloodLight },
+  ember: { glow: C.seamEmber, core: C.seamEmberLight },
+};
 
-/** The worm boss, the Obsidian Centipede: black glass, dim blood-red light in its seams. */
-const OBSIDIAN: PlateLook = {
+/** What the worm boss shatters into, at its split and as it blows apart: black-glass shards, and sparks in its seam glow. */
+export const wormBossBurst = (glow: SeamGlow) => ({ shards: [C.obsidian, C.obsidianLight, C.obsidian, C.obsidianEdge], sparks: SEAM_LIGHT[glow].core });
+
+/** The worm boss, the Obsidian Centipede: black glass, dim light in its seams (blood red, or molten ember). */
+const obsidian = (glow: SeamGlow): PlateLook => ({
   plate: C.obsidian,
   light: C.obsidianLight,
   dark: C.obsidianDark,
   edge: C.obsidianEdge,
   mandible: C.glassFang,
   mandibleTip: C.glassFangTip,
-  seam: { glow: C.seamBlood, core: C.seamBloodLight },
-};
+  seam: SEAM_LIGHT[glow],
+});
 
 /**
  * How a centipede piece moves in one frame: stretched along its spine and squeezed across it as
@@ -1027,9 +1034,9 @@ function bossRipple(action: Action, frame: number): Ripple {
  * A piece of the worm boss acting out its fight from above, pointing right and turned along its
  * spine: the centipede's own piece in black glass, broad as its segments.
  */
-function drawWormBoss(piece: WormPieceArt, action: Action, frame: number): string {
+function drawWormBoss(piece: WormPieceArt, action: Action, frame: number, glow: SeamGlow): string {
   const r: PieceRng = (part) => pieceRng('wormBoss', piece, part);
-  const body = centipedePiece(piece, bossRipple(action, frame), false, OBSIDIAN, r, BOSS_BREADTH);
+  const body = centipedePiece(piece, bossRipple(action, frame), false, obsidian(glow), r, BOSS_BREADTH);
   const { x: cx, y: cy } = CENTIPEDE.foot;
   // Its own canvas is bigger than a worm's: the piece sits in the middle of it.
   return group(body, `translate(${WORM_BOSS.foot.x - cx} ${WORM_BOSS.foot.y - cy})`);
@@ -1297,9 +1304,13 @@ export const CHARACTERS: Readonly<Record<string, CharacterArt>> = {
   hatchlingHead: art(CENTIPEDE, ['top'], (a, f) => drawHatchling('head', a, f), 39),
   hatchlingBody: art(CENTIPEDE, ['top'], (a, f) => drawHatchling('body', a, f), 39),
   hatchlingTail: art(CENTIPEDE, ['top'], (a, f) => drawHatchling('tail', a, f), 39),
-  wormBossHead: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('head', a, f), 41, BOSS_ACTIONS),
-  wormBossBody: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('body', a, f), 41, BOSS_ACTIONS),
-  wormBossTail: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('tail', a, f), 41, BOSS_ACTIONS),
+  wormBossHead: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('head', a, f, 'blood'), 41, BOSS_ACTIONS),
+  wormBossBody: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('body', a, f, 'blood'), 41, BOSS_ACTIONS),
+  wormBossTail: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('tail', a, f, 'blood'), 41, BOSS_ACTIONS),
+  // The worm boss in molten ember, beside blood red to compare (core/art/seamGlow).
+  wormBossHeadEmber: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('head', a, f, 'ember'), 41, BOSS_ACTIONS),
+  wormBossBodyEmber: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('body', a, f, 'ember'), 41, BOSS_ACTIONS),
+  wormBossTailEmber: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('tail', a, f, 'ember'), 41, BOSS_ACTIONS),
   wormEgg: art(EGG, ['down'], (a, f) => drawEgg(a, f), 43),
   treantBoss: art(TREANT, ['down'], (a, f) => drawTreant(a, f), 17),
 };

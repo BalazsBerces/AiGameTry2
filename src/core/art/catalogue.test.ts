@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WORM_BOSS_LIP_KEY, artCatalogue, charKey, decorKey, doorKey, floorKey, floorLook, giantKey, groundKey, joinKey, shotKey, tileKey, tileLook, wallJoinKey, wallKey, type DoorSide, type FloorKind } from './catalogue';
-import { CHARACTERS, WORM_BOSS_BURST, type Action } from './characters';
+import { CHARACTERS, wormBossBurst, type Action } from './characters';
 import { PAPER } from './palette';
 import { CAVE_FLOOR_LOOKS, GIANT_LOOKS, GIANT_VARIANTS, JOIN_LOOKS, TILE, WALL_JOIN_LOOKS, WALL_JOIN_SIDES, WALL_STYLES, tileLooks, wallGems, type WallSide } from './terrain';
 import { themeForFloor } from '../map/themes';
@@ -253,6 +253,9 @@ describe('the art catalogue', () => {
       wormBossHead: { views: ['top'], actions: BOSS_ACTIONS, champion: false },
       wormBossBody: { views: ['top'], actions: BOSS_ACTIONS, champion: false },
       wormBossTail: { views: ['top'], actions: BOSS_ACTIONS, champion: false },
+      wormBossHeadEmber: { views: ['top'], actions: BOSS_ACTIONS, champion: false },
+      wormBossBodyEmber: { views: ['top'], actions: BOSS_ACTIONS, champion: false },
+      wormBossTailEmber: { views: ['top'], actions: BOSS_ACTIONS, champion: false },
       wormEgg: { views: ['down'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 }, champion: false },
     } as const;
     const KINDS = Object.keys(CAST) as (keyof typeof CAST)[];
@@ -425,10 +428,41 @@ describe('the art catalogue', () => {
       });
 
       it('shatters into black-glass shards with sparks in its seam glow', () => {
-        const { obsidian, obsidianLight, obsidianEdge, seamBlood: glow, seamBloodLight, crystal, crystalLight, chitin } = PAPER.caves;
-        expect(WORM_BOSS_BURST.shards).toEqual([obsidian, obsidianLight, obsidian, obsidianEdge]);
-        for (const old of [crystal, crystalLight, chitin]) expect(WORM_BOSS_BURST.shards).not.toContain(old);
-        expect([glow, seamBloodLight]).toContain(WORM_BOSS_BURST.sparks);
+        const { obsidian, obsidianLight, obsidianEdge, seamBlood: glow, seamBloodLight, seamEmber, seamEmberLight, crystal, crystalLight, chitin } = PAPER.caves;
+        for (const g of ['blood', 'ember'] as const) {
+          expect(wormBossBurst(g).shards).toEqual([obsidian, obsidianLight, obsidian, obsidianEdge]);
+          for (const old of [crystal, crystalLight, chitin]) expect(wormBossBurst(g).shards).not.toContain(old);
+        }
+        expect([glow, seamBloodLight]).toContain(wormBossBurst('blood').sparks);
+        expect([seamEmber, seamEmberLight]).toContain(wormBossBurst('ember').sparks);
+      });
+    });
+
+    describe('in molten ember, beside blood red, to compare', () => {
+      const { seamBlood, seamBloodLight, seamEmber, seamEmberLight, obsidian } = PAPER.caves;
+      const ember = ['wormBossHeadEmber', 'wormBossBodyEmber', 'wormBossTailEmber'] as const;
+      const blood = ['wormBossHead', 'wormBossBody', 'wormBossTail'] as const;
+
+      it('has every frame of every beat baked in both glows, the same black glass', () => {
+        ember.forEach((kind, i) => {
+          expect(CHARACTERS[kind].actions, kind).toEqual(CHARACTERS[blood[i]].actions);
+          expect(keysOf(kind, false).length, kind).toBe(keysOf(blood[i], false).length);
+          for (const key of keysOf(kind, false)) {
+            const svg = svgOf(key).toLowerCase();
+            for (const own of [obsidian, seamEmber]) expect(svg, key).toContain(own.toLowerCase());
+            for (const other of [seamBlood, seamBloodLight]) expect(svg, key).not.toContain(other.toLowerCase());
+          }
+          for (const key of keysOf(blood[i], false)) for (const other of [seamEmber, seamEmberLight]) expect(svgOf(key).toLowerCase(), key).not.toContain(other.toLowerCase());
+        });
+      });
+
+      it('draws the same pieces and beats, only the light in them changed', () => {
+        ember.forEach((kind, i) => {
+          for (const [a, b] of keysOf(kind, false).map((key, k) => [key, keysOf(blood[i], false)[k]])) {
+            const swapped = svgOf(b).replaceAll(seamBlood, seamEmber).replaceAll(seamBloodLight, seamEmberLight);
+            expect(svgOf(a), a).toBe(swapped);
+          }
+        });
       });
     });
 

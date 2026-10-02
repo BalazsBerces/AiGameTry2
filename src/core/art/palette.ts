@@ -205,6 +205,9 @@ export const PAPER = {
     glassFangTip: '#b8b2c4',
     seamBlood: '#a3121f',
     seamBloodLight: '#ff4a3d',
+    // Its seams in molten ember instead, to compare: deep orange round a yellow-hot core.
+    seamEmber: '#c2440c',
+    seamEmberLight: '#ffa63a',
     // The worm boss's eggs: dark, leathery pods, thin veins glowing in its seam light.
     egg: '#2c2023',
     eggLight: '#4e3c40',

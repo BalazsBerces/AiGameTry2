@@ -31,9 +31,10 @@ import {
 } from '../../../core/bosses/wormBossAttack';
 import type { BarHalf, BossBarSnapshot } from '../../../core/bosses/bossBar';
 import { hitsToBreak } from '../../../core/map/tiles';
-import { eggPose, wormBossPose, wormPose } from '../../../core/art/castPoses';
+import { eggPose, wormBossPose, wormPose, type WormBossPiece } from '../../../core/art/castPoses';
 import { charKey } from '../../../core/art/catalogue';
-import { CHARACTERS, WORM_BOSS_BURST } from '../../../core/art/characters';
+import { CHARACTERS, wormBossBurst } from '../../../core/art/characters';
+import { DEFAULT_SEAM_GLOW, wormBossKind, type SeamGlow } from '../../../core/art/seamGlow';
 import { ART_SCALE, bakedArt } from '../../art/bake';
 import { COLORS, TUNING } from '../../config';
 import { shellBurst, shakeScreen, spray } from '../../effects/shellBurst';
@@ -78,8 +79,18 @@ export function championWorm(style: WormStyle): WormStyle {
 
 /** What the worm boss shatters into, at its split and as it blows apart: black-glass shards, and sparks in its seam glow. */
 const hex = (c: string) => parseInt(c.slice(1), 16);
-const GLASS_SHARDS = WORM_BOSS_BURST.shards.map(hex);
-const GLOW_SPARKS = hex(WORM_BOSS_BURST.sparks);
+const glassShards = () => wormBossBurst(seamGlow).shards.map(hex);
+const glowSparks = () => hex(wormBossBurst(seamGlow).sparks);
+
+/** The glow the worm boss's seams show (core/art/seamGlow): blood red, unless switched to compare. */
+let seamGlow: SeamGlow = DEFAULT_SEAM_GLOW;
+/** A boss piece's pose, drawn from its art in the glow shown. */
+const inGlow = <T extends { piece: WormBossPiece }>(pose: T) => ({ ...pose, piece: wormBossKind(pose.piece, seamGlow) });
+
+/** Shows the worm boss in `glow` from now on, any already in a room included (`?glow=`, the console's `glow`). */
+export const setSeamGlow = (glow: SeamGlow) => {
+  seamGlow = glow;
+};
 /** How far below an egg's centre its paper art's feet are (core/art/characters). */
 const EGG_FOOT = 13;
 
@@ -609,7 +620,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
     for (const { segment, big } of deathChain(state.parts.length).pops.slice(dying.popped, popped.length)) {
       const part = state.parts[segment];
       // It shatters into black glass; out of sight in a wall, it goes quietly.
-      if (part.visible) shellBurst(scene, part, big ? 'head' : 'pop', GLASS_SHARDS, b.shared.marks, GLOW_SPARKS);
+      if (part.visible) shellBurst(scene, part, big ? 'head' : 'pop', glassShards(), b.shared.marks, glowSparks());
       part.setVisible(false);
       part.body.enable = false;
       shakeScreen(scene, big ? 'head' : 'pop');
@@ -725,7 +736,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
       const b = state.boss;
       const glide = state.glide && { from: state.glide.from, progress: glideProgress(state.parts, state.glide) };
       const { piece: kind, offset, angle, clip, ...look } = b
-        ? wormBossPose(
+        ? inGlow(wormBossPose(
             {
               worm: state.worm,
               room: b.shared.room ?? { w: Infinity, h: Infinity },
@@ -739,7 +750,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
             },
             index,
             time,
-          )
+          ))
         : { ...wormPose(state.worm, index, time, glide, state.hatchling), clip: undefined };
       const t = TUNING.tile;
       // The whole body sorts by its lowest plate, the head on top of its neck and so on down to the tail.
@@ -804,7 +815,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
       return [enemy];
     }
     // It tears apart: the segment hit bursts, and the screen shakes.
-    shellBurst(scene, part, 'split', GLASS_SHARDS, shared.marks, GLOW_SPARKS);
+    shellBurst(scene, part, 'split', glassShards(), shared.marks, glowSparks());
     shakeScreen(scene, 'split');
     part.destroy();
     shared.bodies.delete(state);

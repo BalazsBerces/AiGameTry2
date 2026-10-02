@@ -495,20 +495,31 @@ describe('the art catalogue', () => {
       });
 
       it("splits its crust on magma as an egg heaves out, and shows a molten core at its torn end with no stinger or mandibles", () => {
-        const { egg, obsidianGlint } = PAPER.caves;
+        const { egg, glassFangTip } = PAPER.caves;
         expect(svgOf(charKey('wormBossBodyEmber0', 'lob', 0, 'top')).toLowerCase()).toContain(egg.toLowerCase());
         expect(svgOf(charKey('wormBossBodyEmber0', 'lob', 1, 'top')).toLowerCase()).not.toContain(egg.toLowerCase());
         for (const kind of ['wormBossHeadEmber', 'wormBossTailEmber']) {
           expect(lavaOf('split', 0, kind), kind).toBeGreaterThan(Math.max(...crawl(kind)));
-          // Its mandibles and stinger are obsidian, glinting; torn, they are gone.
-          expect(svgOf(charKey(kind, 'move', 0, 'top')).toLowerCase(), kind).toContain(obsidianGlint.toLowerCase());
-          for (const f of [0, 1]) expect(svgOf(charKey(kind, 'split', f, 'top')).toLowerCase(), kind).not.toContain(obsidianGlint.toLowerCase());
+          // Its mandibles and stinger are obsidian blades with pale glass tips; torn, they are gone.
+          expect(svgOf(charKey(kind, 'move', 0, 'top')).toLowerCase(), kind).toContain(glassFangTip.toLowerCase());
+          for (const f of [0, 1]) expect(svgOf(charKey(kind, 'split', f, 'top')).toLowerCase(), kind).not.toContain(glassFangTip.toLowerCase());
         }
       });
 
-      it('shatters into basalt chunks and obsidian slivers, with ember sparks and small magma blobs', () => {
+      it('is mostly obsidian, edged sharp: far more black glass than rock, glinting along its blades', () => {
+        const { obsidianLight, obsidianDark, obsidianGlint } = PAPER.caves;
+        const count = (svg: string, colours: string[]) => colours.reduce((a, c) => a + svg.toLowerCase().split(`fill="${c.toLowerCase()}"`).length - 1, 0);
+        for (const kind of molten) {
+          const svg = svgOf(charKey(kind, 'move', 0, 'top'));
+          expect(count(svg, [obsidian, obsidianLight, obsidianDark]), kind).toBeGreaterThan(2 * count(svg, [crust, crustDark, crustLight]));
+          expect(svg.toLowerCase(), kind).toContain(obsidianGlint.toLowerCase());
+        }
+      });
+
+      it('shatters mostly into obsidian slivers, a chunk of basalt among them, with ember sparks and small magma blobs', () => {
         const burst = wormBossBurst('ember');
-        expect(new Set(burst.shards)).toEqual(new Set([crust, crustDark, crustLight, obsidian]));
+        expect(burst.shards.filter((c) => c === obsidian || c === PAPER.caves.obsidianLight).length).toBeGreaterThan(burst.shards.length / 2);
+        expect(burst.shards).toContain(crustDark);
         expect(burst.sparks).toBe(lavaCore);
         expect(burst.blobs).toBe(lava);
       });

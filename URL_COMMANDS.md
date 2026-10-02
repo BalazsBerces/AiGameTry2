@@ -15,7 +15,7 @@ Combine several with `&`. They only apply when the page first loads; a restart a
 | `?seed=42` | Play a fixed seed (same floors every time). |
 | `?boss` | Start at the door of floor 1's boss room. |
 | `?boss=2` | Same for floor 2's boss room (`?boss=3` for floor 3). |
-| `?glow=ember` | Show the worm boss as the Molten Centipede (lava-fused rock and obsidian) instead of the blood-red Obsidian Centipede (`?glow=blood`, the default), to compare the two in the dark arena. Stays for the whole session, restarts included. |
+| `?glow=ember` | Show the worm boss as the Molten Centipede (lava-fused obsidian, all blades) instead of the blood-red Obsidian Centipede (`?glow=blood`, the default), to compare the two in the dark arena. Stays for the whole session, restarts included. |
 | `?room=slimePit` | Start at the door of the first room of that kind, on the first seed that has one (or on `?seed=N` if given). Takes an archetype, layout or encounter id ([list below](#room-ids-for-room)). |
 
 ### Enemy test arena

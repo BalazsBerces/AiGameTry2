@@ -806,13 +806,13 @@ const MATTE: PlateLook = { plate: C.matte, light: C.matteLight, dark: C.matteDar
 const PALE: PlateLook = { plate: C.pale, light: C.paleLight, dark: C.paleDark, edge: C.paleEdge, mandible: C.paleMandible, mandibleTip: C.paleMandibleTip, veil: 0.78 };
 /**
  * What the worm boss shatters into, at its split and as it blows apart: the Obsidian Centipede
- * into black-glass shards with sparks in its seam glow; the Molten Centipede into basalt chunks
- * and obsidian slivers, with ember sparks and small blobs of magma.
+ * into black-glass shards with sparks in its seam glow; the Molten Centipede mostly into obsidian
+ * slivers, a chunk of basalt among them, with ember sparks and small blobs of magma.
  */
 export const wormBossBurst = (glow: SeamGlow): { shards: readonly string[]; sparks: string; blobs?: string } =>
   glow === 'blood'
     ? { shards: [C.obsidian, C.obsidianLight, C.obsidian, C.obsidianEdge], sparks: C.seamBloodLight }
-    : { shards: [C.crust, C.crustDark, C.obsidian, C.crustLight], sparks: C.lavaCore, blobs: C.lava };
+    : { shards: [C.obsidian, C.obsidianLight, C.obsidian, C.crustDark, C.obsidianEdge], sparks: C.lavaCore, blobs: C.lava };
 
 /** The worm boss, the Obsidian Centipede: black glass, dim blood-red light in its seams. */
 const OBSIDIAN: PlateLook = {
@@ -1078,13 +1078,15 @@ function moltenCracks(piece: WormPieceArt, variant: number): [number, number][][
 }
 
 /**
- * One piece of the Molten Centipede from above, pointing right: a slab of cooled basalt crust,
- * broad as its segments, broken-edged and faceted (a lit top plane, its sides falling away into
- * shadow), shards of obsidian fused into it and a ridge of rock spikes down its keel, taller
- * toward the head. Lava cracks run across it, a deep red rim round orange round a yellow-hot
- * core, opening as wide as its `glow` says; lava oozes out from under its back rim and drips onto
- * the plate behind. The head is a craggy skull with molten eye pits and obsidian-shard mandibles
- * edged in lava; the tail trails an obsidian stinger with a lava vein, dripping at its tip.
+ * One piece of the Molten Centipede from above, pointing right: obsidian, all edges. A slim,
+ * angular core pointed fore and aft, broken into facets of black glass (lit above, dark below,
+ * glinting along their ridges), grown out of a mass of basalt crust showing at its flanks.
+ * Backswept blades of glass off its flanks and a ridge of raked shards down its keel, each split
+ * into a lit face and a dark one. Lava runs in the joints between its facets and in cracks across
+ * them, a deep red rim round orange round a yellow-hot core, opening as wide as its `glow` says,
+ * and wells up as a thin seam under its back rim, dripping. The head: slanted molten eyes under a
+ * crown of blades, and long serrated mandibles edged in lava; the tail: a long obsidian spike of a
+ * stinger with a lava vein. Its mandibles and stinger end in pale glass points.
  */
 function moltenPiece(piece: WormPieceArt, c: Ripple, variant: number, r: PieceRng): string {
   const s = c.stretch;
@@ -1092,73 +1094,87 @@ function moltenPiece(piece: WormPieceArt, c: Ripple, variant: number, r: PieceRn
   const half = PLATE_HALF;
   const { x: cx, y: cy } = CENTIPEDE.foot;
   const heat = c.glow ?? 0.4;
-  const at = (list: readonly (readonly [number, number])[]) => along(list, s, w);
+  type P2 = readonly [number, number];
+  const at = (list: readonly P2[]) => along(list, s, w);
+  const poly = (list: readonly P2[]) => polyPath(at(list));
   // A crack of lava, layered from its rim in: the hotter, the wider it runs.
   const crack = (d: string, k = 1) => {
-    const width = (0.5 + heat * 1.1) * k;
-    const line = (color: string, wide: number, extra = '') => `<path d="${d}" stroke="${color}" stroke-width="${n(width * wide)}" fill="none" stroke-linejoin="round" stroke-linecap="round"${extra}/>`;
-    return line(C.crustDark, 3.4, ' opacity="0.75"') + line(C.lavaDeep, 2.2, ' opacity="0.9"') + line(C.lava, 1.3) + line(C.lavaCore, 0.55) + (heat > 1.4 ? line(C.lavaHot, 0.22) : '');
+    const width = (0.45 + heat * 1) * k;
+    const line = (color: string, wide: number, extra = '') => `<path d="${d}" stroke="${color}" stroke-width="${n(width * wide)}" fill="none" stroke-linejoin="miter" stroke-linecap="round"${extra}/>`;
+    return line(C.obsidianDark, 3.2, ' opacity="0.8"') + line(C.lavaDeep, 2.2, ' opacity="0.9"') + line(C.lava, 1.3) + line(C.lavaCore, 0.55) + (heat > 1.4 ? line(C.lavaHot, 0.22) : '');
   };
-  const outline =
-    piece === 'head'
-      ? ([[half - 10, 0], [half - 13, -8], [half - 20, -13], [-4, -15.5], [-half + 7, -14], [-half + 1, -8], [-half - 1, 0], [-half + 1, 8], [-half + 7, 14], [-4, 15.5], [half - 20, 13], [half - 13, 8]] as const)
-      : piece === 'tail'
-        ? ([[half + 1, 0], [half - 3, -9], [half - 13, -14], [0, -13.5], [-half + 13, -10], [-half + 7, -5], [-half + 5, 0], [-half + 7, 5], [-half + 13, 10], [0, 13.5], [half - 13, 14], [half - 3, 9]] as const)
-        : ([[half + 1, 0], [half - 3, -10], [half - 13, -15], [0, -16], [-half + 9, -15.5], [-half + 1, -10], [-half - 1, 0], [-half + 1, 10], [-half + 9, 15.5], [0, 16], [half - 13, 15], [half - 3, 10]] as const);
-  // Its slab: the sides and underside, then the top plane set up off them, then a lit facet on that.
-  const slab = cutPoly(r('slab'), at(outline.map(([x, y]) => [x, y + 2.2] as const)), 0.9);
-  const top = cutPoly(r('top'), at(outline.map(([x, y]) => [x * 0.9 - 0.5, y * 0.84 - 1] as const)), 0.8);
-  const facet = cutPoly(r('facet'), at([[half - 8, -3], [half - 15, -10], [-2, -12.5], [-half + 9, -11], [-half + 6, -5], [-6, -2.5]]), 0.7);
-  const underside = cutPoly(r('under'), at([[half - 4, 6], [half - 14, 13], [0, 14], [-half + 8, 13], [-half + 2, 7], [-4, 9]]), 0.7);
-  // Two big soft shadows: it stands up off the floor.
-  const shadow = ellipse(cx + 2, cy + 4, half * s + 7, 21 * w, P.shadow, 'opacity="0.14"') + ellipse(cx + 1.5, cy + 3, half * s + 3, 19 * w, P.shadow, 'opacity="0.4"');
-  // Lava oozing out from under its back rim, dripping onto the plate behind.
-  const ooze = 0.6 + Math.min(heat, 2) * 0.35;
-  const back = -half - 1;
-  const welling = at([[-half + 10, -14], [back - 1.5 * ooze, -8], [back - 2.5 * ooze, 0], [back - 1.5 * ooze, 8], [-half + 10, 14]]);
-  const oozeLobes =
-    `<path d="${linePath(welling)}" stroke="${C.lavaDeep}" stroke-width="${n(3 + ooze * 2)}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>` +
-    `<path d="${linePath(welling)}" stroke="${C.lava}" stroke-width="${n(1.4 + ooze * 1.4)}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>` +
-    `<path d="${linePath(welling.slice(1, 4))}" stroke="${C.lavaCore}" stroke-width="${n(0.5 + ooze * 0.6)}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
-  // Drips run back off the crescent, each a bead on the end of a thin trail.
-  const drips = [[-6, 4.5, 1.3], [4, 6.5, 1], [10, 3.5, 0.8]]
-    .map(([y, len, size]) => {
-      const [from, to] = at([[back - 2 * ooze, y], [back - 2 * ooze - len * ooze, y + 0.6]]);
-      return `<path d="${linePath([from, to])}" stroke="${C.lava}" stroke-width="${n(size * 0.9)}" stroke-linecap="round"/>` +
-        ellipse(to.x, to.y, size * 1.15 * ooze, size * ooze, C.lava) + ellipse(to.x + 0.3, to.y - 0.2, size * 0.5 * ooze, size * 0.45 * ooze, C.lavaCore);
-    })
+  // A blade of obsidian from `root` (its two base corners) out to `tip`: split down its length
+  // into a lit face and a dark one, its leading edge glinting.
+  const blade = (a: P2, b: P2, tip: P2, glint = true) => {
+    const mid: P2 = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    const [pa, pb, pt] = at([a, b, tip]);
+    return (
+      fill(poly([a, tip, mid]), C.obsidianLight) + fill(poly([mid, tip, b]), C.obsidianDark) +
+      `<path d="${polyPath([pa, pt, pb])}" fill="none" stroke="${C.obsidian}" stroke-width="0.5" stroke-linejoin="miter"/>` +
+      (glint ? `<path d="${linePath([pa, pt])}" stroke="${C.obsidianGlint}" stroke-width="0.7" opacity="0.85"/>` : '')
+    );
+  };
+  // Its core: slim and angular, pointed fore and aft, broken into facets of glass.
+  const nose = piece === 'head' ? half - 2 : piece === 'tail' ? half + 2 : half + 3;
+  const tailEnd = piece === 'tail' ? -half + 4 : -half - 3;
+  const core: P2[] = [[nose, 0], [half - 9, -9.5], [-5, -11], [-half + 5, -8.5], [tailEnd, 0], [-half + 5, 8.5], [-5, 11], [half - 9, 9.5]];
+  const keel: P2[] = [[nose - 1, 0], [1, -0.5], [tailEnd + 1, 0]];
+  const panes = [
+    { pts: [keel[0], core[1], core[2], keel[1]], color: C.obsidianLight },
+    { pts: [keel[1], core[2], core[3], keel[2]], color: C.obsidian },
+    { pts: [keel[0], keel[1], core[6], core[7]], color: C.obsidian },
+    { pts: [keel[1], keel[2], core[5], core[6]], color: C.obsidianDark },
+  ];
+  // Under the glass, a mass of basalt crust it grew out of, showing at its flanks.
+  const rock = fill(cutPoly(r('rock'), at(core.map(([x, y]) => [x * 0.96, y * 1.18 + 1.8] as const)), 0.9), C.crustDark) +
+    fill(cutPoly(r('rockLip'), at([[half - 10, 9], [-4, 12.5], [-half + 6, 10], [-half + 8, 12], [-4, 14], [half - 12, 11.5]]), 0.6), C.crust) +
+    `<path d="${linePath(at([[half - 11, 11.6], [-4, 14], [-half + 8, 12]]))}" stroke="${C.crustLight}" stroke-width="0.8" fill="none" opacity="0.8"/>`;
+  const glass = panes.map(({ pts, color }) => fill(poly(pts), color)).join('') + fill(poly([[half - 12, -7.5], [-2, -9], [4, -3.5]]), C.obsidianEdge, 'opacity="0.35"');
+  const facetEdges = `<path d="${linePath(at([core[1], keel[0], core[7]]))}" stroke="${C.obsidianGlint}" stroke-width="0.8" fill="none" opacity="0.8" stroke-linejoin="miter"/>` +
+    `<path d="${linePath(at([core[1], core[2], core[3]]))}" stroke="${C.obsidianEdge}" stroke-width="0.7" fill="none" opacity="0.8"/>`;
+  // Lava in the joints between its facets: down its keel and across its middle.
+  const joints = crack(linePath(at(keel)), 0.8) + crack(linePath(at([core[2], keel[1], core[6]])), 0.6);
+  // And its own cracks running out across the panes.
+  const cracks = moltenCracks(piece, variant).map((line, i) => crack(linePath(at(line)), i % 2 ? 0.5 : 0.75)).join('');
+  // Backswept blades off its flanks, longer toward the front; the tail's shorter.
+  const reach = piece === 'tail' ? 0.75 : 1;
+  const flanks = [-1, 1]
+    .map((side) =>
+      (piece === 'head' ? [[half - 16, 18, 1.1]] : [[half - 9, 19, 1], [-5, 15, 0.85]]).map(([x, len, k], i) =>
+        blade([x + 7, side * 8], [x - 6, side * 10.5], [x - len * 0.95 * reach, side * (10 + len * 0.6 * k * reach)], i === 0),
+      ).join(''),
+    )
     .join('');
-  // Shards of obsidian fused into the crust, their edges catching the light.
-  const inlays = (piece === 'tail' ? [[6, 6, 0]] : [[-10, -7, 1], [9, 7, -1]])
-    .map(([x, y, tilt], i) => {
-      const pts = at([[x - 6.5, y - 1 + tilt], [x + 1, y - 4.5], [x + 7, y + 0.5 - tilt], [x - 1, y + 4]]);
-      return fill(cutPoly(r(`inlay${i}`), pts, 0.3), C.obsidian) + `<path d="${linePath([pts[0], pts[1], pts[2]])}" stroke="${C.obsidianLight}" stroke-width="1.1" fill="none" stroke-linejoin="round"/>`;
-    })
-    .join('');
-  // A ridge of rock spikes down its keel, taller toward the head, each lit on one side and dark on the other.
-  const tall = piece === 'head' ? 0.85 : piece === 'tail' ? 0.65 : 1;
-  const ridge = (piece === 'head' ? [-18, -9] : piece === 'tail' ? [-10, 2] : [-17, -6, 5])
+  // A ridge of shards down its keel, raked back, tallest toward the head, each throwing a shadow.
+  const ridgeAt = piece === 'head' ? [-6, -18] : piece === 'tail' ? [2, -12] : [12, 0, -12];
+  const tall = piece === 'tail' ? 0.75 : 1;
+  const ridge = ridgeAt
     .map((x, i) => {
-      const h = (6.5 + (i % 2) * 1.8) * tall;
-      const [tip, left, right, base] = at([[x - h, 0.5], [x + 2.5, -h * 0.55], [x + 2.5, h * 0.55], [x + 4, 0]]);
-      // Its shadow falls to one side, down-right like every sheet's.
-      const [st, sl, sr] = at([[x - h + 1.5, 2.5], [x + 3.5, -h * 0.35 + 2], [x + 3.5, h * 0.55 + 2.5]]);
-      return fill(polyPath([st, sl, sr]), P.shadow, 'opacity="0.45"') + fill(polyPath([tip, left, right]), C.crustDark) +
-        fill(polyPath([tip, left, base]), C.crustLight) + fill(polyPath([tip, base, right]), C.crustDark) +
-        `<path d="${linePath([left, tip, right])}" stroke="${C.crustEdge}" stroke-width="0.7" fill="none" opacity="0.9" stroke-linejoin="round"/>`;
+      const len = (12 - i * 1.5) * tall;
+      const shade = fill(poly([[x + 2, 2], [x - len + 1, 3.5], [x - 1, 5]]), P.shadow, 'opacity="0.45"');
+      return shade + blade([x + 3, -3.8], [x + 3, 3.8], [x - len, -0.5]);
     })
     .join('');
-  const rim = `<path d="${linePath(at([[-half + 9, -14.5], [-half + 2, -9], [-half, 0], [-half + 2, 9], [-half + 9, 14.5]]))}" stroke="${C.crustEdge}" stroke-width="1.3" fill="none" opacity="0.8" stroke-linejoin="round"/>`;
-  const cracks = moltenCracks(piece, variant).map((line, i) => crack(linePath(at(line)), i % 2 ? 0.7 : 1)).join('');
-  // About to pop: lava floods up through new cracks all over it.
+  // Lava welling up from under its back rim, a thin bright seam, a drip trailing off it.
+  const ooze = 0.5 + Math.min(heat, 2) * 0.3;
+  const back = tailEnd;
+  const welling = at([[-half + 7, -9.5], [back - 1.2 * ooze, -4], [back - 1.8 * ooze, 0], [back - 1.2 * ooze, 4], [-half + 7, 9.5]]);
+  const seam =
+    `<path d="${linePath(welling)}" stroke="${C.lavaDeep}" stroke-width="${n(2.4 + ooze * 1.6)}" fill="none" stroke-linecap="round" stroke-linejoin="miter"/>` +
+    `<path d="${linePath(welling)}" stroke="${C.lava}" stroke-width="${n(1 + ooze * 1.1)}" fill="none" stroke-linecap="round" stroke-linejoin="miter"/>` +
+    `<path d="${linePath(welling.slice(1, 4))}" stroke="${C.lavaCore}" stroke-width="${n(0.4 + ooze * 0.5)}" fill="none" stroke-linecap="round"/>`;
+  const [dripFrom, dripTo] = at([[back - 1.8 * ooze, 1], [back - 1.8 * ooze - 5 * ooze, 1.6]]);
+  const drip = `<path d="${linePath([dripFrom, dripTo])}" stroke="${C.lava}" stroke-width="0.9" stroke-linecap="round"/>` + ellipse(dripTo.x, dripTo.y, 1.1 * ooze, 0.9 * ooze, C.lava) + ellipse(dripTo.x + 0.2, dripTo.y - 0.1, 0.5 * ooze, 0.4 * ooze, C.lavaCore);
+  const shadow = ellipse(cx + 2, cy + 3.5, half * s + 4, 16 * w, P.shadow, 'opacity="0.38"');
+  // About to pop: lava floods up through a second web of cracks.
   const flood = c.splinter ? moltenCracks(piece, variant + 3).map((line, i) => crack(linePath(at(line)), i % 2 ? 0.8 : 1.1)).join('') : '';
-  let plate = oozeLobes + drips + fill(slab, C.crustDark) + fill(underside, C.crustDark, 'opacity="0.9"') + fill(top, C.crust) + fill(facet, C.crustLight, 'opacity="0.75"') + inlays + cracks + flood + ridge + rim;
-  // Broken off at its split, its raw molten core showing at the break.
+  let plate = seam + drip + flanks + rock + glass + joints + cracks + flood + facetEdges + ridge;
+  // Broken off at its split, its raw molten core showing at the break, splinters of glass sticking out.
   if (c.torn) {
-    const chunk = (pts: Pt[], i: number) => fill(cutPoly(r(`chunk${i}`), pts, 0.4), i % 2 ? C.obsidian : C.crustLight, `stroke="${C.crustEdge}" stroke-width="0.5"`);
-    plate = tearOff(plate, piece === 'head' ? 1 : -1, s, w, (edge) => crack(edge, 1.8), chunk);
+    const splinter = (pts: Pt[], i: number) => fill(polyPath(pts), i % 2 ? C.obsidianLight : C.obsidian, `stroke="${C.obsidianEdge}" stroke-width="0.5"`);
+    plate = tearOff(plate, piece === 'head' ? 1 : -1, s, w, (edge) => crack(edge, 1.8), splinter);
   }
-  // Heaving out an egg, its crust split on magma.
+  // Heaving out an egg, its glass split on magma.
   if (c.parted) {
     const { by } = c.parted;
     plate = partOpen(plate, c.parted, s, ellipse(cx, cy, (half - 5) * s, by + 2.5, C.lavaDeep) + ellipse(cx, cy, (half - 8) * s, by + 1, C.lava) + crack(linePath(at([[-half + 8, 0], [half - 8, 0]]))));
@@ -1166,43 +1182,45 @@ function moltenPiece(piece: WormPieceArt, c: Ripple, variant: number, r: PieceRn
   let ends = '';
   let face = '';
   if (piece === 'head' && !c.torn) {
-    const front = cx + (half - 12) * s;
-    // A brow ridge over each molten eye pit.
-    const eye = (side: number) => {
-      const y = cy + side * 7 * w;
-      return (
-        ellipse(front - 7, y, 2.4, 1.8, C.crustDark) + ellipse(front - 7, y, 1.7, 1.2, C.lavaDeep) + ellipse(front - 7, y, 1, 0.7, heat > 1.4 ? C.lavaHot : C.lavaCore) +
-        `<path d="M${n(front - 10)} ${n(y - side * 2.6)}Q${n(front - 7)} ${n(y - side * 4)} ${n(front - 4)} ${n(y - side * 2.2)}" stroke="${C.crustEdge}" stroke-width="1.2" fill="none"/>`
-      );
-    };
-    // An obsidian shard of a mandible, its inner edge molten, a glint down its back.
+    const front = half - 6;
+    // A long serrated blade of a mandible, its inner edge molten, a pale glass tip.
     const jaw = (side: 1 | -1) => {
-      const hook = taper([{ x: -4, y: 0 }, { x: 8, y: 3 * side }, { x: 17, y: 2 * side }, { x: 23, y: -3.5 * side }], 8, 0.6);
-      const edge = `M0 ${n(2.4 * side)}L9 ${n(4.8 * side)}L17 ${n(3.4 * side)}L22.5 ${n(-3 * side)}`;
+      const outer: P2[] = [[-3, -1.5 * side], [10, 1 * side], [21, 0.5 * side], [28, -4.5 * side]];
+      const inner: P2[] = [[25, -2.5 * side], [19, 3.2 * side], [16, 1.6 * side], [12, 4.4 * side], [9, 2.6 * side], [4, 4.6 * side], [-3, 3.5 * side]];
+      const d = polyPath([...outer, ...inner].map(([x, y]) => ({ x, y })));
+      const edge = `M${inner.map(([x, y]) => `${n(x)} ${n(y)}`).join('L')}`;
+      const tip = polyPath([{ x: 22, y: 0.2 * side }, { x: 28, y: -4.5 * side }, { x: 25, y: -2.5 * side }]);
+      const [o] = at([[front, side * 4.5]]);
       return group(
-        fill(hook, C.obsidian, `stroke="${C.obsidianLight}" stroke-width="0.8" stroke-linejoin="round"`) +
-          `<path d="${edge}" stroke="${C.lava}" stroke-width="1.1" fill="none" opacity="0.95" stroke-linejoin="round"/>` +
-          `<path d="M2 ${n(-1.4 * side)}L14 ${n(0.4 * side)}" stroke="${C.obsidianGlint}" stroke-width="0.9" opacity="0.85"/>`,
-        `translate(${n(front)} ${n(cy + side * 5 * w)}) rotate(${n(side * (c.gape * 24 - 4))})`,
+        fill(d, C.obsidian, `stroke="${C.obsidianEdge}" stroke-width="0.9" stroke-linejoin="miter"`) +
+          `<path d="${edge}" stroke="${C.lava}" stroke-width="0.7" fill="none" opacity="0.85" stroke-linejoin="miter"/>` +
+          `<path d="M0 ${n(-0.4 * side)}L20 ${n(0.4 * side)}" stroke="${C.obsidianGlint}" stroke-width="0.8" opacity="0.85"/>` + fill(tip, C.glassFangTip),
+        `translate(${n(o.x)} ${n(o.y)}) rotate(${n(side * (c.gape * 24 - 4))})`,
       );
     };
     ends = jaw(-1) + jaw(1);
-    // Its face: a heavy brow of crust across its front, the eyes burning under it.
-    const brow = cutPoly(r('brow'), at([[half - 12, -11], [half - 8, -4], [half - 7, 4], [half - 12, 11], [half - 22, 12], [half - 19, 0], [half - 22, -12]]), 0.6);
-    face = fill(brow, C.crustDark, 'opacity="0.85"') + `<path d="${linePath(at([[half - 21, -12], [half - 18, 0], [half - 21, 12]]))}" stroke="${C.crustEdge}" stroke-width="1" fill="none" opacity="0.8"/>` + [-1, 1].map(eye).join('');
+    // Slanted molten eyes under a brow of shards, a crown of blades raked back over its skull.
+    const eye = (side: 1 | -1) => {
+      const pts: P2[] = [[half - 9, side * 3.5], [half - 16, side * 7.5], [half - 13, side * 4]];
+      return fill(poly(pts.map(([x, y]) => [x + 0.6, y + side * 0.6] as const)), C.obsidianDark) + fill(poly(pts), C.lavaDeep) +
+        fill(poly([[half - 10, side * 4], [half - 14.5, side * 6.4], [half - 12.6, side * 4.4]]), heat > 1.4 ? C.lavaHot : C.lavaCore);
+    };
+    const crown = [-1, 1].map((side) => blade([half - 15, side * 5], [half - 19, side * 8.5], [half - 34, side * 13])).join('') + blade([half - 12, -2], [half - 12, 2], [half - 30, 0]);
+    face = crown + [-1, 1].map((side) => eye(side as 1 | -1)).join('');
   }
   if (piece === 'tail' && !c.torn) {
-    const root = cx - (half - 8) * s;
-    const sting = [{ x: root + 4, y: cy }, { x: root - 12, y: cy + 1 }, { x: root - 26, y: cy - 0.5 }, { x: root - 38, y: cy - 3.5 }];
+    // A long obsidian spike of a stinger, a lava vein down it and a pale glass point.
+    const root = -half + 7;
+    const len = 40;
     ends =
-      fill(taper(sting, 7.5, 0.6), C.obsidian) +
-      `<path d="${linePath(sting.slice(0, 3))}" stroke="${C.lava}" stroke-width="1.1" fill="none" opacity="0.9"/>` +
-      `<path d="${linePath([{ x: root - 4, y: cy - 2.4 }, { x: root - 22, y: cy - 2.2 }])}" stroke="${C.obsidianGlint}" stroke-width="0.7" opacity="0.8"/>` +
-      ellipse(root - 38.5, cy - 2, 1.3, 1.6, C.lava) + ellipse(root - 38.5, cy - 2.2, 0.6, 0.7, C.lavaCore);
+      blade([root, -3.5], [root, 3.5], [root - len, -2.5], false) +
+      `<path d="${linePath(at([[root - 2, 0], [root - len * 0.55, -0.8]]))}" stroke="${C.lava}" stroke-width="1" fill="none" opacity="0.9"/>` +
+      `<path d="${linePath(at([[root - 1, -2.6], [root - len * 0.8, -2.4]]))}" stroke="${C.obsidianGlint}" stroke-width="0.7" opacity="0.8"/>` +
+      fill(poly([[root - len * 0.82, -1.4], [root - len, -2.5], [root - len * 0.82, -3.2]]), C.glassFangTip);
   }
   const body = shadow + ends + plate + face;
   const chips = c.hurt
-    ? [[-14, -20, 25], [12, 19, -40], [20, -18, 70]].map(([x, y, a], i) => group(fill(cutPoly(r(`chip${i}`), [{ x: -2.2, y: -1.5 }, { x: 2.2, y: -1 }, { x: 1, y: 2 }, { x: -1.6, y: 1.3 }], 0.3), C.crustLight), `translate(${n(cx + x)} ${n(cy + y)}) rotate(${a})`)).join('')
+    ? [[-14, -20, 25], [12, 19, -40], [20, -18, 70]].map(([x, y, a], i) => group(fill(polyPath([{ x: -2.6, y: -0.8 }, { x: 2.8, y: -0.4 }, { x: -0.6, y: 1.6 }]), i % 2 ? C.obsidianLight : C.obsidianEdge), `translate(${n(cx + x)} ${n(cy + y)}) rotate(${a})`)).join('')
     : '';
   return group(body, `rotate(${n(c.wobble)} ${cx} ${cy})`) + chips;
 }

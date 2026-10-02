@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WORM_BOSS_LIP_KEY, artCatalogue, charKey, decorKey, doorKey, floorKey, floorLook, giantKey, groundKey, joinKey, shotKey, tileKey, tileLook, wallJoinKey, wallKey, type DoorSide, type FloorKind } from './catalogue';
-import { CHARACTERS, wormBossBurst, type Action } from './characters';
+import { CHARACTERS, WORM_BOSS_BURST, type Action } from './characters';
 import { PAPER } from './palette';
 import { CAVE_FLOOR_LOOKS, GIANT_LOOKS, GIANT_VARIANTS, JOIN_LOOKS, TILE, WALL_JOIN_LOOKS, WALL_JOIN_SIDES, WALL_STYLES, tileLooks, wallGems, type WallSide } from './terrain';
 import { themeForFloor } from '../map/themes';
@@ -251,13 +251,10 @@ describe('the art catalogue', () => {
       hatchlingBody: { views: ['top'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 }, champion: false },
       hatchlingTail: { views: ['top'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 }, champion: false },
       wormBossHead: { views: ['top'], actions: BOSS_ACTIONS, champion: false },
-      wormBossBody: { views: ['top'], actions: BOSS_ACTIONS, champion: false },
+      wormBossBody0: { views: ['top'], actions: BOSS_ACTIONS, champion: false },
+      wormBossBody1: { views: ['top'], actions: BOSS_ACTIONS, champion: false },
+      wormBossBody2: { views: ['top'], actions: BOSS_ACTIONS, champion: false },
       wormBossTail: { views: ['top'], actions: BOSS_ACTIONS, champion: false },
-      wormBossHeadEmber: { views: ['top'], actions: BOSS_ACTIONS, champion: false },
-      wormBossBodyEmber0: { views: ['top'], actions: BOSS_ACTIONS, champion: false },
-      wormBossBodyEmber1: { views: ['top'], actions: BOSS_ACTIONS, champion: false },
-      wormBossBodyEmber2: { views: ['top'], actions: BOSS_ACTIONS, champion: false },
-      wormBossTailEmber: { views: ['top'], actions: BOSS_ACTIONS, champion: false },
       wormEgg: { views: ['down'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 }, champion: false },
     } as const;
     const KINDS = Object.keys(CAST) as (keyof typeof CAST)[];
@@ -269,7 +266,7 @@ describe('the art catalogue', () => {
         ),
       );
 
-    it("stalks, lunges and recovers as a ghoul; flutters and swoops as a bat; squashes, hops and lands as a slime, all side on; a geode faces the camera; a worm's and the worm boss's head, body and tail are seen from above, turned along its spine; an egg sits facing the camera", () => {
+    it("stalks, lunges and recovers as a ghoul; flutters and swoops as a bat; squashes, hops and lands as a slime, all side on; a geode faces the camera; a worm's and the worm boss's head, body (the boss's in three crack patterns) and tail are seen from above, turned along its spine; an egg sits facing the camera", () => {
       for (const kind of KINDS) {
         expect(CHARACTERS[kind].actions, kind).toEqual(CAST[kind].actions);
         expect([...CHARACTERS[kind].views], kind).toEqual(CAST[kind].views);
@@ -295,7 +292,7 @@ describe('the art catalogue', () => {
       expect(new Set(['wormHead', 'wormBody', 'wormTail'].map(idle)).size).toBe(3);
     });
 
-    it('draws the worm as the dull chitin cousin of the Obsidian Centipede: matte plates, nothing glowing', () => {
+    it("draws the worm as the worm boss's dull chitin cousin: matte plates, nothing glowing", () => {
       const { matte, crystal, crystalLight } = PAPER.caves;
       for (const kind of ['wormHead', 'wormBody', 'wormTail']) {
         for (const key of keysOf(kind as keyof typeof CAST, false)) {
@@ -307,32 +304,32 @@ describe('the art catalogue', () => {
     });
 
     it("draws a hatchling as a worm newly hatched: the worm's build in pale, soft, half-translucent plates, nothing glowing", () => {
-      const { pale, matte, seamBlood, seamBloodLight } = PAPER.caves;
+      const { pale, matte, lava, lavaDeep } = PAPER.caves;
       for (const piece of ['Head', 'Body', 'Tail']) {
         for (const key of keysOf(`hatchling${piece}` as keyof typeof CAST, false)) {
           const svg = svgOf(key).toLowerCase();
           expect(svg, key).toMatch(new RegExp(`fill="${pale.toLowerCase()}" opacity="0\\.\\d+"`));
-          for (const other of [matte, seamBlood, seamBloodLight]) expect(svg, key).not.toContain(other.toLowerCase());
+          for (const other of [matte, lava, lavaDeep]) expect(svg, key).not.toContain(other.toLowerCase());
         }
         const idle = (kind: string) => svgOf(charKey(kind, 'idle', 0, 'top'));
         expect(idle(`hatchling${piece}`)).not.toBe(idle(`worm${piece}`));
       }
     });
 
-    it('draws the eggs dark and leathery with thin glowing veins, none of the old pale shell or crystal flecks', () => {
-      const { egg, seamBlood, crystal } = PAPER.caves;
+    it('draws the eggs dark and leathery with thin veins glowing with its lava, none of the old pale shell or crystal flecks', () => {
+      const { egg, lavaDeep, crystal } = PAPER.caves;
       expect(egg.toLowerCase()).not.toBe('#d8cdb2');
       for (const key of keysOf('wormEgg', false)) {
         const svg = svgOf(key).toLowerCase();
-        for (const own of [egg, seamBlood]) expect(svg, key).toContain(own.toLowerCase());
+        for (const own of [egg, lavaDeep]) expect(svg, key).toContain(own.toLowerCase());
         expect(svg, key).not.toContain(crystal.toLowerCase());
       }
     });
 
     it('cracks the eggs open along their veins, the light leaking ever brighter frame by frame as they wobble', () => {
-      const { seamBlood } = PAPER.caves;
+      const { lavaDeep } = PAPER.caves;
       const glowOf = (action: Action, frame: number) =>
-        [...svgOf(charKey('wormEgg', action, frame, 'down')).matchAll(new RegExp(`stroke="${seamBlood}"[^>]*?opacity="([\\d.]+)"`, 'gi'))].reduce((a, m) => a + Number(m[1]), 0);
+        [...svgOf(charKey('wormEgg', action, frame, 'down')).matchAll(new RegExp(`stroke="${lavaDeep}"[^>]*?opacity="([\\d.]+)"`, 'gi'))].reduce((a, m) => a + Number(m[1]), 0);
       const cracking = [0, 1, 2].map((f) => glowOf('attack', f));
       expect(glowOf('idle', 0)).toBeLessThan(cracking[0]);
       expect(cracking[0]).toBeLessThan(cracking[1]);
@@ -344,123 +341,45 @@ describe('the art catalogue', () => {
       expect(turns).toEqual(['0', '90', '180', '270']);
     });
 
-    it("draws the worm boss's pieces as its own, apart from the worm's and from each other", () => {
-      const idle = (kind: string) => svgOf(charKey(kind, 'idle', 0, 'top'));
-      expect(new Set(['wormHead', 'wormBody', 'wormTail', 'wormBossHead', 'wormBossBody', 'wormBossTail'].map(idle)).size).toBe(6);
-    });
-
-    it('draws the worm boss as the Obsidian Centipede: black-glass plates with blood-red light in their seams, none of the old crystal or the worm\'s matte chitin', () => {
-      const { obsidian, seamBlood, crystal, crystalLight, chitin, matte } = PAPER.caves;
-      for (const kind of ['wormBossHead', 'wormBossBody', 'wormBossTail'] as const) {
-        for (const key of keysOf(kind, false)) {
-          const svg = svgOf(key).toLowerCase();
-          for (const own of [obsidian, seamBlood]) expect(svg, key).toContain(own.toLowerCase());
-          for (const old of [crystal, crystalLight, chitin, matte]) expect(svg, key).not.toContain(old.toLowerCase());
-        }
-      }
-    });
-
-    describe('acting out its beats', () => {
-      const { seamBlood } = PAPER.caves;
-      /** How strongly its seams glow in a frame: the opacities of the strokes in the seam colour. */
-      const glowOf = (action: Action, frame: number, kind = 'wormBossBody') => {
-        const svg = svgOf(charKey(kind, action, frame, 'top'));
-        const strokes = [...svg.matchAll(new RegExp(`stroke="${seamBlood}"[^>]*?opacity="([\\d.]+)"`, 'gi'))].map((m) => Number(m[1]));
-        return strokes.reduce((a, b) => a + b, 0);
-      };
-      const crawl = (kind = 'wormBossBody') => Math.max(...[0, 1, 2, 3].map((f) => glowOf('move', f, kind)));
+    describe('the worm boss, the Molten Centipede', () => {
+      const { crystal, crystalLight, chitin, matte, crust, crustDark, crustLight, obsidian, obsidianLight, obsidianDark, obsidianEdge, obsidianGlint, lava, lavaCore, lavaDeep, glassFangTip, egg } = PAPER.caves;
+      const pieces = ['wormBossHead', 'wormBossBody0', 'wormBossBody1', 'wormBossBody2', 'wormBossTail'] as const;
+      const bodies = ['wormBossBody0', 'wormBossBody1', 'wormBossBody2'] as const;
+      /** How wide its lava cracks run in a frame: the stroke widths of the strokes in the lava's colour, added up. */
+      const lavaOf = (action: Action, frame: number, kind = 'wormBossBody0') =>
+        [...svgOf(charKey(kind, action, frame, 'top')).matchAll(new RegExp(`stroke="${lava}" stroke-width="([\\d.]+)"`, 'gi'))].reduce((a, m) => a + Number(m[1]), 0);
+      const crawl = (kind?: string) => [0, 1, 2, 3].map((f) => lavaOf('move', f, kind));
       /** How far its head's mandibles are turned out, from the rotation the lower one is drawn at (the upper one mirrors it). */
       const gapeOf = (action: Action, frame: number) => {
         const svg = svgOf(charKey('wormBossHead', action, frame, 'top'));
-        const turns = [...svg.matchAll(new RegExp(`rotate\\((-?[\\d.]+)\\)"><path d="[^"]*" fill="${PAPER.caves.glassFang}"`, 'gi'))].map((m) => Number(m[1]));
+        const turns = [...svg.matchAll(new RegExp(`rotate\\((-?[\\d.]+)\\)"><path d="[^"]*" fill="${obsidian}" stroke=`, 'gi'))].map((m) => Number(m[1]));
         expect(turns.length, `${action} ${frame}`).toBe(2);
         expect(turns[0], `${action} ${frame}`).toBeCloseTo(-turns[1]);
         return turns[1];
       };
 
-      it("pulses its seams dimly as it crawls, never as bright as its roar's flare", () => {
-        const frames = [0, 1, 2, 3].map((f) => glowOf('move', f));
-        expect(new Set(frames).size).toBeGreaterThan(1);
-        expect(crawl()).toBeLessThan(glowOf('attack', 1));
+      it("draws its pieces as its own, apart from the worm's and from each other", () => {
+        const idle = (kind: string) => svgOf(charKey(kind, 'idle', 0, 'top'));
+        expect(new Set(['wormHead', 'wormBody', 'wormTail', ...pieces].map(idle)).size).toBe(8);
       });
 
-      it('roars with its mandibles splayed wider than ever and its whole body blazing', () => {
-        for (const kind of ['wormBossHead', 'wormBossBody', 'wormBossTail']) expect(glowOf('attack', 1, kind), kind).toBeGreaterThan(2 * crawl(kind));
-        for (const action of ['move', 'charge', 'spit', 'lunge'] as const) expect(gapeOf('attack', 1), action).toBeGreaterThan(gapeOf(action, 1));
-      });
-
-      it('spreads its mandibles wide and brightens its seams as it charges up, and snaps them shut as it lunges', () => {
-        for (const f of [0, 1]) {
-          expect(gapeOf('charge', f)).toBeGreaterThan(gapeOf('move', 1));
-          expect(glowOf('charge', f)).toBeGreaterThan(crawl());
-          // Shut: the hooks crossed in front of its head, tighter than at any point of its crawl.
-          for (const m of [0, 1, 2, 3]) expect(gapeOf('lunge', f)).toBeLessThan(gapeOf('move', m));
-        }
-      });
-
-      it("flares a segment's seams as its spit shot leaves it", () => {
-        expect(glowOf('spit', 1)).toBeGreaterThan(glowOf('spit', 0));
-        expect(glowOf('spit', 1)).toBeGreaterThan(crawl());
-      });
-
-      it("parts a segment's plates as an egg heaves out of it: the egg's shell in the gap, then gone", () => {
-        const { egg } = PAPER.caves;
-        const lob = (f: number) => svgOf(charKey('wormBossBody', 'lob', f, 'top')).toLowerCase();
-        expect(lob(0)).toContain(egg.toLowerCase());
-        expect(lob(1)).not.toContain(egg.toLowerCase());
-        for (const f of [0, 1]) expect(lob(f)).toContain('clip-path');
-        expect(svgOf(charKey('wormBossBody', 'move', 0, 'top'))).not.toContain('clip-path');
-      });
-
-      it('shows its torn end at the split as jagged broken glass leaking light: no stinger or mandibles there', () => {
-        const { glassFangTip } = PAPER.caves;
-        for (const kind of ['wormBossHead', 'wormBossTail']) {
-          for (const f of [0, 1]) {
-            const svg = svgOf(charKey(kind, 'split', f, 'top')).toLowerCase();
-            expect(svg, kind).not.toContain(glassFangTip.toLowerCase());
-            expect(glowOf('split', f, kind), kind).toBeGreaterThan(crawl(kind));
-          }
-          expect(svgOf(charKey(kind, 'move', 0, 'top')).toLowerCase(), kind).toContain(glassFangTip.toLowerCase());
-        }
-      });
-
-      it('blazes each dying segment just before it pops', () => {
-        expect(glowOf('die', 1)).toBeGreaterThan(2 * glowOf('die', 0));
-        expect(glowOf('die', 1)).toBeGreaterThan(glowOf('attack', 1));
-      });
-
-      it('shatters into black-glass shards with sparks in its seam glow', () => {
-        const { obsidian, obsidianLight, obsidianEdge, seamBlood: glow, seamBloodLight, crystal, crystalLight, chitin } = PAPER.caves;
-        expect(wormBossBurst('blood').shards).toEqual([obsidian, obsidianLight, obsidian, obsidianEdge]);
-        for (const old of [crystal, crystalLight, chitin]) expect(wormBossBurst('blood').shards).not.toContain(old);
-        expect([glow, seamBloodLight]).toContain(wormBossBurst('blood').sparks);
-        expect(wormBossBurst('blood').blobs).toBeUndefined();
-      });
-    });
-
-    describe('as the Molten Centipede, beside the blood-red glass, to compare', () => {
-      const { seamBlood, seamBloodLight, crust, crustDark, crustLight, obsidian, lava, lavaCore, lavaDeep } = PAPER.caves;
-      const molten = ['wormBossHeadEmber', 'wormBossBodyEmber0', 'wormBossBodyEmber1', 'wormBossBodyEmber2', 'wormBossTailEmber'] as const;
-      const bodies = ['wormBossBodyEmber0', 'wormBossBodyEmber1', 'wormBossBodyEmber2'] as const;
-      /** How wide its lava cracks run in a frame: the stroke widths of the strokes in the lava's colour, added up. */
-      const lavaOf = (action: Action, frame: number, kind = 'wormBossBodyEmber0') =>
-        [...svgOf(charKey(kind, action, frame, 'top')).matchAll(new RegExp(`stroke="${lava}" stroke-width="([\\d.]+)"`, 'gi'))].reduce((a, m) => a + Number(m[1]), 0);
-      const crawl = (kind?: string) => [0, 1, 2, 3].map((f) => lavaOf('move', f, kind));
-
-      it('acts out every beat of the fight, frame for frame with the glass', () => {
-        for (const kind of molten) expect(CHARACTERS[kind].actions, kind).toEqual(CHARACTERS.wormBossBody.actions);
-      });
-
-      it('is basalt crust fused with obsidian, lava cracks layered deep red, orange and a yellow-hot core: none of the blood-red light', () => {
-        for (const kind of molten) {
+      it('is lava-fused obsidian: black glass grown out of basalt, cracked deep red, orange and a yellow-hot core; none of the old crystal or the worm\'s chitin', () => {
+        for (const kind of pieces) {
           for (const key of keysOf(kind, false)) {
             const svg = svgOf(key).toLowerCase();
             for (const own of [crust, crustDark, crustLight, obsidian, lava, lavaCore, lavaDeep]) expect(svg, `${key} ${own}`).toContain(own.toLowerCase());
-            for (const other of [seamBlood, seamBloodLight]) expect(svg, key).not.toContain(other.toLowerCase());
+            for (const old of [crystal, crystalLight, chitin, matte]) expect(svg, key).not.toContain(old.toLowerCase());
           }
         }
-        // And the glass boss has none of its rock or lava.
-        for (const key of keysOf('wormBossBody', false)) for (const other of [crust, lava, lavaCore]) expect(svgOf(key).toLowerCase(), key).not.toContain(other.toLowerCase());
+      });
+
+      it('is mostly obsidian, edged sharp: far more black glass than rock, glinting along its blades', () => {
+        const count = (svg: string, colours: string[]) => colours.reduce((a, c) => a + svg.toLowerCase().split(`fill="${c.toLowerCase()}"`).length - 1, 0);
+        for (const kind of pieces) {
+          const svg = svgOf(charKey(kind, 'move', 0, 'top'));
+          expect(count(svg, [obsidian, obsidianLight, obsidianDark]), kind).toBeGreaterThan(2 * count(svg, [crust, crustDark, crustLight]));
+          expect(svg.toLowerCase(), kind).toContain(obsidianGlint.toLowerCase());
+        }
       });
 
       it('cracks each of its three body plates its own way', () => {
@@ -470,15 +389,25 @@ describe('the art catalogue', () => {
       });
 
       it('breathes as it crawls, its cracks oozing a little wider and narrower frame by frame', () => {
-        for (const kind of molten) expect(new Set(crawl(kind)).size, kind).toBeGreaterThan(1);
+        for (const kind of pieces) expect(new Set(crawl(kind)).size, kind).toBeGreaterThan(1);
       });
 
-      it('widens its cracks as it charges up, blows them wide open as it roars, narrows them to slits as it lunges', () => {
-        for (const kind of molten) {
-          const most = Math.max(...crawl(kind));
-          for (const f of [0, 1]) expect(lavaOf('charge', f, kind), `${kind} charge ${f}`).toBeGreaterThan(most);
-          expect(lavaOf('attack', 1, kind), kind).toBeGreaterThan(lavaOf('charge', 1, kind));
-          for (const f of [0, 1]) expect(lavaOf('lunge', f, kind), `${kind} lunge ${f}`).toBeLessThan(Math.min(...crawl(kind)));
+      it('roars with its mandibles splayed wider than ever and its cracks blown wide open', () => {
+        for (const kind of pieces) expect(lavaOf('attack', 1, kind), kind).toBeGreaterThan(lavaOf('charge', 1, kind));
+        for (const action of ['move', 'charge', 'spit', 'lunge'] as const) expect(gapeOf('attack', 1), action).toBeGreaterThan(gapeOf(action, 1));
+      });
+
+      it('spreads its mandibles and widens its cracks as it charges up; snaps them shut and narrows its cracks to slits as it lunges', () => {
+        for (const kind of pieces) {
+          for (const f of [0, 1]) {
+            expect(lavaOf('charge', f, kind), `${kind} charge ${f}`).toBeGreaterThan(Math.max(...crawl(kind)));
+            expect(lavaOf('lunge', f, kind), `${kind} lunge ${f}`).toBeLessThan(Math.min(...crawl(kind)));
+          }
+        }
+        for (const f of [0, 1]) {
+          expect(gapeOf('charge', f)).toBeGreaterThan(gapeOf('move', 1));
+          // Shut: the blades crossed in front of its head, tighter than at any point of its crawl.
+          for (const m of [0, 1, 2, 3]) expect(gapeOf('lunge', f)).toBeLessThan(gapeOf('move', m));
         }
       });
 
@@ -487,41 +416,39 @@ describe('the art catalogue', () => {
         expect(lavaOf('spit', 1)).toBeGreaterThan(Math.max(...crawl()));
       });
 
+      it('splits a segment open on magma as an egg heaves out of it: the egg in the gap, then gone', () => {
+        const lob = (f: number) => svgOf(charKey('wormBossBody0', 'lob', f, 'top')).toLowerCase();
+        expect(lob(0)).toContain(egg.toLowerCase());
+        expect(lob(1)).not.toContain(egg.toLowerCase());
+        for (const f of [0, 1]) expect(lob(f)).toContain('clip-path');
+        expect(svgOf(charKey('wormBossBody0', 'move', 0, 'top'))).not.toContain('clip-path');
+      });
+
+      it('shows a molten core at its torn end at the split: no stinger or mandibles there', () => {
+        for (const kind of ['wormBossHead', 'wormBossTail']) {
+          for (const f of [0, 1]) {
+            expect(lavaOf('split', f, kind), kind).toBeGreaterThan(Math.max(...crawl(kind)));
+            // Its mandibles and stinger are obsidian blades with pale glass points; torn, they are gone.
+            expect(svgOf(charKey(kind, 'split', f, 'top')).toLowerCase(), kind).not.toContain(glassFangTip.toLowerCase());
+          }
+          expect(svgOf(charKey(kind, 'move', 0, 'top')).toLowerCase(), kind).toContain(glassFangTip.toLowerCase());
+        }
+      });
+
       it('floods every dying segment with lava just before it pops', () => {
-        for (const kind of molten) {
+        for (const kind of pieces) {
           expect(lavaOf('die', 1, kind), kind).toBeGreaterThan(2 * lavaOf('die', 0, kind));
           expect(lavaOf('die', 1, kind), kind).toBeGreaterThan(lavaOf('attack', 1, kind));
         }
       });
 
-      it("splits its crust on magma as an egg heaves out, and shows a molten core at its torn end with no stinger or mandibles", () => {
-        const { egg, glassFangTip } = PAPER.caves;
-        expect(svgOf(charKey('wormBossBodyEmber0', 'lob', 0, 'top')).toLowerCase()).toContain(egg.toLowerCase());
-        expect(svgOf(charKey('wormBossBodyEmber0', 'lob', 1, 'top')).toLowerCase()).not.toContain(egg.toLowerCase());
-        for (const kind of ['wormBossHeadEmber', 'wormBossTailEmber']) {
-          expect(lavaOf('split', 0, kind), kind).toBeGreaterThan(Math.max(...crawl(kind)));
-          // Its mandibles and stinger are obsidian blades with pale glass tips; torn, they are gone.
-          expect(svgOf(charKey(kind, 'move', 0, 'top')).toLowerCase(), kind).toContain(glassFangTip.toLowerCase());
-          for (const f of [0, 1]) expect(svgOf(charKey(kind, 'split', f, 'top')).toLowerCase(), kind).not.toContain(glassFangTip.toLowerCase());
-        }
-      });
-
-      it('is mostly obsidian, edged sharp: far more black glass than rock, glinting along its blades', () => {
-        const { obsidianLight, obsidianDark, obsidianGlint } = PAPER.caves;
-        const count = (svg: string, colours: string[]) => colours.reduce((a, c) => a + svg.toLowerCase().split(`fill="${c.toLowerCase()}"`).length - 1, 0);
-        for (const kind of molten) {
-          const svg = svgOf(charKey(kind, 'move', 0, 'top'));
-          expect(count(svg, [obsidian, obsidianLight, obsidianDark]), kind).toBeGreaterThan(2 * count(svg, [crust, crustDark, crustLight]));
-          expect(svg.toLowerCase(), kind).toContain(obsidianGlint.toLowerCase());
-        }
-      });
-
       it('shatters mostly into obsidian slivers, a chunk of basalt among them, with ember sparks and small magma blobs', () => {
-        const burst = wormBossBurst('ember');
-        expect(burst.shards.filter((c) => c === obsidian || c === PAPER.caves.obsidianLight).length).toBeGreaterThan(burst.shards.length / 2);
-        expect(burst.shards).toContain(crustDark);
-        expect(burst.sparks).toBe(lavaCore);
-        expect(burst.blobs).toBe(lava);
+        const { shards, sparks, blobs } = WORM_BOSS_BURST;
+        expect(shards.filter((c) => c === obsidian || c === obsidianLight || c === obsidianEdge).length).toBeGreaterThan(shards.length / 2);
+        expect(shards).toContain(crustDark);
+        for (const old of [crystal, crystalLight, chitin]) expect(shards).not.toContain(old);
+        expect(sparks).toBe(lavaCore);
+        expect(blobs).toBe(lava);
       });
     });
 

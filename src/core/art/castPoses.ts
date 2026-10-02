@@ -178,8 +178,10 @@ export function wormPose(worm: Worm, index: number, time: number, glide?: WormGl
   return { piece, hold: { action: 'move' as const, frame }, ...wormSpine(worm, index, glide) };
 }
 
-/** The pieces the worm boss is drawn in: the worm's, grown huge. */
-export type WormBossPiece = 'wormBossHead' | 'wormBossBody' | 'wormBossTail';
+/** The pieces the worm boss is drawn in: its head, its tail, and its body plates cracked in three patterns. */
+export type WormBossPiece = 'wormBossHead' | `wormBossBody${0 | 1 | 2}` | 'wormBossTail';
+/** How many crack patterns the worm boss's body plates come in, in turn down its length. */
+const BOSS_BODIES = 3;
 
 /** How long each beat of its roar shows (maw splayed, then settling), and of its maw pulsing through a spit wave. */
 const ROAR_BEAT_MS = 150;
@@ -275,7 +277,7 @@ export interface WormBossLook {
 export function wormBossPose(look: WormBossLook, index: number, time: number): Pose & Spine & { piece: WormBossPiece; clip?: WallClip } {
   const { worm, room, moment } = look;
   const last = worm.segments.length - 1;
-  const piece = index === 0 ? 'wormBossHead' : index === last ? 'wormBossTail' : 'wormBossBody';
+  const piece: WormBossPiece = index === 0 ? 'wormBossHead' : index === last ? 'wormBossTail' : `wormBossBody${(index % BOSS_BODIES) as 0 | 1 | 2}`;
   const spine = wormSpine(worm, index, look.glide);
   const clip = wallClip(worm, index, look.glide, room, spine);
   const pose = (hold?: Pose['hold']) => ({ piece, ...(hold ? { hold } : {}), ...spine, ...(clip ? { clip } : {}) }) as Pose & Spine & { piece: WormBossPiece; clip?: WallClip };

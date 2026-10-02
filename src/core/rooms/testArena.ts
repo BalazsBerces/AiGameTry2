@@ -44,7 +44,7 @@ export interface ArenaSpawn {
 }
 
 /** Params that belong to other playtest shortcuts (`?seed`, `?boss`, `?room=`), never enemy names. */
-const RESERVED = new Set(['seed', 'boss', 'room', 'glow']);
+const RESERVED = new Set(['seed', 'boss', 'room']);
 export const SLIME_TIERS: readonly SlimeTier[] = ['big', 'medium', 'small'];
 
 export interface ArenaRequest {

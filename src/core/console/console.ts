@@ -13,7 +13,6 @@ import {
 } from '../map/world';
 import { PASSIVE_NAMES, resolveWeapon, type Passive, type PassiveLevel, type Weapon } from '../player/weaponModel';
 import { createRng } from '../rng';
-import { findSeamGlow, GLOW_NAMES, SEAM_GLOWS, type SeamGlow } from '../art/seamGlow';
 import { PASSIVE_POOL, rollChestContents, type EnemySpawn } from '../rooms/roomGenerator';
 import { ENEMY_TYPES, parseArenaQuery, placeSpawns, SLIME_TIERS, type ArenaRequest, type ArenaSpawn } from '../rooms/testArena';
 
@@ -45,8 +44,6 @@ export type ConsoleAction =
   | { kind: 'speed'; factor: number }
   /** Show or hide the physics outlines. */
   | { kind: 'hitboxes' }
-  /** Show the worm boss's seams in this glow from now on. */
-  | { kind: 'glow'; glow: SeamGlow }
   /** Move the player to `cell` in the room, keeping the run. */
   | { kind: 'teleport'; roomId: string; cell: Cell }
   /** A new run: on `seed` (random if left out), starting at a `room` with that id if given. */
@@ -328,17 +325,6 @@ const COMMANDS: Command[] = [
     name: 'hitboxes',
     usage: 'hitboxes — show or hide the physics outlines',
     run: (_args, _ctx, out) => out.actions.push({ kind: 'hitboxes' }),
-  },
-  {
-    name: 'glow',
-    usage: 'glow blood|ember — show the worm boss as the blood-red Obsidian Centipede or the Molten Centipede, to compare',
-    args: () => SEAM_GLOWS.map((g) => g.id),
-    run: ([value = '', ...rest], _ctx, out) => {
-      const glow = findSeamGlow([value, ...rest].join(' '));
-      if (!glow) return void out.log.push('usage: glow blood|ember');
-      out.log.push(`worm boss glow: ${GLOW_NAMES[glow]}`);
-      out.actions.push({ kind: 'glow', glow });
-    },
   },
   {
     name: 'stats',

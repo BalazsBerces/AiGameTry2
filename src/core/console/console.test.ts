@@ -269,19 +269,6 @@ describe('resources and debug', () => {
     }
   });
 
-  it("switches the worm boss's seam glow between blood red and molten ember, by any of their names", () => {
-    expect(run('glow ember', context())).toEqual({ log: ["worm boss glow: molten ember"], actions: [{ kind: 'glow', glow: 'ember' }] });
-    expect(run('glow blood', context())).toEqual({ log: ["worm boss glow: blood red"], actions: [{ kind: 'glow', glow: 'blood' }] });
-    expect(run('glow molten', context()).actions).toEqual([{ kind: 'glow', glow: 'ember' }]);
-    expect(run('glow RED', context()).actions).toEqual([{ kind: 'glow', glow: 'blood' }]);
-    for (const bad of ['', 'violet']) {
-      const { log, actions } = run(`glow ${bad}`, context());
-      expect(actions).toEqual([]);
-      expect(log).toEqual(['usage: glow blood|ember']);
-    }
-    expect(complete('glow e')).toEqual({ line: 'glow ember ', candidates: [] });
-  });
-
   it('prints the weapon the passives and stat-ups make', () => {
     const world = createWorld(7);
     run('give triple', context(world));

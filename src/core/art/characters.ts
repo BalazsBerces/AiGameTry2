@@ -2,7 +2,6 @@ import { PAPER as P } from './palette';
 import { blob, cutPoly, fill, group, n, pieceRng, polyPath, ragged, sheet, smoothPath, svgDoc } from './svg';
 import { TILE } from './terrain';
 import { WORM_PLATE_CELLS } from './castPoses';
-import type { SeamGlow } from './seamGlow';
 
 /** What every character does, each drawn as a short stop-motion loop. */
 export type BaseAction = 'idle' | 'move' | 'attack' | 'hurt';
@@ -795,8 +794,6 @@ interface PlateLook {
   edge: string;
   mandible: string;
   mandibleTip: string;
-  /** The light glowing in the seams between its plates, and its bright core; none on a worm. */
-  seam?: { glow: string; core: string };
   /** How opaque its plates are, if they are half-translucent (a hatchling's), its gut showing through. */
   veil?: number;
 }
@@ -805,25 +802,10 @@ const MATTE: PlateLook = { plate: C.matte, light: C.matteLight, dark: C.matteDar
 /** A hatchling: pale, soft, half-translucent plates, no glow. */
 const PALE: PlateLook = { plate: C.pale, light: C.paleLight, dark: C.paleDark, edge: C.paleEdge, mandible: C.paleMandible, mandibleTip: C.paleMandibleTip, veil: 0.78 };
 /**
- * What the worm boss shatters into, at its split and as it blows apart: the Obsidian Centipede
- * into black-glass shards with sparks in its seam glow; the Molten Centipede mostly into obsidian
- * slivers, a chunk of basalt among them, with ember sparks and small blobs of magma.
+ * What the worm boss, the Molten Centipede, shatters into at its split and as it blows apart:
+ * mostly obsidian slivers, a chunk of basalt among them, with ember sparks and small blobs of magma.
  */
-export const wormBossBurst = (glow: SeamGlow): { shards: readonly string[]; sparks: string; blobs?: string } =>
-  glow === 'blood'
-    ? { shards: [C.obsidian, C.obsidianLight, C.obsidian, C.obsidianEdge], sparks: C.seamBloodLight }
-    : { shards: [C.obsidian, C.obsidianLight, C.obsidian, C.crustDark, C.obsidianEdge], sparks: C.lavaCore, blobs: C.lava };
-
-/** The worm boss, the Obsidian Centipede: black glass, dim blood-red light in its seams. */
-const OBSIDIAN: PlateLook = {
-  plate: C.obsidian,
-  light: C.obsidianLight,
-  dark: C.obsidianDark,
-  edge: C.obsidianEdge,
-  mandible: C.glassFang,
-  mandibleTip: C.glassFangTip,
-  seam: { glow: C.seamBlood, core: C.seamBloodLight },
-};
+export const WORM_BOSS_BURST = { shards: [C.obsidian, C.obsidianLight, C.obsidian, C.crustDark, C.obsidianEdge], sparks: C.lavaCore, blobs: C.lava } as const;
 
 /**
  * How a centipede piece moves in one frame: stretched along its spine and squeezed across it as
@@ -911,8 +893,7 @@ function partOpen(plate: string, { by, egg }: { by: number; egg: boolean }, s: n
  * One piece of a centipede from above, pointing right: a body plate with flanged sides and a keel
  * down its middle, its back rim lapped over the plate behind; the head's rounder plate with dull
  * eye pits and hooked mandibles; the tail's tapering plate trailing one long stinger. No legs.
- * `breadth` widens it across its spine (the worm boss's are broader). With a glowing look, light
- * leaks out of the seam behind its back rim and the groove across its back, and its eyes burn.
+ * `breadth` widens it across its spine. A half-translucent look (a hatchling's) shows its gut.
  */
 function centipedePiece(piece: WormPieceArt, c: Ripple, champion: boolean, look: PlateLook, r: PieceRng, breadth = 1): string {
   const s = c.stretch;
@@ -945,45 +926,17 @@ function centipedePiece(piece: WormPieceArt, c: Ripple, champion: boolean, look:
   const groove = piece === 'head' ? '' : `<path d="M${n(cx + 6 * s)} ${n(cy - 13 * w)}Q${n(cx + 1 * s)} ${n(cy)} ${n(cx + 6 * s)} ${n(cy + 13 * w)}" stroke="${look.dark}" stroke-width="1.4" fill="none"/>`;
   const rim = `<path d="M${n(cx - (half - 9) * s)} ${n(cy - 13 * w)}Q${n(cx - (half + 1) * s)} ${n(cy)} ${n(cx - (half - 9) * s)} ${n(cy + 13 * w)}" stroke="${look.edge}" stroke-width="1.6" fill="none"/>`;
   const sheen = `<path d="M${n(cx - (half - 12) * s)} ${n(cy - 9 * w)}Q${n(cx)} ${n(cy - 13 * w)} ${n(cx + (half - 16) * s)} ${n(cy - 8 * w)}" stroke="${look.light}" stroke-width="1.2" fill="none" opacity="0.55"/>`;
-  // Light leaking out from under its back rim onto the plate behind, and along the groove across its back.
-  const g = c.glow ?? 0;
-  const lit = (d: string, width: number, k: number) =>
-    look.seam
-      ? `<path d="${d}" stroke="${look.seam.glow}" stroke-width="${n(width * 2.5)}" fill="none" opacity="${n(Math.min(0.6, 0.3 * g * k))}" stroke-linecap="round"/>` +
-        `<path d="${d}" stroke="${look.seam.core}" stroke-width="${n(width)}" fill="none" opacity="${n(Math.min(1, 0.6 * g * k))}" stroke-linecap="round"/>`
-      : '';
-  const leak = lit(`M${n(cx - (half - 7) * s)} ${n(cy - 13 * w)}Q${n(cx - (half + 13) * s)} ${n(cy)} ${n(cx - (half - 7) * s)} ${n(cy + 13 * w)}`, 1.6, 1);
-  const grooveGlow = piece === 'head' ? '' : lit(`M${n(cx + 6 * s)} ${n(cy - 12 * w)}Q${n(cx + 1 * s)} ${n(cy)} ${n(cx + 6 * s)} ${n(cy + 12 * w)}`, 0.9, 0.7);
-  // Blazing, light spills out all round its rim.
-  const blaze = look.seam && g > 1.2 ? `<path d="${plateD}" stroke="${look.seam.glow}" stroke-width="6" fill="none" opacity="${n(Math.min(0.6, (g - 1.2) * 0.45))}" stroke-linejoin="round"/>` : '';
-  // About to pop: light splintering out from its keel through the glass.
-  const zigzag = (list: readonly (readonly [number, number])[]) => linePath(along(list, s, w));
-  const splinters = c.splinter
-    ? [[[-6, 0], [-2, -5], [-6, -9], [-3, -13]], [[3, 1], [8, 5], [5, 9], [9, 13]], [[-1, -1], [5, -6], [3, -11]], [[-9, 1], [-13, 6], [-10, 11]]]
-        .map((line) => lit(zigzag(line as [number, number][]), 0.9, 1.2))
-        .join('')
-    : '';
   // Half-translucent, the floor and its gut showing dimly through.
   const veil = look.veil ? `opacity="${look.veil}"` : '';
   const gut = look.veil ? ellipse(cx - 2 * s, cy + 1, (half - 9) * s, 4.5 * w, look.dark, 'opacity="0.3"') : '';
-  let plate = seam + leak + blaze + trim(plateD, champion) + spikes + fill(plateD, look.plate, veil) + gut + shade + keel + groove + grooveGlow + rim + sheen + splinters;
-  // Torn open at its split: its loose end snapped off in jagged glass, light leaking from the break.
-  if (c.torn) {
-    const shard = (pts: Pt[], i: number) => fill(cutPoly(r(`shard${i}`), pts, 0.3), look.plate, `stroke="${look.edge}" stroke-width="0.6"`);
-    plate = tearOff(plate, piece === 'head' ? 1 : -1, s, w, (edge) => lit(edge, 2.2, 1.5), shard);
-  }
-  // Heaving out an egg: its plate parted down its keel, light and the egg's shell showing in the gap.
-  if (c.parted) plate = partOpen(plate, c.parted, s, ellipse(cx, cy, (half - 6) * s, c.parted.by + 2, look.dark) + lit(zigzag([[-half + 8, 0], [half - 8, 0]]), 1.6, 1.4));
+  const plate = seam + trim(plateD, champion) + spikes + fill(plateD, look.plate, veil) + gut + shade + keel + groove + rim + sheen;
   let ends = '';
-  if (piece === 'head' && !c.torn) {
+  if (piece === 'head') {
     const front = cx + (half - 14) * s;
-    const eye = (side: number) =>
-      look.seam
-        ? ellipse(front - 6, cy + side * 7 * w, 1.8, 1.3, look.seam.glow) + ellipse(front - 6.2, cy + side * 7 * w, 0.8, 0.6, look.seam.core, `opacity="${n(Math.min(1, 0.4 + 0.5 * g))}"`)
-        : ellipse(front - 6, cy + side * 7 * w, 1.6, 1.2, look.dark) + ellipse(front - 6.4, cy + side * 7 * w - 0.4, 0.6, 0.5, look.edge, 'opacity="0.6"');
+    const eye = (side: number) => ellipse(front - 6, cy + side * 7 * w, 1.6, 1.2, look.dark) + ellipse(front - 6.4, cy + side * 7 * w - 0.4, 0.6, 0.5, look.edge, 'opacity="0.6"');
     ends = mandible(front, cy - 5 * w, -1, c.gape, look) + mandible(front, cy + 5 * w, 1, c.gape, look) + [-1, 1].map(eye).join('');
   }
-  if (piece === 'tail' && !c.torn) {
+  if (piece === 'tail') {
     const root = cx - (half - 8) * s;
     ends = fill(taper([{ x: root + 4, y: cy }, { x: root - 12, y: cy + 1 }, { x: root - 26, y: cy - 0.5 }, { x: root - 36, y: cy - 3.5 }], 7, 0.5), look.mandible) +
       fill(taper([{ x: root - 24, y: cy - 0.4 }, { x: root - 30, y: cy - 1.5 }, { x: root - 36, y: cy - 3.5 }], 2.6, 0.4), look.mandibleTip);
@@ -1226,15 +1179,11 @@ function moltenPiece(piece: WormPieceArt, c: Ripple, variant: number, r: PieceRn
 }
 
 /**
- * A piece of the worm boss acting out its fight from above, pointing right and turned along its
- * spine, broad as its segments: in blood red, the centipede's own piece in black glass; in molten
- * ember, the Molten Centipede's rock and lava, its body cracked in pattern `variant` (0–2).
+ * A piece of the worm boss, the Molten Centipede, acting out its fight from above, pointing right
+ * and turned along its spine, broad as its segments; its body cracked in pattern `variant` (0–2).
  */
-function drawWormBoss(piece: WormPieceArt, action: Action, frame: number, glow: SeamGlow, variant = 0): string {
-  const body =
-    glow === 'blood'
-      ? centipedePiece(piece, bossRipple(action, frame), false, OBSIDIAN, (part) => pieceRng('wormBoss', piece, part), BOSS_BREADTH)
-      : moltenPiece(piece, bossRipple(action, frame), variant, (part) => pieceRng('wormBossMolten', piece, variant, part));
+function drawWormBoss(piece: WormPieceArt, action: Action, frame: number, variant = 0): string {
+  const body = moltenPiece(piece, bossRipple(action, frame), variant, (part) => pieceRng('wormBossMolten', piece, variant, part));
   const { x: cx, y: cy } = CENTIPEDE.foot;
   // Its own canvas is bigger than a worm's: the piece sits in the middle of it.
   return group(body, `translate(${WORM_BOSS.foot.x - cx} ${WORM_BOSS.foot.y - cy})`);
@@ -1311,8 +1260,8 @@ function eggPod(r: PieceRng, x: number, y: number, size: number, crack: number, 
     const d = `M${line.map(([dx, dy]) => at(dx, dy)).join('L')}`;
     const open = i < split;
     // Whole, a thin dim thread of light; split open, a dark rent with the light leaking out round it.
-    const glow = `<path d="${d}" stroke="${C.seamBlood}" stroke-width="${n((open ? 2.6 + crack * 0.5 : 1.1) * size)}" fill="none" opacity="${open ? n(0.35 + crack * 0.12) : '0.2'}" stroke-linejoin="round" stroke-linecap="round"/>`;
-    const thread = `<path d="${d}" stroke="${open ? C.mawDeep : C.seamBloodLight}" stroke-width="${n((open ? 1.1 : 0.4) * size)}" fill="none" opacity="${open ? '1' : '0.45'}" stroke-linejoin="round"/>`;
+    const glow = `<path d="${d}" stroke="${C.lavaDeep}" stroke-width="${n((open ? 2.6 + crack * 0.5 : 1.1) * size)}" fill="none" opacity="${open ? n(0.35 + crack * 0.12) : '0.2'}" stroke-linejoin="round" stroke-linecap="round"/>`;
+    const thread = `<path d="${d}" stroke="${open ? C.mawDeep : C.lava}" stroke-width="${n((open ? 1.1 : 0.4) * size)}" fill="none" opacity="${open ? '1' : '0.45'}" stroke-linejoin="round"/>`;
     return glow + thread;
   }).join('');
   // Splitting: its crown gaping along the veins, the hatchling's pale plate showing in the gap.
@@ -1502,15 +1451,12 @@ export const CHARACTERS: Readonly<Record<string, CharacterArt>> = {
   hatchlingHead: art(CENTIPEDE, ['top'], (a, f) => drawHatchling('head', a, f), 39),
   hatchlingBody: art(CENTIPEDE, ['top'], (a, f) => drawHatchling('body', a, f), 39),
   hatchlingTail: art(CENTIPEDE, ['top'], (a, f) => drawHatchling('tail', a, f), 39),
-  wormBossHead: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('head', a, f, 'blood'), 41, BOSS_ACTIONS),
-  wormBossBody: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('body', a, f, 'blood'), 41, BOSS_ACTIONS),
-  wormBossTail: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('tail', a, f, 'blood'), 41, BOSS_ACTIONS),
-  // The worm boss as the Molten Centipede, beside the blood-red glass to compare (core/art/seamGlow): its body in three crack patterns.
-  wormBossHeadEmber: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('head', a, f, 'ember'), 41, BOSS_ACTIONS),
-  wormBossBodyEmber0: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('body', a, f, 'ember', 0), 41, BOSS_ACTIONS),
-  wormBossBodyEmber1: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('body', a, f, 'ember', 1), 41, BOSS_ACTIONS),
-  wormBossBodyEmber2: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('body', a, f, 'ember', 2), 41, BOSS_ACTIONS),
-  wormBossTailEmber: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('tail', a, f, 'ember'), 41, BOSS_ACTIONS),
+  // The worm boss, the Molten Centipede: its body plates in three crack patterns.
+  wormBossHead: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('head', a, f), 41, BOSS_ACTIONS),
+  wormBossBody0: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('body', a, f, 0), 41, BOSS_ACTIONS),
+  wormBossBody1: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('body', a, f, 1), 41, BOSS_ACTIONS),
+  wormBossBody2: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('body', a, f, 2), 41, BOSS_ACTIONS),
+  wormBossTail: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('tail', a, f), 41, BOSS_ACTIONS),
   wormEgg: art(EGG, ['down'], (a, f) => drawEgg(a, f), 43),
   treantBoss: art(TREANT, ['down'], (a, f) => drawTreant(a, f), 17),
 };

@@ -10,7 +10,6 @@ import { createRng } from '../core/rng';
 import { SHOT_ART, floorLook, giantLook } from '../core/art/catalogue';
 import { roomThemeById, roomThemesFor } from '../core/rooms/roomThemes';
 import { wormSpine } from '../core/art/castPoses';
-import { wormBossKind, type SeamGlow } from '../core/art/seamGlow';
 import { createWorm } from '../core/bosses/wormChain';
 
 /**
@@ -469,9 +468,9 @@ const CAVE_RUBBLE: Scene = { ...CAVE, actors: ALONE, shots: [], seed: 53, map: R
  * spine (core/art/castPoses), seen from above and turned along it, rounding each corner, the head's
  * plate over its neck's and so on down; its crawl rippling down from the head. The worm boss
  * (`boss`) lies the same way, its art drawn at its own size; `pose` holds one of its segments in
- * another pose, its seams glowing as `boss` says. A `hatchling` wears its pale plates.
+ * another pose, its body plates cracked in their three patterns in turn. A `hatchling` wears its pale plates.
  */
-function centipede(cells: [number, number][], champion = false, boss: false | SeamGlow = false, pose?: { segment: number; action: Action; frame: number }, hatchling = false): Actor[] {
+function centipede(cells: [number, number][], champion = false, boss = false, pose?: { segment: number; action: Action; frame: number }, hatchling = false): Actor[] {
   const body = createWorm(cells.map(([x, y]) => ({ x, y })), 'down');
   const scale = champion ? 1.35 : undefined;
   const lowest = Math.max(...cells.map(([, y]) => y)) * TILE + TILE;
@@ -479,7 +478,7 @@ function centipede(cells: [number, number][], champion = false, boss: false | Se
     const { offset, angle } = wormSpine(body, i);
     const piece = i === 0 ? 'Head' : i === cells.length - 1 ? 'Tail' : 'Body';
     return {
-      kind: boss ? wormBossKind(`wormBoss${piece}`, boss, i) : `${hatchling ? 'hatchling' : 'worm'}${piece}`,
+      kind: boss ? `wormBoss${piece === 'Body' ? `Body${i % 3}` : piece}` : `${hatchling ? 'hatchling' : 'worm'}${piece}`,
       x: (cell[0] + 0.5 + offset.x) * TILE,
       y: (cell[1] + 0.5 + offset.y) * TILE,
       ...(pose?.segment === i ? { action: pose.action, frame: pose.frame } : { action: 'move' as const, frame: (4 - (i % 4)) % 4 }),
@@ -503,8 +502,7 @@ const CAVE_RIFT: Scene = {
     ...centipede([[3, 6], [4, 6], [5, 6], [6, 6], [6, 7]], true),
   ],
 };
-/** The worm's room, its boss's seams glowing `glow`. */
-const caveBoss = (glow: SeamGlow): Scene => ({
+const CAVE_BOSS: Scene = {
   ...CAVE,
   map: BOSS_MAP.map((row) => row.replace(/[Tbx]/g, '.')),
   floor: 'boss',
@@ -513,21 +511,19 @@ const caveBoss = (glow: SeamGlow): Scene => ({
   actors: [
     { kind: 'player', x: 344, y: 330, action: 'idle', frame: 0, view: 'up' },
     // The worm boss crawling round the room, heaving an egg out of its back; one egg in the air, one resting, one about to hatch.
-    ...centipede([[4, 3], [5, 3], [6, 3], [7, 3], [8, 3], [9, 3], [10, 3], [10, 4], [10, 5], [11, 5], [12, 5]], false, glow, { segment: 5, action: 'lob', frame: 0 }),
+    ...centipede([[4, 3], [5, 3], [6, 3], [7, 3], [8, 3], [9, 3], [10, 3], [10, 4], [10, 5], [11, 5], [12, 5]], false, true, { segment: 5, action: 'lob', frame: 0 }),
     { kind: 'wormEgg', x: 9 * TILE, y: 2 * TILE, action: 'move', frame: 1 },
     { kind: 'wormEgg', x: 2.5 * TILE, y: 6.5 * TILE + 13, action: 'idle', frame: 0 },
     { kind: 'wormEgg', x: 12.5 * TILE, y: 1.5 * TILE + 13, action: 'attack', frame: 2 },
     // A hatchling just out of its egg, crawling off.
     ...centipede([[3, 1], [2, 1], [1, 1]], false, false, undefined, true),
   ],
-});
-const CAVE_BOSS = caveBoss('blood');
-const CAVE_BOSS_EMBER = caveBoss('ember');
+};
 
 const img = (svg: string, w: number, h: number, scale: number, flip = false, alt = '') =>
   `<img src="${uri(svg)}" width="${w * scale}" height="${h * scale}" alt="${alt}"${flip ? ' style="transform:scaleX(-1)"' : ''}>`;
 
-const NAMES: Record<string, string> = { player: 'Player', goblin: 'Goblin', seedSpitter: 'Seed spitter', boar: 'Boar', wasp: 'Wasp', treantBoss: 'Treant', ghoul: 'Ghoul', bat: 'Bat', slime: 'Slime', geode: 'Geode', wormHead: 'Worm head', wormBody: 'Worm body', wormTail: 'Worm tail', wormBossHead: 'Worm boss head', wormBossBody: 'Worm boss body', wormBossTail: 'Worm boss tail', wormEgg: 'Worm egg', wormBossHeadEmber: 'Molten Centipede head', wormBossBodyEmber0: 'Molten Centipede body, cracks I', wormBossBodyEmber1: 'Molten Centipede body, cracks II', wormBossBodyEmber2: 'Molten Centipede body, cracks III', wormBossTailEmber: 'Molten Centipede tail', hatchlingHead: 'Hatchling head', hatchlingBody: 'Hatchling body', hatchlingTail: 'Hatchling tail' };
+const NAMES: Record<string, string> = { player: 'Player', goblin: 'Goblin', seedSpitter: 'Seed spitter', boar: 'Boar', wasp: 'Wasp', treantBoss: 'Treant', ghoul: 'Ghoul', bat: 'Bat', slime: 'Slime', geode: 'Geode', wormHead: 'Worm head', wormBody: 'Worm body', wormTail: 'Worm tail', wormBossHead: 'Worm boss head', wormBossBody0: 'Worm boss body, cracks I', wormBossBody1: 'Worm boss body, cracks II', wormBossBody2: 'Worm boss body, cracks III', wormBossTail: 'Worm boss tail', wormEgg: 'Worm egg', hatchlingHead: 'Hatchling head', hatchlingBody: 'Hatchling body', hatchlingTail: 'Hatchling tail' };
 /** What each cave pose is, for the strips' headings. */
 const POSE_NAMES: Record<string, Partial<Record<Action, string>>> = {
   ghoul: { move: 'stalk', attack: 'wind-up, lunge' },
@@ -537,9 +533,9 @@ const POSE_NAMES: Record<string, Partial<Record<Action, string>>> = {
   wormHead: { move: 'crawl', attack: 'mandibles spread, snapping' },
   wormBody: { move: 'crawl', attack: 'tensing' },
   wormTail: { move: 'crawl', attack: 'tensing' },
-  wormBossHead: { idle: 'seams pulsing', move: 'crawl, seams pulsing', attack: 'roar: mandibles splayed, whole body blazing', spit: 'maw pulsing', charge: 'mandibles spread wide, seams brightening', lunge: 'mandibles snapped shut', lob: 'plates parting, egg heaving out; closing', split: 'torn end: broken glass leaking light, twitching', die: 'holding dim; blazing, about to pop' },
-  wormBossBody: { idle: 'seams pulsing', move: 'crawl, seams pulsing', attack: 'roar: blazing', spit: 'ready, seams flaring as its shot leaves', charge: 'tensing, seams brightening', lunge: 'taut', lob: 'plates parting, egg heaving out; closing', split: 'torn end: broken glass leaking light, twitching', die: 'holding dim; blazing, about to pop' },
-  wormBossTail: { idle: 'seams pulsing', move: 'crawl, seams pulsing', attack: 'roar: blazing', spit: 'ready, seams flaring as its shot leaves', charge: 'tensing, seams brightening', lunge: 'taut', lob: 'plates parting, egg heaving out; closing', split: 'torn end: broken glass leaking light, twitching', die: 'holding dim; blazing, about to pop' },
+  wormBossHead: { idle: 'cracks breathing', move: 'crawl, cracks breathing', attack: 'roar: mandibles splayed, cracks blown open', spit: 'maw pulsing', charge: 'mandibles spread wide, cracks widening', lunge: 'mandibles snapped shut, cracks to slits', lob: 'split on magma, egg heaving out; closing', split: 'torn end: a molten core, twitching', die: 'holding dim; flooding, about to pop' },
+  wormBossBody: { idle: 'cracks breathing', move: 'crawl, cracks breathing', attack: 'roar: cracks blown open', spit: 'ready, cracks flaring as its shot leaves', charge: 'tensing, cracks widening', lunge: 'taut, cracks to slits', lob: 'split on magma, egg heaving out; closing', split: 'torn end: a molten core, twitching', die: 'holding dim; flooding, about to pop' },
+  wormBossTail: { idle: 'cracks breathing', move: 'crawl, cracks breathing', attack: 'roar: cracks blown open', spit: 'ready, cracks flaring as its shot leaves', charge: 'tensing, cracks widening', lunge: 'taut, cracks to slits', lob: 'split on magma, egg heaving out; closing', split: 'torn end: a molten core, twitching', die: 'holding dim; flooding, about to pop' },
   wormEgg: { idle: 'resting', move: 'tumbling through the air', attack: 'wobbling: crown vein split, branches split, gaping' },
   hatchlingHead: { move: 'crawl', attack: 'mandibles spread, snapping' },
   hatchlingBody: { move: 'crawl', attack: 'tensing' },
@@ -559,7 +555,7 @@ function frameStrips(kinds: string[], champs: string[]): string {
           const frames = Array.from({ length: count }, (_, f) =>
             `<figure>${img(art.draw(action, f, view, false), art.w, art.h, scale, false, `${names[kind]} ${action} frame ${f + 1}`)}<figcaption>${f + 1}</figcaption></figure>`,
           ).join('');
-          const what = (POSE_NAMES[kind] ?? POSE_NAMES[kind.replace(/Ember\d?$/, '')])?.[action];
+          const what = (POSE_NAMES[kind] ?? POSE_NAMES[kind.replace(/\d$/, '')])?.[action];
           return `<div class="action"><h4>${what ? `${action} (${what})` : action} <span>${count}</span></h4><div class="frames">${frames}</div></div>`;
         })
         .join('');
@@ -699,8 +695,6 @@ function cavesSheet(): string {
   const rubbleUnlit = roomSvg(rubble, CAVE_RUBBLE, false, 'cw', false);
   const boss = new Sheet('cb');
   const bossUnlit = roomSvg(boss, CAVE_BOSS, false, 'cb', false);
-  const ember = new Sheet('ce');
-  const emberUnlit = roomSvg(ember, CAVE_BOSS_EMBER, false, 'ce', false);
   const defs = (s: Sheet) => `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>${s.defs.join('')}</defs></svg>`;
   return `
 <div class="caves">
@@ -709,7 +703,7 @@ function cavesSheet(): string {
   <h1>Papercut Caves</h1>
   <p class="lede">Warm earth, cold light: umber and ochre rock paper, icy cyan-white crystal as the hard accent, violet fungus as the second hue, and deep-teal slime, soft and translucent round a milky core. This sheet covers the room shell (walls, doors, floors), every cave terrain tile and the decor, bones and a dropped miner's pick among it, and the cave cast: the ghoul, the bat, the slime, the geode, the worm, and the worm boss with its eggs.</p>
 </header>
-${defs(lit)}${defs(unlit)}${defs(grotto)}${defs(hollow)}${defs(rift)}${defs(rubble)}${defs(boss)}${defs(ember)}
+${defs(lit)}${defs(unlit)}${defs(grotto)}${defs(hollow)}${defs(rift)}${defs(rubble)}${defs(boss)}
 <figure class="stage">${caveLit}<figcaption>A sample cave room under the gloom, as in the game: a moderate dark (no vignette) with light pools round the player and each shard shot, the crystal cluster glowing cyan and the glowshrooms violet, the shards and glints on the floor faintly. Stalagmites fused along the walls, a chasm, thorn vines, a boulder, a crystal cluster and glowshrooms; a ghoul winding up at the player (a champion stalking below), one bat hanging wings-wide for its tell, another swooping; a geode split open and firing red-hot shard shots (one already ricocheting off the wall), a champion geode shut above; a big slime squashed for its jump, a medium one in the air over a rock and a small champion splatting down. The right door is barred while enemies live.</figcaption></figure>
 <div class="pair">
   <figure class="stage small">${caveUnlit}<figcaption>The same room with the lights on.</figcaption></figure>
@@ -717,21 +711,17 @@ ${defs(lit)}${defs(unlit)}${defs(grotto)}${defs(hollow)}${defs(rift)}${defs(rubb
   <figure class="stage small">${hollowUnlit}<figcaption>A mushroom hollow under the gloom: giant mushrooms and glowshrooms glow violet, spores faintly; the clumps of mushroom caps stay dull.</figcaption></figure>
   <figure class="stage small">${riftUnlit}<figcaption>A rift: the chasm's lip torn red. A worm crawls along the top and turns down the room, its body curving round the corner in one piece; a champion winds off the other way below.</figcaption></figure>
   <figure class="stage small">${rubbleUnlit}<figcaption>Rubble walls: neighbouring loose rock fuses into continuous walls, the way the worm boss's maze is built, and grows out of the cave wall wherever it meets it. Where a rock has broken (the gap in the long run) its joins are gone and the ends are left ragged.</figcaption></figure>
-  <figure class="stage small">${bossUnlit}<figcaption>The worm's room: darker earth broken by burrows, strewn with bones and shards. The worm boss crawls round it, heaving an egg out of its back; another egg is in the air, one rests by the wall and one is splitting open to hatch, a pale hatchling crawling off from another. Its seams glow blood red.</figcaption></figure>
-  <figure class="stage small">${emberUnlit}<figcaption>The same room with the Molten Centipede instead, to compare (in game: <code>?glow=ember</code>, or the console's <code>glow ember</code>).</figcaption></figure>
+  <figure class="stage small">${bossUnlit}<figcaption>The worm's room: darker earth broken by burrows, strewn with bones and shards. The worm boss crawls round it, heaving an egg out of its back; another egg is in the air, one rests by the wall and one is splitting open to hatch, a pale hatchling crawling off from another.</figcaption></figure>
 </div>
 <h2>The cave cast, frame by frame</h2>
 <p class="note">The ghoul's wind-up (eyes flared cyan) is held for its whole tell, then the lunge frames play while it lunges; it loops recover while it catches its breath. The bat beats its wings at twice the usual frame rate, hangs with them spread wide for its tell, and holds the swoop frames while it swoops.</p>
 <p class="note">The slime squashes ever lower through its tell, then plays its hop frame by frame through the jump and splats where it lands; the medium and small slimes are the same art, smaller. The geode cracks along its seam as its shot charges, splits open on its crystal core (held open while it waits for a clear shot) and flares as it fires. Its shard shots are crystal splinters with a red-hot core and a dark outline, tumbling as they fly: hostile like every enemy shot, and the only ones that ricochet.</p>
-<p class="note">The worm is the Obsidian Centipede's dull chitin cousin, drawn from above piece by piece: a head with dull eye pits and hooked horn mandibles, body plates with notched flanges and a keel, and a tail trailing one long stinger, all matte brown-black chitin with nothing glowing, and no legs. The plates lie along one continuous spine, each turned the way it runs and longer than a cell, so neighbours overlap through every bend, the plate nearer the head on top; at a corner the spine curves round it rather than cutting across. The crawl ripples from the head down to the tail, a frame behind segment by segment.</p>
+<p class="note">The worm is the worm boss's dull chitin cousin, drawn from above piece by piece: a head with dull eye pits and hooked horn mandibles, body plates with notched flanges and a keel, and a tail trailing one long stinger, all matte brown-black chitin with nothing glowing, and no legs. The plates lie along one continuous spine, each turned the way it runs and longer than a cell, so neighbours overlap through every bend, the plate nearer the head on top; at a corner the spine curves round it rather than cutting across. The crawl ripples from the head down to the tail, a frame behind segment by segment.</p>
 ${frameStrips(['ghoul', 'bat', 'slime', 'geode', 'wormHead', 'wormBody', 'wormTail'], ['ghoul', 'bat', 'slime', 'geode', 'wormHead', 'wormBody', 'wormTail'])}
 <h2>The worm boss, acting out its fight</h2>
-<p class="note">The worm boss is the Obsidian Centipede: overlapping black-glass plates with dim blood-red light leaking from the seams between them, hooked glass mandibles, eyes burning in its head, a single long glass stinger and no legs. It lies along the same continuous spine as the worm, seen from above and turned along it, its plates as broad as its segments. As it crawls its plates ripple and its seams pulse dimly; through its roar they blaze. Each pose is held exactly as long as the moment of the fight it acts out: its mandibles spread and seams brighten as it charges up, snap shut as it lunges; its seams flare down its body as it spits; its plates part as an egg heaves out; its torn ends at the split are broken glass leaking light; dying, each segment blazes just before it pops.</p>
+<p class="note">The worm boss is the Molten Centipede: a lava-fused obsidian centipede, all edges, seen from above and turned along the same continuous spine as the worm, its plates as broad as its segments, and no legs. Each plate is a slim, angular core of black glass pointed fore and aft, broken into facets lit above and dark below and glinting along their ridges, grown out of a mass of basalt showing at its flanks. Blades of glass rake back off its flanks and a ridge of shards runs down its keel, each split into a lit face and a dark one. Lava runs in the joints between the facets and in cracks across them, a deep red rim round orange round a yellow-hot core, breathing wider and narrower as it crawls, and wells up as a thin seam under each back rim, dripping. Its body plates are cracked in three patterns in turn, so it never repeats. Slanted molten eyes under a crown of blades and long serrated mandibles edged in lava; a long obsidian spike of a stinger with a lava vein; pale glass points on both. Its cracks widen as it charges up, narrow to slits as it lunges, blow open as it roars and flood just before each segment pops; it shatters mostly into obsidian slivers with ember sparks and blobs of magma. Each pose is held exactly as long as the moment of the fight it acts out.</p>
 <p class="note">Its eggs are dark, leathery pods with thin veins glowing across them: tumbling through the air, resting where they land, then cracking open along their veins as they wobble to hatch. What hatches is a worm on the worm's own build, a little slighter, in pale, soft, half-translucent plates, its gut a dim shadow through them.</p>
-${frameStrips(['wormBossHead', 'wormBossBody', 'wormBossTail', 'wormEgg', 'hatchlingHead', 'hatchlingBody', 'hatchlingTail'], [])}
-<h2>Or the Molten Centipede, to compare</h2>
-<p class="note">The other concept for the worm boss, every frame of every beat baked beside the blood-red glass: a lava-fused obsidian centipede, all edges. Each plate is a slim, angular core of black glass pointed fore and aft, broken into facets lit above and dark below and glinting along their ridges, grown out of a mass of basalt showing at its flanks. Blades of glass rake back off its flanks and a ridge of shards runs down its keel, each split into a lit face and a dark one. Lava runs in the joints between the facets and in cracks across them, a deep red rim round orange round a yellow-hot core, breathing wider and narrower as it crawls, and wells up as a thin seam under each back rim, dripping. Its body plates are cracked in three patterns in turn, so it never repeats. Slanted molten eyes under a crown of blades and long serrated mandibles edged in lava; a long obsidian spike of a stinger with a lava vein; pale glass points on both. Its cracks widen as it charges up, narrow to slits as it lunges, blow open as it roars and flood just before each segment pops; it shatters mostly into obsidian slivers with ember sparks and blobs of magma. The game shows one boss or the other; once one is chosen, the other goes.</p>
-${frameStrips(['wormBossHeadEmber', 'wormBossBodyEmber0', 'wormBossBodyEmber1', 'wormBossBodyEmber2', 'wormBossTailEmber'], [])}
+${frameStrips(['wormBossHead', 'wormBossBody0', 'wormBossBody1', 'wormBossBody2', 'wormBossTail', 'wormEgg', 'hatchlingHead', 'hatchlingBody', 'hatchlingTail'], [])}
 <section class="strip"><h3>Shots <span>the geode's ricocheting shard shot, red-hot and outlined like the enemy shot beside it</span></h3><div class="frames"><figure>${img(hudSvg.shot('shard', SHOT_ART.shard), SHOT_CANVAS, SHOT_CANVAS, 2.5, false, 'shard shot')}<figcaption>shard shot (tumbles in flight)</figcaption></figure><figure>${img(hudSvg.shot('enemy', SHOT_ART.enemy), SHOT_CANVAS, SHOT_CANVAS, 2.5, false, 'enemy shot')}<figcaption>enemy shot</figcaption></figure></div></section>
 <h2>Terrain</h2>
 ${caveTerrainSheet()}

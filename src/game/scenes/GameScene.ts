@@ -54,7 +54,7 @@ import type { Enemy, EnemyContext, EnemyLook, EnemySprite } from '../entities/en
 import { createIronMaidenBoss } from '../entities/bosses/ironMaiden';
 import { createCandleWitch, DARK_DEPTH } from '../entities/bosses/candleWitch';
 import { createTurret } from '../entities/turret';
-import { BOSS_WORM, championWorm, REGULAR_WORM, setSeamGlow, spawnWorm } from '../entities/bosses/worm';
+import { BOSS_WORM, championWorm, REGULAR_WORM, spawnWorm } from '../entities/bosses/worm';
 import { createZombie } from '../entities/zombie';
 import { createGhoul } from '../entities/ghoul';
 import { createGeode } from '../entities/geode';
@@ -99,7 +99,6 @@ import { PICKUP_CANVAS, SHOT_CANVAS, type PickupArt } from '../../core/art/hud';
 import { ART_SCALE } from '../art/bake';
 import { giantSquares, joinsBetween, neighbourMask, wallJoins } from '../../core/art/autotile';
 import { ARENA_ID, arenaRoom, parseArenaQuery, type ArenaRequest } from '../../core/rooms/testArena';
-import { glowFromQuery } from '../../core/art/seamGlow';
 import { seedWithRoom, urlStartRoom } from '../../core/map/travel';
 import { run as runCommand, type ConsoleAction } from '../../core/console/console';
 
@@ -460,9 +459,6 @@ export class GameScene extends Phaser.Scene {
     const urlArena = parseArenaQuery(params.toString());
     if (urlArena?.unknown.length) console.warn(`Test arena: no enemy called ${urlArena.unknown.join(', ')}`);
     const arenaRequest = data.arena ?? urlArena;
-    // Playtesting: `?glow=ember` shows the worm boss's seams in molten ember instead of blood red (core/art/seamGlow).
-    const urlGlow = glowFromQuery(params.toString());
-    if (urlGlow) setSeamGlow(urlGlow);
     const inArena = !!arenaRequest?.spawns.length;
     firstBoot = false;
     const roomSeed = urlRoom && data.seed === undefined && !Number.isFinite(urlSeed) ? seedWithRoom(urlRoom) : undefined;
@@ -1942,8 +1938,6 @@ export class GameScene extends Phaser.Scene {
         return this.setSpeed(action.factor);
       case 'hitboxes':
         return this.toggleHitboxes();
-      case 'glow':
-        return setSeamGlow(action.glow);
       case 'open':
         if (this.world.unlocked.has(this.world.currentRoomId)) this.unlockDoors();
         return;

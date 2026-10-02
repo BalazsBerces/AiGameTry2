@@ -189,35 +189,31 @@ export const PAPER = {
     chitin: '#3e3438',
     chitinEdge: '#a08a7a',
     mawDeep: '#2a0a0e',
-    // The regular worm, the Obsidian Centipede's dull chitin cousin: matte brown-black plates, horn mandibles, no glow.
+    // The regular worm, the worm boss's dull chitin cousin: matte brown-black plates, horn mandibles, no glow.
     matte: '#2f241e',
     matteLight: '#4a3a2f',
     matteDark: '#160f0b',
     matteEdge: '#6e5646',
     mandible: '#5c4434',
     mandibleTip: '#a08068',
-    // The worm boss, the Obsidian Centipede: black-glass plates with a cold sheen, dim blood-red light in the seams between them.
+    // The worm boss, the Molten Centipede: blue-black obsidian, all facets and blades (a lit face, a
+    // dark one, a violet-white glint along their ridges, pale glass at their points), grown out of
+    // charcoal basalt crust and cracked on lava: a deep red rim, orange, a yellow-hot core and, at
+    // its hottest, near white.
     obsidian: '#121015',
     obsidianLight: '#3b3644',
     obsidianDark: '#050407',
     obsidianEdge: '#8c8598',
-    glassFang: '#1d1a22',
     glassFangTip: '#b8b2c4',
-    seamBlood: '#a3121f',
-    seamBloodLight: '#ff4a3d',
-    // Or, to compare, the Molten Centipede: charcoal basalt crust fused with blue-black obsidian
-    // (a violet-white glint on its mandibles and stinger), cracked on lava: a deep red rim, orange,
-    // a yellow-hot core and, at its hottest, near white.
     crust: '#3b2f2a',
     crustLight: '#5e4b41',
     crustDark: '#1d1613',
-    crustEdge: '#806657',
     obsidianGlint: '#ddd0ff',
     lavaDeep: '#a8240b',
     lava: '#ff6614',
     lavaCore: '#ffcf3f',
     lavaHot: '#fff4c8',
-    // The worm boss's eggs: dark, leathery pods, thin veins glowing in its seam light.
+    // The worm boss's eggs: dark, leathery pods, thin veins glowing with its lava.
     egg: '#2c2023',
     eggLight: '#4e3c40',
     eggShade: '#150e10',

@@ -274,10 +274,17 @@ describe("the worm boss's poses", () => {
   const holds = (l: WormBossLook, time: number) => ALL.map((i) => wormBossPose(l, i, time).hold);
 
   it('is the worm grown huge: its head first, its tail last, its crawl rippling down from the head', () => {
-    expect(ALL.map((i) => wormBossPose(look(), i, 0).piece)).toEqual(['wormBossHead', 'wormBossBody', 'wormBossBody', 'wormBossBody', 'wormBossTail']);
+    expect(ALL.map((i) => wormBossPose(look(), i, 0).piece)).toEqual(['wormBossHead', 'wormBossBody1', 'wormBossBody2', 'wormBossBody0', 'wormBossTail']);
     for (const time of [0, WORM_CRAWL_FRAME_MS, 5 * WORM_CRAWL_FRAME_MS]) {
       for (const i of ALL) expect(wormBossPose(look(), i, time).hold, `${i} at ${time}`).toEqual(wormPose(worm, i, time).hold);
     }
+  });
+
+  it('cracks its body plates in three patterns in turn down its length, so it never repeats plate to plate', () => {
+    const long = createWorm(Array.from({ length: 9 }, (_, i) => ({ x: 9 - i, y: 3 })), 'right');
+    expect(Array.from({ length: 9 }, (_, i) => wormBossPose(look({ worm: long }), i, 0).piece)).toEqual([
+      'wormBossHead', 'wormBossBody1', 'wormBossBody2', 'wormBossBody0', 'wormBossBody1', 'wormBossBody2', 'wormBossBody0', 'wormBossBody1', 'wormBossTail',
+    ]);
   });
 
   it("lies along the worm's one continuous spine, gliding or still, whatever it is doing", () => {

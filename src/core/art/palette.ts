@@ -205,10 +205,17 @@ export const PAPER = {
     glassFangTip: '#b8b2c4',
     seamBlood: '#a3121f',
     seamBloodLight: '#ff4a3d',
-    // The worm boss's eggs: pale, leathery pods flecked with crystal.
-    egg: '#d8cdb2',
-    eggLight: '#efe6d0',
-    eggShade: '#a89c80',
+    // The worm boss's eggs: dark, leathery pods, thin veins glowing in its seam light.
+    egg: '#2c2023',
+    eggLight: '#4e3c40',
+    eggShade: '#150e10',
+    // Its hatchlings: pale, soft, half-translucent plates, the gut a dim shadow through them.
+    pale: '#d6cbbb',
+    paleLight: '#f3ece1',
+    paleDark: '#8f8272',
+    paleEdge: '#fffaf1',
+    paleMandible: '#bfb09c',
+    paleMandibleTip: '#ece1d0',
 
     earth: '#33271c',
     earthPatch: '#3e3022',

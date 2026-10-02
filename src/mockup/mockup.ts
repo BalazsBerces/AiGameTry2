@@ -468,16 +468,16 @@ const CAVE_RUBBLE: Scene = { ...CAVE, actors: ALONE, shots: [], seed: 53, map: R
  * spine (core/art/castPoses), seen from above and turned along it, rounding each corner, the head's
  * plate over its neck's and so on down; its crawl rippling down from the head. The worm boss
  * (`boss`) lies the same way, its art drawn at its own size; `pose` holds one of its segments in
- * another pose.
+ * another pose. A `hatchling` wears its pale plates.
  */
-function centipede(cells: [number, number][], champion = false, boss = false, pose?: { segment: number; action: Action; frame: number }): Actor[] {
+function centipede(cells: [number, number][], champion = false, boss = false, pose?: { segment: number; action: Action; frame: number }, hatchling = false): Actor[] {
   const body = createWorm(cells.map(([x, y]) => ({ x, y })), 'down');
   const scale = champion ? 1.35 : undefined;
   const lowest = Math.max(...cells.map(([, y]) => y)) * TILE + TILE;
   return cells.map((cell, i) => {
     const { offset, angle } = wormSpine(body, i);
     return {
-      kind: `${boss ? 'wormBoss' : 'worm'}${i === 0 ? 'Head' : i === cells.length - 1 ? 'Tail' : 'Body'}`,
+      kind: `${boss ? 'wormBoss' : hatchling ? 'hatchling' : 'worm'}${i === 0 ? 'Head' : i === cells.length - 1 ? 'Tail' : 'Body'}`,
       x: (cell[0] + 0.5 + offset.x) * TILE,
       y: (cell[1] + 0.5 + offset.y) * TILE,
       ...(pose?.segment === i ? { action: pose.action, frame: pose.frame } : { action: 'move' as const, frame: (4 - (i % 4)) % 4 }),
@@ -514,13 +514,15 @@ const CAVE_BOSS: Scene = {
     { kind: 'wormEgg', x: 9 * TILE, y: 2 * TILE, action: 'move', frame: 1 },
     { kind: 'wormEgg', x: 2.5 * TILE, y: 6.5 * TILE + 13, action: 'idle', frame: 0 },
     { kind: 'wormEgg', x: 12.5 * TILE, y: 1.5 * TILE + 13, action: 'attack', frame: 2 },
+    // A hatchling just out of its egg, crawling off.
+    ...centipede([[3, 1], [2, 1], [1, 1]], false, false, undefined, true),
   ],
 };
 
 const img = (svg: string, w: number, h: number, scale: number, flip = false, alt = '') =>
   `<img src="${uri(svg)}" width="${w * scale}" height="${h * scale}" alt="${alt}"${flip ? ' style="transform:scaleX(-1)"' : ''}>`;
 
-const NAMES: Record<string, string> = { player: 'Player', goblin: 'Goblin', seedSpitter: 'Seed spitter', boar: 'Boar', wasp: 'Wasp', treantBoss: 'Treant', ghoul: 'Ghoul', bat: 'Bat', slime: 'Slime', geode: 'Geode', wormHead: 'Worm head', wormBody: 'Worm body', wormTail: 'Worm tail', wormBossHead: 'Worm boss head', wormBossBody: 'Worm boss body', wormBossTail: 'Worm boss tail', wormEgg: 'Worm egg' };
+const NAMES: Record<string, string> = { player: 'Player', goblin: 'Goblin', seedSpitter: 'Seed spitter', boar: 'Boar', wasp: 'Wasp', treantBoss: 'Treant', ghoul: 'Ghoul', bat: 'Bat', slime: 'Slime', geode: 'Geode', wormHead: 'Worm head', wormBody: 'Worm body', wormTail: 'Worm tail', wormBossHead: 'Worm boss head', wormBossBody: 'Worm boss body', wormBossTail: 'Worm boss tail', wormEgg: 'Worm egg', hatchlingHead: 'Hatchling head', hatchlingBody: 'Hatchling body', hatchlingTail: 'Hatchling tail' };
 /** What each cave pose is, for the strips' headings. */
 const POSE_NAMES: Record<string, Partial<Record<Action, string>>> = {
   ghoul: { move: 'stalk', attack: 'wind-up, lunge' },
@@ -533,7 +535,10 @@ const POSE_NAMES: Record<string, Partial<Record<Action, string>>> = {
   wormBossHead: { idle: 'seams pulsing', move: 'crawl, seams pulsing', attack: 'roar: mandibles splayed, whole body blazing', spit: 'maw pulsing', charge: 'mandibles spread wide, seams brightening', lunge: 'mandibles snapped shut', lob: 'plates parting, egg heaving out; closing', split: 'torn end: broken glass leaking light, twitching', die: 'holding dim; blazing, about to pop' },
   wormBossBody: { idle: 'seams pulsing', move: 'crawl, seams pulsing', attack: 'roar: blazing', spit: 'ready, seams flaring as its shot leaves', charge: 'tensing, seams brightening', lunge: 'taut', lob: 'plates parting, egg heaving out; closing', split: 'torn end: broken glass leaking light, twitching', die: 'holding dim; blazing, about to pop' },
   wormBossTail: { idle: 'seams pulsing', move: 'crawl, seams pulsing', attack: 'roar: blazing', spit: 'ready, seams flaring as its shot leaves', charge: 'tensing, seams brightening', lunge: 'taut', lob: 'plates parting, egg heaving out; closing', split: 'torn end: broken glass leaking light, twitching', die: 'holding dim; blazing, about to pop' },
-  wormEgg: { idle: 'resting', move: 'tumbling through the air', attack: 'wobbling: hairline, spreading, splitting' },
+  wormEgg: { idle: 'resting', move: 'tumbling through the air', attack: 'wobbling: crown vein split, branches split, gaping' },
+  hatchlingHead: { move: 'crawl', attack: 'mandibles spread, snapping' },
+  hatchlingBody: { move: 'crawl', attack: 'tensing' },
+  hatchlingTail: { move: 'crawl', attack: 'tensing' },
 };
 
 /** Every frame of `kinds`' art, view by view, then their champions' gold-trimmed frames. */
@@ -705,7 +710,7 @@ ${defs(lit)}${defs(unlit)}${defs(grotto)}${defs(hollow)}${defs(rift)}${defs(rubb
   <figure class="stage small">${hollowUnlit}<figcaption>A mushroom hollow under the gloom: giant mushrooms and glowshrooms glow violet, spores faintly; the clumps of mushroom caps stay dull.</figcaption></figure>
   <figure class="stage small">${riftUnlit}<figcaption>A rift: the chasm's lip torn red. A worm crawls along the top and turns down the room, its body curving round the corner in one piece; a champion winds off the other way below.</figcaption></figure>
   <figure class="stage small">${rubbleUnlit}<figcaption>Rubble walls: neighbouring loose rock fuses into continuous walls, the way the worm boss's maze is built, and grows out of the cave wall wherever it meets it. Where a rock has broken (the gap in the long run) its joins are gone and the ends are left ragged.</figcaption></figure>
-  <figure class="stage small">${bossUnlit}<figcaption>The worm's room: darker earth broken by burrows, strewn with bones and shards. The worm boss crawls round it, heaving an egg out of its back; another egg is in the air, one rests by the wall and one is splitting open to hatch.</figcaption></figure>
+  <figure class="stage small">${bossUnlit}<figcaption>The worm's room: darker earth broken by burrows, strewn with bones and shards. The worm boss crawls round it, heaving an egg out of its back; another egg is in the air, one rests by the wall and one is splitting open to hatch, a pale hatchling crawling off from another.</figcaption></figure>
 </div>
 <h2>The cave cast, frame by frame</h2>
 <p class="note">The ghoul's wind-up (eyes flared cyan) is held for its whole tell, then the lunge frames play while it lunges; it loops recover while it catches its breath. The bat beats its wings at twice the usual frame rate, hangs with them spread wide for its tell, and holds the swoop frames while it swoops.</p>
@@ -713,9 +718,9 @@ ${defs(lit)}${defs(unlit)}${defs(grotto)}${defs(hollow)}${defs(rift)}${defs(rubb
 <p class="note">The worm is the Obsidian Centipede's dull chitin cousin, drawn from above piece by piece: a head with dull eye pits and hooked horn mandibles, body plates with notched flanges and a keel, and a tail trailing one long stinger, all matte brown-black chitin with nothing glowing, and no legs. The plates lie along one continuous spine, each turned the way it runs and longer than a cell, so neighbours overlap through every bend, the plate nearer the head on top; at a corner the spine curves round it rather than cutting across. The crawl ripples from the head down to the tail, a frame behind segment by segment.</p>
 ${frameStrips(['ghoul', 'bat', 'slime', 'geode', 'wormHead', 'wormBody', 'wormTail'], ['ghoul', 'bat', 'slime', 'geode', 'wormHead', 'wormBody', 'wormTail'])}
 <h2>The worm boss, acting out its fight</h2>
-<p class="note">The worm boss is the Obsidian Centipede: overlapping black-glass plates with dim blood-red light leaking from the seams between them, hooked glass mandibles, eyes burning in its head, a single long glass stinger and no legs. It lies along the same continuous spine as the worm, seen from above and turned along it, its plates as broad as its segments. As it crawls its plates ripple and its seams pulse dimly; through its roar they blaze. Each pose is held exactly as long as the moment of the fight it acts out; the beats marked stand-in show its crawl lit to suit until they get their own frames.</p>
-<p class="note">Its eggs are pale, leathery pods flecked with crystal: tumbling through the air, resting where they land, then cracking ever wider as they wobble to hatch into a worm.</p>
-${frameStrips(['wormBossHead', 'wormBossBody', 'wormBossTail', 'wormEgg'], [])}
+<p class="note">The worm boss is the Obsidian Centipede: overlapping black-glass plates with dim blood-red light leaking from the seams between them, hooked glass mandibles, eyes burning in its head, a single long glass stinger and no legs. It lies along the same continuous spine as the worm, seen from above and turned along it, its plates as broad as its segments. As it crawls its plates ripple and its seams pulse dimly; through its roar they blaze. Each pose is held exactly as long as the moment of the fight it acts out: its mandibles spread and seams brighten as it charges up, snap shut as it lunges; its seams flare down its body as it spits; its plates part as an egg heaves out; its torn ends at the split are broken glass leaking light; dying, each segment blazes just before it pops.</p>
+<p class="note">Its eggs are dark, leathery pods with thin veins glowing across them: tumbling through the air, resting where they land, then cracking open along their veins as they wobble to hatch. What hatches is a worm on the worm's own build, a little slighter, in pale, soft, half-translucent plates, its gut a dim shadow through them.</p>
+${frameStrips(['wormBossHead', 'wormBossBody', 'wormBossTail', 'wormEgg', 'hatchlingHead', 'hatchlingBody', 'hatchlingTail'], [])}
 <section class="strip"><h3>Shots <span>the geode's ricocheting shard shot, red-hot and outlined like the enemy shot beside it</span></h3><div class="frames"><figure>${img(hudSvg.shot('shard', SHOT_ART.shard), SHOT_CANVAS, SHOT_CANVAS, 2.5, false, 'shard shot')}<figcaption>shard shot (tumbles in flight)</figcaption></figure><figure>${img(hudSvg.shot('enemy', SHOT_ART.enemy), SHOT_CANVAS, SHOT_CANVAS, 2.5, false, 'enemy shot')}<figcaption>enemy shot</figcaption></figure></div></section>
 <h2>Terrain</h2>
 ${caveTerrainSheet()}

@@ -796,9 +796,13 @@ interface PlateLook {
   mandibleTip: string;
   /** The light glowing in the seams between its plates, and its bright core; none on a worm. */
   seam?: { glow: string; core: string };
+  /** How opaque its plates are, if they are half-translucent (a hatchling's), its gut showing through. */
+  veil?: number;
 }
 /** The regular worm: matte brown-black chitin, no glow. */
 const MATTE: PlateLook = { plate: C.matte, light: C.matteLight, dark: C.matteDark, edge: C.matteEdge, mandible: C.mandible, mandibleTip: C.mandibleTip };
+/** A hatchling: pale, soft, half-translucent plates, no glow. */
+const PALE: PlateLook = { plate: C.pale, light: C.paleLight, dark: C.paleDark, edge: C.paleEdge, mandible: C.paleMandible, mandibleTip: C.paleMandibleTip, veil: 0.78 };
 /** What the worm boss shatters into, at its split and as it blows apart: black-glass shards, and sparks in its seam glow. */
 export const WORM_BOSS_BURST = { shards: [C.obsidian, C.obsidianLight, C.obsidian, C.obsidianEdge], sparks: C.seamBloodLight } as const;
 
@@ -883,7 +887,7 @@ function centipedePiece(piece: WormPieceArt, c: Ripple, champion: boolean, look:
       const reach = piece === 'tail' ? 11 : piece === 'head' ? 12 : 13.5;
       const tip: [number, number] = [-half - (piece === 'tail' ? 1 : 5), side * (reach + 6)];
       const pts = along([[-half + 15, side * (reach - 1)], tip, [-half + 3, side * (reach - 4)]], s, w);
-      return fill(cutPoly(r(`spike${side}`), pts, 0.4), look.plate) + `<path d="M${n(pts[0].x)} ${n(pts[0].y)}L${n(pts[1].x)} ${n(pts[1].y)}" stroke="${look.edge}" stroke-width="0.9" opacity="0.7"/>`;
+      return fill(cutPoly(r(`spike${side}`), pts, 0.4), look.plate, look.veil ? `opacity="${look.veil}"` : '') + `<path d="M${n(pts[0].x)} ${n(pts[0].y)}L${n(pts[1].x)} ${n(pts[1].y)}" stroke="${look.edge}" stroke-width="0.9" opacity="0.7"/>`;
     })
     .join('');
   // The shadow it throws over the plate behind, past its back rim.
@@ -914,7 +918,10 @@ function centipedePiece(piece: WormPieceArt, c: Ripple, champion: boolean, look:
         .map((line) => lit(zigzag(line as [number, number][]), 0.9, 1.2))
         .join('')
     : '';
-  let plate = seam + leak + blaze + trim(plateD, champion) + spikes + fill(plateD, look.plate) + shade + keel + groove + grooveGlow + rim + sheen + splinters;
+  // Half-translucent, the floor and its gut showing dimly through.
+  const veil = look.veil ? `opacity="${look.veil}"` : '';
+  const gut = look.veil ? ellipse(cx - 2 * s, cy + 1, (half - 9) * s, 4.5 * w, look.dark, 'opacity="0.3"') : '';
+  let plate = seam + leak + blaze + trim(plateD, champion) + spikes + fill(plateD, look.plate, veil) + gut + shade + keel + groove + grooveGlow + rim + sheen + splinters;
   // Torn open at its split: its loose end snapped off in jagged glass, light leaking from the break.
   const tornOff = c.torn ? (piece === 'head' ? 1 : -1) : 0;
   if (tornOff) {
@@ -965,6 +972,11 @@ function centipedePiece(piece: WormPieceArt, c: Ripple, champion: boolean, look:
 
 function drawWorm(piece: WormPieceArt, action: Action, frame: number, champion: boolean): string {
   return centipedePiece(piece, ripple(action, frame), champion, MATTE, (part) => pieceRng('worm', piece, part));
+}
+
+/** A hatchling's piece: the worm's own build, a little slighter, in pale, soft, half-translucent plates. */
+function drawHatchling(piece: WormPieceArt, action: Action, frame: number): string {
+  return centipedePiece(piece, ripple(action, frame), false, PALE, (part) => pieceRng('hatchling', piece, part), 0.9);
 }
 
 /**
@@ -1061,9 +1073,21 @@ const EGG = { w: 40, h: 50, foot: { x: 20, y: 40 } };
 const EGG_MID = { x: 20, y: 27 };
 
 /**
- * A pale leathery pod at x,y, `size` times full size, flecked with crystal, cracked as far as
- * `crack` (0 whole; 1 a hairline; 2 spreading, light leaking through; 3 splitting open on the
- * hatchling's teeth), squashed by `squash` as it breathes.
+ * The veins across an egg's shell, as points across its width and height (-1..1): the one down
+ * its crown it first cracks along, then the ones branching off it, then the last down its side.
+ */
+const EGG_VEINS = [
+  [[0, -1], [0.16, -0.72], [-0.06, -0.46], [0.12, -0.2], [0, 0.06]],
+  [[-0.06, -0.46], [-0.38, -0.36], [-0.62, -0.1], [-0.7, 0.22]],
+  [[0.12, -0.2], [0.44, -0.06], [0.6, 0.28], [0.5, 0.6]],
+  [[0, 0.06], [-0.16, 0.4], [-0.06, 0.76]],
+] as const;
+
+/**
+ * A dark leathery pod at x,y, `size` times full size, thin veins glowing across it, cracked open
+ * along them as far as `crack` (0 whole; 1 its crown vein split, light leaking; 2 its branches
+ * split too, brighter; 3 every vein split, its crown gaping on the hatchling's pale plate),
+ * squashed by `squash` as it breathes.
  */
 function eggPod(r: PieceRng, x: number, y: number, size: number, crack: number, squash = 1): string {
   const rx = 11 * size * (2 - squash);
@@ -1071,26 +1095,28 @@ function eggPod(r: PieceRng, x: number, y: number, size: number, crack: number, 
   const at = (dx: number, dy: number) => `${n(x + dx * rx)} ${n(y + dy * ry)}`;
   const shell = fill(blob(r('shell'), x, y, rx, ry, 11, 0.04), C.egg);
   const shade = `<path d="M${at(0.95, -0.2)}Q${at(0.9, 0.85)} ${at(-0.1, 0.98)}Q${at(0.55, 0.55)} ${at(0.95, -0.2)}Z" fill="${C.eggShade}" opacity="0.7"/>`;
-  const shine = ellipse(x - rx * 0.38, y - ry * 0.4, rx * 0.22, ry * 0.3, C.eggLight, 'opacity="0.85"');
-  const veins = [[[-0.5, 0.1], [-0.2, 0.35], [-0.35, 0.7]], [[0.4, -0.55], [0.15, -0.2]]]
-    .map((line) => `<path d="M${line.map(([dx, dy]) => at(dx, dy)).join('L')}" stroke="${C.eggShade}" stroke-width="${n(0.8 * size)}" fill="none" opacity="0.8"/>`)
+  const shine = ellipse(x - rx * 0.38, y - ry * 0.4, rx * 0.2, ry * 0.26, C.eggLight, 'opacity="0.6"');
+  // Wrinkles in the leather.
+  const wrinkles = [[[-0.7, -0.5], [-0.45, -0.62]], [[0.55, -0.6], [0.78, -0.35]], [[0.3, 0.78], [0.62, 0.55]]]
+    .map((line) => `<path d="M${line.map(([dx, dy]) => at(dx, dy)).join('L')}" stroke="${C.eggShade}" stroke-width="${n(0.9 * size)}" fill="none" opacity="0.8"/>`)
     .join('');
-  const flecks = [[-0.45, -0.05, 0], [0.35, 0.2, 40], [0.05, 0.6, -30], [0.5, -0.45, 20], [-0.2, -0.65, -50]]
-    .map(([dx, dy, a]) => group(fill('M0 -2L1 0L0 2L-1 0Z', C.crystal), `translate(${at(dx, dy)}) rotate(${a}) scale(${n(size)})`))
-    .join('');
-  const crackLine = [[0, -1], [0.18, -0.72], [-0.1, -0.48], [0.14, -0.22], [-0.05, 0.05], [0.2, 0.3]].slice(0, crack ? 2 + crack : 0);
-  const crackD = crackLine.length ? `M${crackLine.map(([dx, dy]) => at(dx, dy)).join('L')}` : '';
-  const branch = crack >= 2 ? `M${at(-0.1, -0.48)}L${at(-0.45, -0.35)}L${at(-0.6, -0.15)}` : '';
-  // Light leaking through as the crack spreads.
-  const glow = crack >= 2 ? `<path d="${crackD}${branch}" stroke="${C.crystal}" stroke-width="${n(3 * size)}" fill="none" opacity="0.45"/>` : '';
-  const lines = crackD ? `<path d="${crackD}${branch}" stroke="${C.mawDeep}" stroke-width="${n(1.1 * size)}" fill="none" stroke-linejoin="round"/>` : '';
-  // Splitting: a dark gap across its top, the hatchling's bone teeth showing in it.
+  // How many veins have split: its crown first, then its branches, then all of them.
+  const split = [0, 1, 3, 4][Math.min(3, crack)];
+  const veins = EGG_VEINS.map((line, i) => {
+    const d = `M${line.map(([dx, dy]) => at(dx, dy)).join('L')}`;
+    const open = i < split;
+    // Whole, a thin dim thread of light; split open, a dark rent with the light leaking out round it.
+    const glow = `<path d="${d}" stroke="${C.seamBlood}" stroke-width="${n((open ? 2.6 + crack * 0.5 : 1.1) * size)}" fill="none" opacity="${open ? n(0.35 + crack * 0.12) : '0.2'}" stroke-linejoin="round" stroke-linecap="round"/>`;
+    const thread = `<path d="${d}" stroke="${open ? C.mawDeep : C.seamBloodLight}" stroke-width="${n((open ? 1.1 : 0.4) * size)}" fill="none" opacity="${open ? '1' : '0.45'}" stroke-linejoin="round"/>`;
+    return glow + thread;
+  }).join('');
+  // Splitting: its crown gaping along the veins, the hatchling's pale plate showing in the gap.
   const gap =
     crack >= 3
-      ? fill(`M${at(-0.75, -0.42)}L${at(-0.3, -0.3)}L${at(0, -0.48)}L${at(0.35, -0.28)}L${at(0.8, -0.4)}L${at(0.7, -0.2)}L${at(0.3, -0.12)}L${at(0, -0.26)}L${at(-0.3, -0.1)}L${at(-0.72, -0.24)}Z`, C.mawDeep) +
-        [-0.45, -0.15, 0.15, 0.45].map((dx) => fill(`M${at(dx - 0.07, -0.22)}L${at(dx + 0.07, -0.22)}L${at(dx, -0.36)}Z`, C.bone)).join('')
+      ? fill(`M${at(-0.62, -0.1)}L${at(-0.38, -0.36)}L${at(-0.06, -0.46)}L${at(0.16, -0.72)}L${at(0.3, -0.5)}L${at(0.12, -0.2)}L${at(0.44, -0.06)}L${at(0.2, 0.02)}L${at(-0.04, -0.24)}L${at(-0.4, -0.16)}Z`, C.mawDeep) +
+        ellipse(x + 0.05 * rx, y - 0.24 * ry, rx * 0.22, ry * 0.1, C.pale, 'opacity="0.85"')
       : '';
-  return shell + shade + shine + veins + flecks + glow + lines + gap;
+  return shell + shade + shine + wrinkles + veins + gap;
 }
 
 /**
@@ -1268,6 +1294,9 @@ export const CHARACTERS: Readonly<Record<string, CharacterArt>> = {
   wormHead: art(CENTIPEDE, ['top'], (a, f, _v, c) => drawWorm('head', a, f, c), 37),
   wormBody: art(CENTIPEDE, ['top'], (a, f, _v, c) => drawWorm('body', a, f, c), 37),
   wormTail: art(CENTIPEDE, ['top'], (a, f, _v, c) => drawWorm('tail', a, f, c), 37),
+  hatchlingHead: art(CENTIPEDE, ['top'], (a, f) => drawHatchling('head', a, f), 39),
+  hatchlingBody: art(CENTIPEDE, ['top'], (a, f) => drawHatchling('body', a, f), 39),
+  hatchlingTail: art(CENTIPEDE, ['top'], (a, f) => drawHatchling('tail', a, f), 39),
   wormBossHead: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('head', a, f), 41, BOSS_ACTIONS),
   wormBossBody: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('body', a, f), 41, BOSS_ACTIONS),
   wormBossTail: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('tail', a, f), 41, BOSS_ACTIONS),

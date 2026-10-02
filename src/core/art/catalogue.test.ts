@@ -247,6 +247,9 @@ describe('the art catalogue', () => {
       wormHead: { views: ['top'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 } },
       wormBody: { views: ['top'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 } },
       wormTail: { views: ['top'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 } },
+      hatchlingHead: { views: ['top'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 }, champion: false },
+      hatchlingBody: { views: ['top'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 }, champion: false },
+      hatchlingTail: { views: ['top'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 }, champion: false },
       wormBossHead: { views: ['top'], actions: BOSS_ACTIONS, champion: false },
       wormBossBody: { views: ['top'], actions: BOSS_ACTIONS, champion: false },
       wormBossTail: { views: ['top'], actions: BOSS_ACTIONS, champion: false },
@@ -296,6 +299,44 @@ describe('the art catalogue', () => {
           for (const glow of [crystal, crystalLight]) expect(svg, key).not.toContain(glow.toLowerCase());
         }
       }
+    });
+
+    it("draws a hatchling as a worm newly hatched: the worm's build in pale, soft, half-translucent plates, nothing glowing", () => {
+      const { pale, matte, seamBlood, seamBloodLight } = PAPER.caves;
+      for (const piece of ['Head', 'Body', 'Tail']) {
+        for (const key of keysOf(`hatchling${piece}` as keyof typeof CAST, false)) {
+          const svg = svgOf(key).toLowerCase();
+          expect(svg, key).toMatch(new RegExp(`fill="${pale.toLowerCase()}" opacity="0\\.\\d+"`));
+          for (const other of [matte, seamBlood, seamBloodLight]) expect(svg, key).not.toContain(other.toLowerCase());
+        }
+        const idle = (kind: string) => svgOf(charKey(kind, 'idle', 0, 'top'));
+        expect(idle(`hatchling${piece}`)).not.toBe(idle(`worm${piece}`));
+      }
+    });
+
+    it('draws the eggs dark and leathery with thin glowing veins, none of the old pale shell or crystal flecks', () => {
+      const { egg, seamBlood, crystal } = PAPER.caves;
+      expect(egg.toLowerCase()).not.toBe('#d8cdb2');
+      for (const key of keysOf('wormEgg', false)) {
+        const svg = svgOf(key).toLowerCase();
+        for (const own of [egg, seamBlood]) expect(svg, key).toContain(own.toLowerCase());
+        expect(svg, key).not.toContain(crystal.toLowerCase());
+      }
+    });
+
+    it('cracks the eggs open along their veins, the light leaking ever brighter frame by frame as they wobble', () => {
+      const { seamBlood } = PAPER.caves;
+      const glowOf = (action: Action, frame: number) =>
+        [...svgOf(charKey('wormEgg', action, frame, 'down')).matchAll(new RegExp(`stroke="${seamBlood}"[^>]*?opacity="([\\d.]+)"`, 'gi'))].reduce((a, m) => a + Number(m[1]), 0);
+      const cracking = [0, 1, 2].map((f) => glowOf('attack', f));
+      expect(glowOf('idle', 0)).toBeLessThan(cracking[0]);
+      expect(cracking[0]).toBeLessThan(cracking[1]);
+      expect(cracking[1]).toBeLessThan(cracking[2]);
+    });
+
+    it('tumbles the eggs end over end in flight', () => {
+      const turns = [0, 1, 2, 3].map((f) => svgOf(charKey('wormEgg', 'move', f, 'down')).match(/rotate\((\d+) /)?.[1]);
+      expect(turns).toEqual(['0', '90', '180', '270']);
     });
 
     it("draws the worm boss's pieces as its own, apart from the worm's and from each other", () => {

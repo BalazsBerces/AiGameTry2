@@ -185,6 +185,8 @@ interface WormState {
   /** The cells its segments are gliding from, and where (in px) each shape glides from and to; none while it lies still on its cells. */
   glide?: { from: Cell[]; fromPx: { x: number; y: number }[]; toPx: { x: number; y: number }[] };
   boss?: BossPiece;
+  /** Hatched from the worm boss's egg: drawn in a hatchling's pale plates, and so are the pieces it splits into. */
+  hatchling?: boolean;
 }
 
 /**
@@ -738,7 +740,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
             index,
             time,
           )
-        : { ...wormPose(state.worm, index, time, glide), clip: undefined };
+        : { ...wormPose(state.worm, index, time, glide, state.hatchling), clip: undefined };
       const t = TUNING.tile;
       // The whole body sorts by its lowest plate, the head on top of its neck and so on down to the tail.
       const footY = Math.max(...state.parts.map((p) => p.y)) + t / 2;
@@ -767,6 +769,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
           hp: from.map((k) => state.hp[k]),
           rng: state.rng.fork(`split ${index} ${i}`),
           nextStepAt: state.nextStepAt,
+          hatchling: state.hatchling,
           // Each piece glides on from where its segments were gliding from.
           glide: state.glide && { from: from.map((k) => state.glide!.from[k]), fromPx: from.map((k) => state.glide!.fromPx[k]), toPx: from.map((k) => state.glide!.toPx[k]) },
         }),
@@ -865,7 +868,7 @@ function wormEgg(scene: Phaser.Scene, ctx: EnemyContext, shared: WormBossShared,
       const stage = eggStage(laidAt, ctx.time);
       sprite.setAngle(stage === 'wobbling' ? Math.sin(ctx.time / 45) * 20 : 0);
       if (stage !== 'hatched') return;
-      const hatchling = spawnWorm(scene, Array.from({ length: WORM_BROOD.hatchlingLength }, () => cell), ctx.tileCenter);
+      const hatchling = spawnWorm(scene, Array.from({ length: WORM_BROOD.hatchlingLength }, () => cell), ctx.tileCenter, REGULAR_WORM, false, true);
       // The egg's place in the brood passes to what hatched from it.
       parts.splice(0, parts.length, ...hatchling.parts);
       ctx.removeEnemy(egg);
@@ -918,6 +921,7 @@ export function spawnWorm(
   tileCenter: (c: Cell) => { x: number; y: number },
   style: WormStyle = REGULAR_WORM,
   boss = false,
+  hatchling = false,
 ): Enemy {
   // Made before the body so the worm crawls over its own holes and splats.
   const marks = boss ? scene.add.graphics() : undefined;
@@ -959,6 +963,7 @@ export function spawnWorm(
     hp: cells.map(() => style.segmentHp),
     rng,
     nextStepAt: 0,
+    hatchling,
     ...(shared ? { boss: { shared, rampageRound: 0 } } : {}),
   });
 }

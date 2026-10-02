@@ -140,6 +140,18 @@ describe("the worm's poses", () => {
     expect([0, 1, 2, 3].map((i) => frame(i, 0))).toEqual([0, 3, 2, 1].map((f) => ({ action: 'move', frame: f })));
     for (const tick of [0, 1, 2, 5]) for (const i of [1, 2, 3]) expect(frame(i, tick + 1)).toEqual(frame(i - 1, tick));
   });
+
+  it("wears a hatchling's pale pieces if it hatched, posed and laid along its spine exactly like any worm's", () => {
+    const glide: WormGlide = { from: [{ x: 5, y: 1 }, { x: 4, y: 1 }, { x: 3, y: 1 }, { x: 2, y: 1 }], progress: 0.4 };
+    expect([0, 1, 2, 3].map((i) => wormPose(worm, i, 0, glide, true).piece)).toEqual(['hatchlingHead', 'hatchlingBody', 'hatchlingBody', 'hatchlingTail']);
+    for (const time of [0, 330]) {
+      for (const i of [0, 1, 2, 3]) {
+        const { piece: _, ...pose } = wormPose(worm, i, time, glide, true);
+        const { piece: __, ...plain } = wormPose(worm, i, time, glide);
+        expect(pose, `${i} at ${time}`).toEqual(plain);
+      }
+    }
+  });
 });
 
 describe("the worm's spine", () => {

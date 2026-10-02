@@ -238,7 +238,7 @@ export const COLORS = {
   slimeEdge: 0x6a1840,
   fallingRock: 0x8a7458,
   wormHole: 0x14100c,
-  wormEgg: 0xe8dcc0,
+  wormEgg: 0x2c2023,
   /** The burst's droplets of orange ichor, and the splat it leaves on the floor. */
   wormIchor: 0xf08a1c,
   wormIchorSplat: 0xb8620e,

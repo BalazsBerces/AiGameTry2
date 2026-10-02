@@ -82,8 +82,8 @@ export function geodePose(geode: Geode | undefined, time: number, rules: GeodeRu
   return { hold: { action: 'attack', frame: time - geode.openedAt < rules.openDelayMs / 2 ? 0 : 1 } };
 }
 
-/** The pieces a worm is drawn in: its head, its body segments and its tail. */
-export type WormPiece = 'wormHead' | 'wormBody' | 'wormTail';
+/** The pieces a worm is drawn in: its head, its body segments and its tail; a hatchling's pale ones. */
+export type WormPiece = 'wormHead' | 'wormBody' | 'wormTail' | 'hatchlingHead' | 'hatchlingBody' | 'hatchlingTail';
 
 /** How long each frame of a worm's crawl shows. */
 export const WORM_CRAWL_FRAME_MS = 110;
@@ -169,11 +169,11 @@ export function wormSpine(worm: Worm, index: number, glide?: WormGlide): Spine {
  * The pose of a worm's `index`th segment: its head first (a lone segment is all head), its tail
  * last, body pieces between; the crawl rippling from the head down to the tail, each segment a
  * frame behind the one in front; its plate on the worm's spine (`wormSpine`), turned the way the
- * spine runs there.
+ * spine runs there. A `hatchling` (hatched from the worm boss's egg) wears its pale pieces.
  */
-export function wormPose(worm: Worm, index: number, time: number, glide?: WormGlide): Pose & Spine & { piece: WormPiece } {
+export function wormPose(worm: Worm, index: number, time: number, glide?: WormGlide, hatchling = false): Pose & Spine & { piece: WormPiece } {
   const last = worm.segments.length - 1;
-  const piece = index === 0 ? 'wormHead' : index === last ? 'wormTail' : 'wormBody';
+  const piece = `${hatchling ? 'hatchling' : 'worm'}${index === 0 ? 'Head' : index === last ? 'Tail' : 'Body'}` as const;
   const frame = (((Math.floor(time / WORM_CRAWL_FRAME_MS) - index) % 4) + 4) % 4;
   return { piece, hold: { action: 'move' as const, frame }, ...wormSpine(worm, index, glide) };
 }

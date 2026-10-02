@@ -50,14 +50,14 @@ export const TUNING = {
    */
   bossBar: { width: 360, height: 10, gapPx: 10, entryMs: 700, snapFlashMs: 110, crumbleMs: 700, rageFlashMs: 160, heartbeatMs: 900 },
   /**
-   * The worm boss's shell burst, by size: `chunks` shards of shell (each `chunkPx` across) and `drops`
-   * of ichor flung up to `reachTiles`, leaving a splat `splatTiles` across. Shards fly and bounce
+   * The worm boss's shell burst, by size: `chunks` shards of shell (each `chunkPx` across), `drops`
+   * of ichor and (its glass shattering) `sparks` of its glow flung up to `reachTiles`, leaving a splat `splatTiles` across. Shards fly and bounce
    * over `flightMs`, lie `restMs`, then fade over `fadeMs`. A split's raw ends spurt every `spurtEveryMs`.
    */
   shellBurst: {
-    pop: { chunks: 6, drops: 7, chunkPx: [6, 10], reachTiles: 1.1, splatTiles: 0.55 },
-    head: { chunks: 16, drops: 20, chunkPx: [9, 16], reachTiles: 2.1, splatTiles: 1.1 },
-    split: { chunks: 13, drops: 20, chunkPx: [8, 14], reachTiles: 1.8, splatTiles: 0.95 },
+    pop: { chunks: 6, drops: 7, sparks: 7, chunkPx: [6, 10], reachTiles: 1.1, splatTiles: 0.55 },
+    head: { chunks: 16, drops: 20, sparks: 18, chunkPx: [9, 16], reachTiles: 2.1, splatTiles: 1.1 },
+    split: { chunks: 13, drops: 20, sparks: 14, chunkPx: [8, 14], reachTiles: 1.8, splatTiles: 0.95 },
     flightMs: 520,
     restMs: 900,
     fadeMs: 400,

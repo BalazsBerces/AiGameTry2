@@ -8,9 +8,9 @@ export type BaseAction = 'idle' | 'move' | 'attack' | 'hurt';
 /**
  * Base actions plus the ones only some characters have: a goblin healing its partner, being
  * healed, a ghoul catching its breath, a slime splatting down; the worm boss spitting, charging
- * up a lunge, lobbing an egg, torn open at its split and blowing apart as it dies.
+ * up a lunge and lunging, lobbing an egg, torn open at its split and blowing apart as it dies.
  */
-export type Action = BaseAction | 'heal' | 'healed' | 'recover' | 'land' | 'spit' | 'charge' | 'lob' | 'split' | 'die';
+export type Action = BaseAction | 'heal' | 'healed' | 'recover' | 'land' | 'spit' | 'charge' | 'lunge' | 'lob' | 'split' | 'die';
 /**
  * The way a character faces: `side` looks right (left is the mirror image), `down` at the camera,
  * `up` away; `top` is seen from straight above, pointing right, and turned whichever way its pose says.
@@ -20,7 +20,7 @@ export type View = 'side' | 'down' | 'up' | 'top';
 /** Frames per base action, the same for every character. */
 export const FRAMES: Readonly<Record<BaseAction, number>> = { idle: 2, move: 4, attack: 3, hurt: 1 };
 /** Frames of the extra actions a character may add. */
-const EXTRA_FRAMES: Readonly<Record<Exclude<Action, BaseAction>, number>> = { heal: 2, healed: 2, recover: 2, land: 2, spit: 2, charge: 2, lob: 2, split: 2, die: 2 };
+const EXTRA_FRAMES: Readonly<Record<Exclude<Action, BaseAction>, number>> = { heal: 2, healed: 2, recover: 2, land: 2, spit: 2, charge: 2, lunge: 2, lob: 2, split: 2, die: 2 };
 
 export interface CharacterArt {
   /** Canvas size in game px. */
@@ -799,6 +799,9 @@ interface PlateLook {
 }
 /** The regular worm: matte brown-black chitin, no glow. */
 const MATTE: PlateLook = { plate: C.matte, light: C.matteLight, dark: C.matteDark, edge: C.matteEdge, mandible: C.mandible, mandibleTip: C.mandibleTip };
+/** What the worm boss shatters into, at its split and as it blows apart: black-glass shards, and sparks in its seam glow. */
+export const WORM_BOSS_BURST = { shards: [C.obsidian, C.obsidianLight, C.obsidian, C.obsidianEdge], sparks: C.seamBloodLight } as const;
+
 /** The worm boss, the Obsidian Centipede: black glass, dim blood-red light in its seams. */
 const OBSIDIAN: PlateLook = {
   plate: C.obsidian,
@@ -822,6 +825,12 @@ interface Ripple {
   hurt: boolean;
   /** How bright the light in its seams burns, flaring past 1; dark on a worm. */
   glow?: number;
+  /** Torn open at its split: its loose end (the head's front, else its back) broken off in jagged glass. */
+  torn?: boolean;
+  /** Its plate parted down its keel this many px either way, and whether an egg is heaving out between. */
+  parted?: { by: number; egg: boolean };
+  /** Light splintering through its plate, just before it pops. */
+  splinter?: boolean;
 }
 
 function ripple(action: Action, frame: number): Ripple {
@@ -896,9 +905,45 @@ function centipedePiece(piece: WormPieceArt, c: Ripple, champion: boolean, look:
       : '';
   const leak = lit(`M${n(cx - (half - 7) * s)} ${n(cy - 13 * w)}Q${n(cx - (half + 13) * s)} ${n(cy)} ${n(cx - (half - 7) * s)} ${n(cy + 13 * w)}`, 1.6, 1);
   const grooveGlow = piece === 'head' ? '' : lit(`M${n(cx + 6 * s)} ${n(cy - 12 * w)}Q${n(cx + 1 * s)} ${n(cy)} ${n(cx + 6 * s)} ${n(cy + 12 * w)}`, 0.9, 0.7);
-  const plate = seam + leak + trim(plateD, champion) + spikes + fill(plateD, look.plate) + shade + keel + groove + grooveGlow + rim + sheen;
+  // Blazing, light spills out all round its rim.
+  const blaze = look.seam && g > 1.2 ? `<path d="${plateD}" stroke="${look.seam.glow}" stroke-width="6" fill="none" opacity="${n(Math.min(0.6, (g - 1.2) * 0.45))}" stroke-linejoin="round"/>` : '';
+  // About to pop: light splintering out from its keel through the glass.
+  const zigzag = (list: readonly (readonly [number, number])[]) => `M${along(list, s, w).map((q) => `${n(q.x)} ${n(q.y)}`).join('L')}`;
+  const splinters = c.splinter
+    ? [[[-6, 0], [-2, -5], [-6, -9], [-3, -13]], [[3, 1], [8, 5], [5, 9], [9, 13]], [[-1, -1], [5, -6], [3, -11]], [[-9, 1], [-13, 6], [-10, 11]]]
+        .map((line) => lit(zigzag(line as [number, number][]), 0.9, 1.2))
+        .join('')
+    : '';
+  let plate = seam + leak + blaze + trim(plateD, champion) + spikes + fill(plateD, look.plate) + shade + keel + groove + grooveGlow + rim + sheen + splinters;
+  // Torn open at its split: its loose end snapped off in jagged glass, light leaking from the break.
+  const tornOff = c.torn ? (piece === 'head' ? 1 : -1) : 0;
+  if (tornOff) {
+    const cut = tornOff > 0 ? half - 17 : -half + 7;
+    const jag = [-24, -15, -10, -5, 0, 5, 10, 15, 24].map((y, i) => [cut + tornOff * ((i % 2 ? 3.5 : -1.5) + ((i * 7) % 3) * 0.8), y] as const);
+    const kept = [...jag, [cut - tornOff * 80, 24], [cut - tornOff * 80, -24]] as const;
+    const edge = zigzag(jag.slice(1, -1));
+    const shards = [[-12, 6, 4], [-2, 4.5, -3], [9, 5.5, 5]]
+      .map(([y, len, tilt], i) => {
+        const at = jag[2 + i * 2];
+        const pts = along([[at[0] - tornOff * 1, y - 2], [at[0] + tornOff * len, y + tilt * 0.3], [at[0] - tornOff * 1, y + 2]], s, w);
+        return fill(cutPoly(r(`shard${i}`), pts, 0.3), look.plate, `stroke="${look.edge}" stroke-width="0.6"`);
+      })
+      .join('');
+    plate = `<clipPath id="torn"><path d="${polyPath(along(kept, s, w))}"/></clipPath><g clip-path="url(#torn)">${plate}</g>` + lit(edge, 2.2, 1.5) + shards;
+  }
+  // Heaving out an egg: its plate parted down its keel, light and the egg's shell showing in the gap.
+  if (c.parted) {
+    const { by, egg } = c.parted;
+    const side = (id: string, y: number, h: number, dy: number) =>
+      `<clipPath id="${id}"><rect x="-40" y="${n(y)}" width="${CENTIPEDE.w + 80}" height="${n(h)}"/></clipPath>` + group(`<g clip-path="url(#${id})">${plate}</g>`, `translate(0 ${n(dy)})`);
+    const gap = ellipse(cx, cy, (half - 6) * s, by + 2, look.dark) + lit(zigzag([[-half + 8, 0], [half - 8, 0]]), 1.6, 1.4);
+    const shell = egg
+      ? ellipse(cx, cy, 9 * s, by + 1.5, C.egg) + ellipse(cx + 2, cy + by * 0.4, 6 * s, by * 0.6, C.eggShade, 'opacity="0.7"') + ellipse(cx - 3, cy - by * 0.3, 3, by * 0.35, C.eggLight, 'opacity="0.8"')
+      : '';
+    plate = gap + shell + side('upper', -40, 40 + cy, -by) + side('lower', cy, 40 + CENTIPEDE.h, by);
+  }
   let ends = '';
-  if (piece === 'head') {
+  if (piece === 'head' && !c.torn) {
     const front = cx + (half - 14) * s;
     const eye = (side: number) =>
       look.seam
@@ -906,7 +951,7 @@ function centipedePiece(piece: WormPieceArt, c: Ripple, champion: boolean, look:
         : ellipse(front - 6, cy + side * 7 * w, 1.6, 1.2, look.dark) + ellipse(front - 6.4, cy + side * 7 * w - 0.4, 0.6, 0.5, look.edge, 'opacity="0.6"');
     ends = mandible(front, cy - 5 * w, -1, c.gape, look) + mandible(front, cy + 5 * w, 1, c.gape, look) + [-1, 1].map(eye).join('');
   }
-  if (piece === 'tail') {
+  if (piece === 'tail' && !c.torn) {
     const root = cx - (half - 8) * s;
     ends = fill(taper([{ x: root + 4, y: cy }, { x: root - 12, y: cy + 1 }, { x: root - 26, y: cy - 0.5 }, { x: root - 36, y: cy - 3.5 }], 7, 0.5), look.mandible) +
       fill(taper([{ x: root - 24, y: cy - 0.4 }, { x: root - 30, y: cy - 1.5 }, { x: root - 36, y: cy - 3.5 }], 2.6, 0.4), look.mandibleTip);
@@ -933,9 +978,12 @@ const BOSS_BREADTH = 1.22;
 
 /**
  * How a piece of the worm boss moves in a frame, and how bright its seams burn: they pulse dimly
- * as it crawls and at rest, blaze as it roars. Its other beats are stand-ins for now: its seams
- * flare as it spits, its mandibles spread as it charges up, its plates heave as it lobs, its torn
- * end twitches, and its seams burn ever brighter as it dies.
+ * as it crawls and at rest; its mandibles splay and its whole body blazes as it roars. Charging
+ * up its mandibles spread wide and its seams brighten, shuddering; lunging they snap shut, its
+ * body taut. Spitting, its maw pulses and a segment's seams flare as its shot leaves it. Lobbing,
+ * its plates part as an egg heaves out between them, then close. Torn at the split, its loose
+ * end is broken glass leaking light, twitching. Dying it holds dim, then blazes, light
+ * splintering through its plates, just before it pops.
  */
 function bossRipple(action: Action, frame: number): Ripple {
   const base = { ...ripple(action, frame), glow: [0.35, 0.45][frame] ?? 0.4 };
@@ -943,19 +991,21 @@ function bossRipple(action: Action, frame: number): Ripple {
     case 'move':
       return { ...base, glow: [0.4, 0.55, 0.47, 0.32][frame] };
     case 'attack':
-      return { ...base, glow: [0.9, 1.6, 1.15][frame] };
+      return { ...base, gape: [1.1, 2, 1.7][frame], glow: [1.1, 1.9, 1.6][frame] };
     case 'hurt':
       return { ...base, glow: 0.15 };
     case 'spit':
-      return { ...base, stretch: [1, 0.97][frame], squeeze: [1, 1.05][frame], gape: [0.9, 1.3][frame], glow: [0.6, 1.25][frame] };
+      return { ...base, stretch: [1, 0.97][frame], squeeze: [1, 1.05][frame], gape: [0.9, 1.3][frame], glow: [0.6, 1.5][frame] };
     case 'charge':
-      return { ...base, stretch: [0.93, 0.91][frame], squeeze: [1.05, 1.07][frame], wobble: [1.5, -1.5][frame], gape: [1.35, 1.5][frame], glow: [0.75, 0.95][frame] };
+      return { ...base, stretch: [0.94, 0.92][frame], squeeze: [1.05, 1.07][frame], wobble: [1.5, -1.5][frame], gape: [1.5, 1.7][frame], glow: [1, 1.2][frame] };
+    case 'lunge':
+      return { ...base, stretch: [1.06, 1.08][frame], squeeze: [0.95, 0.93][frame], wobble: [1, -1][frame], gape: [-0.25, -0.3][frame], glow: [0.6, 0.7][frame] };
     case 'lob':
-      return { ...base, stretch: [0.94, 1.04][frame], squeeze: [1.08, 0.98][frame], gape: [0.5, 0.4][frame], glow: [0.85, 0.5][frame] };
+      return { ...base, squeeze: [1.08, 1.03][frame], gape: [0.5, 0.4][frame], glow: [0.9, 0.6][frame], parted: { by: [5, 2.5][frame], egg: frame === 0 } };
     case 'split':
-      return { ...base, wobble: [3, -3][frame], gape: [0.25, 0.15][frame], glow: [0.95, 0.8][frame] };
+      return { ...base, wobble: [3, -3][frame], gape: [0.25, 0.15][frame], glow: [1, 0.8][frame], torn: true };
     case 'die':
-      return { ...base, stretch: [0.98, 1.02][frame], gape: [0.1, 0.05][frame], glow: [1.1, 1.7][frame] };
+      return { ...base, stretch: [0.98, 1.03][frame], gape: [0.1, 0.05][frame], glow: [0.5, 2.4][frame], splinter: frame === 1 };
     default:
       return base;
   }
@@ -1202,7 +1252,7 @@ const art = (
 });
 
 /** What the worm boss acts out besides crawling, rearing (its roar) and flinching; it tunnels as it crawls. */
-const BOSS_ACTIONS = ['spit', 'charge', 'lob', 'split', 'die'] as const;
+const BOSS_ACTIONS = ['spit', 'charge', 'lunge', 'lob', 'split', 'die'] as const;
 
 /** Every character with paper art, by entity kind. */
 export const CHARACTERS: Readonly<Record<string, CharacterArt>> = {

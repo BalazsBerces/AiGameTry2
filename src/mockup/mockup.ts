@@ -530,9 +530,9 @@ const POSE_NAMES: Record<string, Partial<Record<Action, string>>> = {
   wormHead: { move: 'crawl', attack: 'mandibles spread, snapping' },
   wormBody: { move: 'crawl', attack: 'tensing' },
   wormTail: { move: 'crawl', attack: 'tensing' },
-  wormBossHead: { idle: 'seams pulsing', move: 'crawl, seams pulsing', attack: 'roar: mandibles splayed, seams blazing', spit: 'seams flaring (stand-in)', charge: 'mandibles spread (stand-in)', lob: 'heave, let go (stand-in)', split: 'twitching (stand-in)', die: 'seams burning brighter (stand-in)' },
-  wormBossBody: { idle: 'seams pulsing', move: 'crawl, seams pulsing', attack: 'roar: seams blazing', spit: 'seams flaring (stand-in)', charge: 'tensing (stand-in)', lob: 'heave, let go (stand-in)', split: 'twitching (stand-in)', die: 'seams burning brighter (stand-in)' },
-  wormBossTail: { idle: 'seams pulsing', move: 'crawl, seams pulsing', attack: 'roar: seams blazing', spit: 'seams flaring (stand-in)', charge: 'tensing (stand-in)', lob: 'heave, let go (stand-in)', split: 'twitching (stand-in)', die: 'seams burning brighter (stand-in)' },
+  wormBossHead: { idle: 'seams pulsing', move: 'crawl, seams pulsing', attack: 'roar: mandibles splayed, whole body blazing', spit: 'maw pulsing', charge: 'mandibles spread wide, seams brightening', lunge: 'mandibles snapped shut', lob: 'plates parting, egg heaving out; closing', split: 'torn end: broken glass leaking light, twitching', die: 'holding dim; blazing, about to pop' },
+  wormBossBody: { idle: 'seams pulsing', move: 'crawl, seams pulsing', attack: 'roar: blazing', spit: 'ready, seams flaring as its shot leaves', charge: 'tensing, seams brightening', lunge: 'taut', lob: 'plates parting, egg heaving out; closing', split: 'torn end: broken glass leaking light, twitching', die: 'holding dim; blazing, about to pop' },
+  wormBossTail: { idle: 'seams pulsing', move: 'crawl, seams pulsing', attack: 'roar: blazing', spit: 'ready, seams flaring as its shot leaves', charge: 'tensing, seams brightening', lunge: 'taut', lob: 'plates parting, egg heaving out; closing', split: 'torn end: broken glass leaking light, twitching', die: 'holding dim; blazing, about to pop' },
   wormEgg: { idle: 'resting', move: 'tumbling through the air', attack: 'wobbling: hairline, spreading, splitting' },
 };
 

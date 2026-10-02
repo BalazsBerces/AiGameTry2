@@ -190,9 +190,9 @@ const SPIT_FLARE_MS = 100;
 const CHARGE_SHUDDER_MS = 70;
 /** How long its torn end twitches each way through the split. */
 const SPLIT_TWITCH_MS = 90;
-/** How long a segment heaves as it lobs an egg: heaving up, then letting go. */
+/** How long a segment's plates part as it lobs an egg: the egg heaving out between them, then gone. */
 export const LOB_HEAVE_MS = 300;
-/** How long before it pops a dying segment's crystals blaze, splintering through its plates. */
+/** How long before it pops a dying segment's seams blaze, light splintering through its plates. */
 export const POP_WARN_MS = 250;
 
 /** How far a piece of the worm boss's art reaches from its plate's centre, in cells: half its canvas's length. */
@@ -262,12 +262,13 @@ export interface WormBossLook {
 
 /**
  * The pose of the worm boss's `index`th segment, each lasting exactly as long as the phase of the
- * fight it acts out: dying, it cracks and each segment's crystals blaze just before it pops on the
- * death chain; through the stop at its split it roars, its torn end showing a raw crystal core;
- * holding still while its twin blows apart; roaring through its last stand's roar, maw splayed
- * and crystals flaring; its maw pulsing through a spit wave as each segment flares in turn; its
- * head tucked and shards forward while it charges up and between lunges; a segment heaving as it
- * lobs an egg. Otherwise it crawls like any worm. Whatever it does, its plate lies on its spine
+ * fight it acts out: dying, each segment's seams blaze just before it pops on the death chain;
+ * through the stop at its split it roars, its torn end jagged broken glass leaking light; holding
+ * still while its twin blows apart; roaring through its last stand's roar, mandibles splayed and
+ * its whole body blazing; its maw pulsing through a spit wave as each segment's seams flare in
+ * turn; its mandibles spread wide and seams brightening while it charges up and between lunges,
+ * snapped shut as it lunges, its body taut; a segment's plates parting as an egg heaves out of it.
+ * Otherwise it crawls like any worm. Whatever it does, its plate lies on its spine
  * like any worm's (`wormSpine`), and burrowing it slides into the rock, cut off at the hole's
  * mouth, and out of the far wall the same way (`clip`).
  */
@@ -299,6 +300,7 @@ export function wormBossPose(look: WormBossLook, index: number, time: number): P
     return pose({ action: 'spit', frame: since >= 0 && since < SPIT_FLARE_MS ? 1 : 0 });
   }
   if (look.rampage === 'charging' || look.rampage === 'pausing') return pose({ action: 'charge', frame: beat(CHARGE_SHUDDER_MS) });
+  if (look.rampage === 'lunging') return pose({ action: 'lunge', frame: (((Math.floor(time / WORM_CRAWL_FRAME_MS) - index) % 2) + 2) % 2 });
   const { heave } = look;
   if (heave && heave.segments.includes(index) && time - heave.start < LOB_HEAVE_MS) {
     return pose({ action: 'lob', frame: time - heave.start < LOB_HEAVE_MS / 2 ? 0 : 1 });

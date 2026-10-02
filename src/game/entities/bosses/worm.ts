@@ -33,8 +33,7 @@ import type { BarHalf, BossBarSnapshot } from '../../../core/bosses/bossBar';
 import { hitsToBreak } from '../../../core/map/tiles';
 import { eggPose, wormBossPose, wormPose } from '../../../core/art/castPoses';
 import { charKey } from '../../../core/art/catalogue';
-import { CHARACTERS } from '../../../core/art/characters';
-import { PAPER } from '../../../core/art/palette';
+import { CHARACTERS, WORM_BOSS_BURST } from '../../../core/art/characters';
 import { ART_SCALE, bakedArt } from '../../art/bake';
 import { COLORS, TUNING } from '../../config';
 import { shellBurst, shakeScreen, spray } from '../../effects/shellBurst';
@@ -77,8 +76,10 @@ export function championWorm(style: WormStyle): WormStyle {
   };
 }
 
-/** What the worm boss bursts into, at its split and as it blows apart: its crystal, and its chitin. */
-const CRYSTAL_SHARDS = [PAPER.caves.crystal, PAPER.caves.crystalLight, PAPER.caves.chitin].map((c) => parseInt(c.slice(1), 16));
+/** What the worm boss shatters into, at its split and as it blows apart: black-glass shards, and sparks in its seam glow. */
+const hex = (c: string) => parseInt(c.slice(1), 16);
+const GLASS_SHARDS = WORM_BOSS_BURST.shards.map(hex);
+const GLOW_SPARKS = hex(WORM_BOSS_BURST.sparks);
 /** How far below an egg's centre its paper art's feet are (core/art/characters). */
 const EGG_FOOT = 13;
 
@@ -605,8 +606,8 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
     const { popped, over } = chainAt(state.parts.length, ctx.time - dying.at);
     for (const { segment, big } of deathChain(state.parts.length).pops.slice(dying.popped, popped.length)) {
       const part = state.parts[segment];
-      // It bursts into crystal shards; out of sight in a wall, it goes quietly.
-      if (part.visible) shellBurst(scene, part, big ? 'head' : 'pop', CRYSTAL_SHARDS, b.shared.marks);
+      // It shatters into black glass; out of sight in a wall, it goes quietly.
+      if (part.visible) shellBurst(scene, part, big ? 'head' : 'pop', GLASS_SHARDS, b.shared.marks, GLOW_SPARKS);
       part.setVisible(false);
       part.body.enable = false;
       shakeScreen(scene, big ? 'head' : 'pop');
@@ -800,7 +801,7 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
       return [enemy];
     }
     // It tears apart: the segment hit bursts, and the screen shakes.
-    shellBurst(scene, part, 'split', CRYSTAL_SHARDS, shared.marks);
+    shellBurst(scene, part, 'split', GLASS_SHARDS, shared.marks, GLOW_SPARKS);
     shakeScreen(scene, 'split');
     part.destroy();
     shared.bodies.delete(state);

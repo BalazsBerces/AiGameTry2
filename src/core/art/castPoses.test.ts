@@ -285,7 +285,7 @@ describe("the worm boss's poses", () => {
     expect(wormBossPose(look(), 0, 0).aim).toBeUndefined();
   });
 
-  it('rears up and roars, maw splayed and crystals flaring, for exactly as long as the roar', () => {
+  it('roars, mandibles splayed and its whole body blazing, for exactly as long as the roar', () => {
     const roaring = look({ moment: { phase: 'roaring', until: 2000 } });
     for (const time of [0, 400, 1999]) {
       for (const hold of holds(roaring, time)) {
@@ -297,7 +297,7 @@ describe("the worm boss's poses", () => {
     expect(holds(look({ moment: { phase: 'done' } }), 0)).toEqual(holds(look(), 0));
   });
 
-  it('roars through the stop at its split, the end torn open showing its raw crystal core', () => {
+  it('roars through the stop at its split, the end torn open in jagged broken glass leaking light', () => {
     const stop = splitStop(100);
     const tornTail = look({ moment: stop, rawEnd: 'tail' });
     for (const time of [100, 600, 100 + WORM_BOSS.splitStopMs - 1]) {
@@ -331,13 +331,20 @@ describe("the worm boss's poses", () => {
     expect(holds(spitting, last + 100)).toEqual(holds(look(), last + 100));
   });
 
-  it('tucks its head and points its shards forward while it charges up and between lunges, and crawls through the lunge itself', () => {
+  it('spreads its mandibles wide, seams brightening, while it charges up and between lunges', () => {
     for (const rampage of ['charging', 'pausing'] as const) for (const hold of holds(look({ rampage }), 300)) expect(hold?.action, rampage).toBe('charge');
-    expect(holds(look({ rampage: 'lunging' }), 300)).toEqual(holds(look(), 300));
     expect(holds(look({ rampage: 'over' }), 300)).toEqual(holds(look(), 300));
   });
 
-  it('heaves the segment an egg is lobbed from, for as long as the throw', () => {
+  it('snaps its mandibles shut as it lunges, its body taut and rippling from the head down', () => {
+    const lunging = look({ rampage: 'lunging' });
+    for (const time of [0, 300, 1000]) for (const hold of holds(lunging, time)) expect(hold?.action, `${time}`).toBe('lunge');
+    // Each segment a frame behind the one in front, both frames showing as it goes.
+    expect(new Set([0, 110, 220].map((t) => wormBossPose(lunging, 0, t).hold?.frame))).toEqual(new Set([0, 1]));
+    expect(wormBossPose(lunging, 1, 110).hold).toEqual(wormBossPose(lunging, 0, 0).hold);
+  });
+
+  it('parts the plates of the segment an egg heaves out of, for as long as the throw', () => {
     const lobbing = look({ heave: { segments: [2], start: 1000 } });
     expect(wormBossPose(lobbing, 2, 1000).hold).toEqual({ action: 'lob', frame: 0 });
     expect(wormBossPose(lobbing, 2, 1000 + LOB_HEAVE_MS - 1).hold).toEqual({ action: 'lob', frame: 1 });
@@ -393,7 +400,7 @@ describe("the worm boss's poses", () => {
     });
   });
 
-  it('cracks as it dies, each segment bursting into crystal from its tail to its head, timed to the death chain', () => {
+  it("dies segment by segment from its tail to its head, each one's seams blazing just before it pops, timed to the death chain", () => {
     const dying = look({ dying: { at: 1000 } });
     const { pops } = deathChain(5);
     expect(pops[0].segment).toBe(4);

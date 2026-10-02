@@ -44,10 +44,11 @@ function fling(scene: Phaser.Scene, at: Point, piece: Phaser.GameObjects.Shape, 
 
 /**
  * The worm boss's shell bursting at `at`: shards of it (`color`, or each in turn of a palette of
- * them, its crystal and chitin) fly, spin and bounce, orange ichor sprays, and a splat of it is
- * left on `marks` (the fight's floor decals), if given, for good.
+ * them, its black glass) fly, spin and bounce, orange ichor sprays, sparks of its glow (`sparks`,
+ * if given) fly off the shattering glass, and a splat of ichor is left on `marks` (the fight's
+ * floor decals), if given, for good.
  */
-export function shellBurst(scene: Phaser.Scene, at: Point, size: BurstSize, color: number | readonly number[], marks?: Phaser.GameObjects.Graphics) {
+export function shellBurst(scene: Phaser.Scene, at: Point, size: BurstSize, color: number | readonly number[], marks?: Phaser.GameObjects.Graphics, sparks?: number) {
   const spec = TUNING.shellBurst[size];
   const reach = spec.reachTiles * TUNING.tile;
   if (marks) splat(marks, at, (spec.splatTiles * TUNING.tile) / 2);
@@ -63,6 +64,11 @@ export function shellBurst(scene: Phaser.Scene, at: Point, size: BurstSize, colo
     fling(scene, at, shard, reach, true);
   }
   spray(scene, at, spec.drops, reach * 1.1);
+  if (sparks === undefined) return;
+  for (let i = 0; i < spec.sparks; i++) {
+    const spark = scene.add.circle(at.x, at.y, rand(0.8, 1.8), sparks).setDepth(DEPTH).setBlendMode('ADD');
+    fling(scene, at, spark, reach * 1.25, false);
+  }
 }
 
 /** `color` darkened to `k` of its brightness. */

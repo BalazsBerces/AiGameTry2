@@ -9,6 +9,8 @@ import { n } from '../core/art/svg';
 import { createRng } from '../core/rng';
 import { SHOT_ART, floorLook, giantLook } from '../core/art/catalogue';
 import { roomThemeById, roomThemesFor } from '../core/rooms/roomThemes';
+import { wormSpine } from '../core/art/castPoses';
+import { createWorm } from '../core/bosses/wormChain';
 
 /**
  * The papercut style mockup: one forest room and the boss room drawn entirely from the paper art
@@ -81,6 +83,10 @@ interface Actor {
   champion?: boolean;
   /** Drawn at this size against its art (a smaller slime). */
   scale?: number;
+  /** Seen from above, turned this many degrees (a worm's plate along its spine). */
+  angle?: number;
+  /** The foot line it sorts by, if not its own (a worm's plates sort with the whole worm). */
+  sortY?: number;
 }
 
 interface Light {
@@ -212,7 +218,8 @@ function drawRoom(sheet: Sheet, scene: Scene, lit: boolean, id: string): string 
     const art = CHARACTERS[a.kind];
     const svg = art.draw(a.action, a.frame, a.view ?? art.views[0], !!a.champion);
     const placed = place(svg, art.w, art.h, art.anchor.x, art.anchor.y, a.x, a.y, a.flip);
-    standing.push({ y: a.y, svg: a.scale ? `<g transform="translate(${a.x} ${a.y}) scale(${a.scale}) translate(${-a.x} ${-a.y})">${placed}</g>` : placed });
+    const turn = a.angle ? ` rotate(${n(a.angle)})` : '';
+    standing.push({ y: a.sortY ?? a.y, svg: a.scale || turn ? `<g transform="translate(${a.x} ${a.y})${turn} scale(${a.scale ?? 1}) translate(${-a.x} ${-a.y})">${placed}</g>` : placed });
   }
   standing.sort((a, b) => a.y - b.y);
   // Geodes glow as the game lights them: their light following the glow their frame draws.
@@ -457,9 +464,34 @@ const CAVE_GROTTO: Scene = { ...CAVE, actors: ALONE, seed: 29, wallStyle: 'veine
 const CAVE_HOLLOW: Scene = { ...CAVE, actors: ALONE, seed: 37, map: HOLLOW_MAP, looks: HOLLOW_LOOK, decor: decorOf('hollow') };
 const CAVE_RUBBLE: Scene = { ...CAVE, actors: ALONE, shots: [], seed: 53, map: RUBBLE_MAP };
 /**
- * A worm crawling along cells `cells` (head first), each piece where the game would put it: on its
- * cell's centre (its feet 10 px below), facing the way it crawls, its crawl rippling down from the head.
- * The worm boss (`boss`) is drawn in its own pieces, at its bigger size; `pose` holds one of its segments in another pose.
+ * A worm lying along cells `cells` (head first), each plate where the game would put it: on its
+ * spine (core/art/castPoses), seen from above and turned along it, rounding each corner, the head's
+ * plate over its neck's and so on down; its crawl rippling down from the head.
+ */
+function centipede(cells: [number, number][], champion = false): Actor[] {
+  const body = createWorm(cells.map(([x, y]) => ({ x, y })), 'down');
+  const scale = champion ? 1.35 : undefined;
+  const lowest = Math.max(...cells.map(([, y]) => y)) * TILE + TILE;
+  return cells.map((cell, i) => {
+    const { offset, angle } = wormSpine(body, i);
+    return {
+      kind: `worm${i === 0 ? 'Head' : i === cells.length - 1 ? 'Tail' : 'Body'}`,
+      x: (cell[0] + 0.5 + offset.x) * TILE,
+      y: (cell[1] + 0.5 + offset.y) * TILE,
+      action: 'move' as const,
+      frame: (4 - (i % 4)) % 4,
+      angle: (angle * 180) / Math.PI,
+      sortY: lowest + (cells.length - i) * 0.01,
+      champion,
+      scale,
+    };
+  });
+}
+
+/**
+ * The worm boss crawling along cells `cells` (head first), each piece where the game would put it: on its
+ * cell's centre (its feet 10 px below), facing the way it crawls, its crawl rippling down from the head,
+ * at its bigger size; `pose` holds one of its segments in another pose.
  */
 function worm(cells: [number, number][], champion = false, boss = false, pose?: { segment: number; action: Action; frame: number }): Actor[] {
   const face = (from: [number, number], to: [number, number]) => {
@@ -490,8 +522,8 @@ const CAVE_RIFT: Scene = {
   actors: [
     { kind: 'player', x: 250, y: 200, action: 'idle', frame: 0 },
     // One crawling the length of the room and turning down it, a champion heading off the other way.
-    ...worm([[12, 5], [12, 4], [12, 3], [12, 2], [11, 2], [10, 2]]),
-    ...worm([[3, 7], [4, 7], [5, 7], [6, 7]], true),
+    ...centipede([[12, 5], [12, 4], [12, 3], [12, 2], [11, 2], [10, 2]]),
+    ...centipede([[3, 6], [4, 6], [5, 6], [6, 6], [6, 7]], true),
   ],
 };
 const CAVE_BOSS: Scene = {
@@ -520,9 +552,9 @@ const POSE_NAMES: Record<string, Partial<Record<Action, string>>> = {
   bat: { idle: 'flutter in place', move: 'flutter', attack: 'telegraph, swoop' },
   slime: { idle: 'rest', move: 'hop: take-off, rise, top, drop', attack: 'squash', land: 'splat, settle' },
   geode: { idle: 'shut', move: 'shut (it never moves)', attack: 'crack, split open, fire' },
-  wormHead: { move: 'crawl', attack: 'rear, maw splayed (for the boss)' },
-  wormBody: { move: 'crawl', attack: 'rear, crystals flaring (for the boss)' },
-  wormTail: { move: 'crawl', attack: 'rear (for the boss)' },
+  wormHead: { move: 'crawl', attack: 'mandibles spread, snapping' },
+  wormBody: { move: 'crawl', attack: 'tensing' },
+  wormTail: { move: 'crawl', attack: 'tensing' },
   wormBossHead: { move: 'crawl', attack: 'roar: maw splayed, crystals flaring', spit: 'maw pulsing', charge: 'head tucked, shards forward', burrow: 'diving in, climbing out', lob: 'heave, let go', split: 'torn open on its crystal core', die: 'cracking, bursting' },
   wormBossBody: { move: 'crawl', attack: 'roar: crystals flaring', spit: 'ready, firing', charge: 'shards forward', burrow: 'diving in, climbing out', lob: 'heave, let go', split: 'torn open', die: 'cracking, bursting' },
   wormBossTail: { move: 'crawl', attack: 'roar', spit: 'ready, firing', charge: 'shards forward', burrow: 'diving in, climbing out', lob: 'heave, let go', split: 'torn open on its crystal core', die: 'cracking, bursting' },
@@ -696,14 +728,14 @@ ${defs(lit)}${defs(unlit)}${defs(grotto)}${defs(hollow)}${defs(rift)}${defs(rubb
   <figure class="stage small">${caveUnlit}<figcaption>The same room with the lights on.</figcaption></figure>
   <figure class="stage small">${grottoUnlit}<figcaption>A crystal grotto under the gloom: crystal spires glowing cyan, each breathing at its own pace, and crystal enough for veined walls, their few wall gems glowing faintly.</figcaption></figure>
   <figure class="stage small">${hollowUnlit}<figcaption>A mushroom hollow under the gloom: giant mushrooms and glowshrooms glow violet, spores faintly; the clumps of mushroom caps stay dull.</figcaption></figure>
-  <figure class="stage small">${riftUnlit}<figcaption>A rift: the chasm's lip torn red. A worm crawls along the top and turns down the room, its crawl rippling from head to tail; a champion heads off the other way below.</figcaption></figure>
+  <figure class="stage small">${riftUnlit}<figcaption>A rift: the chasm's lip torn red. A worm crawls along the top and turns down the room, its body curving round the corner in one piece; a champion winds off the other way below.</figcaption></figure>
   <figure class="stage small">${rubbleUnlit}<figcaption>Rubble walls: neighbouring loose rock fuses into continuous walls, the way the worm boss's maze is built, and grows out of the cave wall wherever it meets it. Where a rock has broken (the gap in the long run) its joins are gone and the ends are left ragged.</figcaption></figure>
   <figure class="stage small">${bossUnlit}<figcaption>The worm's room: darker earth broken by burrows, strewn with bones and shards. The worm boss crawls round it, heaving an egg out of its back; another egg is in the air, one rests by the wall and one is splitting open to hatch.</figcaption></figure>
 </div>
 <h2>The cave cast, frame by frame</h2>
 <p class="note">The ghoul's wind-up (eyes flared cyan) is held for its whole tell, then the lunge frames play while it lunges; it loops recover while it catches its breath. The bat beats its wings at twice the usual frame rate, hangs with them spread wide for its tell, and holds the swoop frames while it swoops.</p>
 <p class="note">The slime squashes ever lower through its tell, then plays its hop frame by frame through the jump and splats where it lands; the medium and small slimes are the same art, smaller. The geode cracks along its seam as its shot charges, splits open on its crystal core (held open while it waits for a clear shot) and flares as it fires. Its shard shots are crystal splinters with a red-hot core and a dark outline, tumbling as they fly: hostile like every enemy shot, and the only ones that ricochet.</p>
-<p class="note">The worm is drawn piece by piece, each over its own segment's cell: a head, body pieces and a tail, armoured in dark chitin plates that lap toward the front, cyan crystal shards growing from the spine, and a lamprey maw ringed with bone teeth. Each piece faces the way it crawls (side on, toward the camera or away), so the chain bends round each turn as it gets there; the head points where the worm is heading. The crawl ripples from the head down to the tail, a frame behind segment by segment. Its rearing frames (the maw splayed wide, the crystals flaring) wait for the worm boss.</p>
+<p class="note">The worm is the Obsidian Centipede's dull chitin cousin, drawn from above piece by piece: a head with dull eye pits and hooked horn mandibles, body plates with notched flanges and a keel, and a tail trailing one long stinger, all matte brown-black chitin with nothing glowing, and no legs. The plates lie along one continuous spine, each turned the way it runs and longer than a cell, so neighbours overlap through every bend, the plate nearer the head on top; at a corner the spine curves round it rather than cutting across. The crawl ripples from the head down to the tail, a frame behind segment by segment.</p>
 ${frameStrips(['ghoul', 'bat', 'slime', 'geode', 'wormHead', 'wormBody', 'wormTail'], ['ghoul', 'bat', 'slime', 'geode', 'wormHead', 'wormBody', 'wormTail'])}
 <h2>The worm boss, acting out its fight</h2>
 <p class="note">The worm boss is the worm grown huge, its crystals bigger still, drawn piece by piece like the worm, each pose held exactly as long as the moment of the fight it acts out. It crawls; it rears up and roars (the maw splayed, the crystals flaring) through the stop at its split and through its last stand's roar; its maw pulses as a spit wave runs down its body, each segment flaring as its shot leaves; it tucks its head and points its shards forward as it charges up and between lunges; it dives into the walls and climbs out of them; a segment heaves as it lobs an egg; at the split its torn ends show a raw crystal core; and a dying half cracks through, each segment's crystals blazing just before it bursts into crystal shards, tail to head along the death chain.</p>

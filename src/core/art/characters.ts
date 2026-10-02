@@ -1,5 +1,7 @@
 import { PAPER as P } from './palette';
 import { blob, cutPoly, fill, group, n, pieceRng, polyPath, ragged, sheet, smoothPath, svgDoc } from './svg';
+import { TILE } from './terrain';
+import { WORM_PLATE_CELLS } from './castPoses';
 
 /** What every character does, each drawn as a short stop-motion loop. */
 export type BaseAction = 'idle' | 'move' | 'attack' | 'hurt';
@@ -9,8 +11,11 @@ export type BaseAction = 'idle' | 'move' | 'attack' | 'hurt';
  * up a lunge, burrowing, lobbing an egg, torn open at its split and blowing apart as it dies.
  */
 export type Action = BaseAction | 'heal' | 'healed' | 'recover' | 'land' | 'spit' | 'charge' | 'burrow' | 'lob' | 'split' | 'die';
-/** The way a character faces: `side` looks right (left is the mirror image), `down` at the camera, `up` away. */
-export type View = 'side' | 'down' | 'up';
+/**
+ * The way a character faces: `side` looks right (left is the mirror image), `down` at the camera,
+ * `up` away; `top` is seen from straight above, pointing right, and turned whichever way its pose says.
+ */
+export type View = 'side' | 'down' | 'up' | 'top';
 
 /** Frames per base action, the same for every character. */
 export const FRAMES: Readonly<Record<BaseAction, number>> = { idle: 2, move: 4, attack: 3, hurt: 1 };
@@ -768,9 +773,7 @@ function drawGeode(action: Action, frame: number, champion: boolean): string {
 // Worm
 // ---------------------------------------------------------------------------------------------
 
-/** One piece of a worm (its head, a body segment or its tail), drawn over its segment's cell. */
-const WORM = { w: 64, h: 86, foot: { x: 32, y: 56 } };
-/** Where the segment's centre (its cell's) sits on the canvas, 10 px above its feet. */
+/** Where the worm boss's segment's centre (its cell's) sits on the worm's old canvas, 10 px above its feet. */
 const WORM_MID = { x: 32, y: 46 };
 
 type Pt = { x: number; y: number };
@@ -998,12 +1001,123 @@ function wormEnd(piece: WormPieceArt, dir: 1 | -1, c: Crawl, champion: boolean, 
   return contact(mx, my + 1, 16, 30) + group(body + sheet(shards), `translate(0 ${n(c.bob)})`);
 }
 
-function drawWorm(piece: WormPieceArt, action: Action, frame: number, view: View, champion: boolean): string {
-  const r: PieceRng = (part) => pieceRng('worm', piece, view, part);
-  const c = crawl(action, frame);
-  const drawn = view === 'side' ? wormSide(piece, c, champion, r) : wormEnd(piece, view === 'down' ? 1 : -1, c, champion, r);
-  // A hit jolts it and knocks chips off its plates.
-  return c.hurt ? group(drawn, `rotate(-4 ${WORM_MID.x} ${WORM_MID.y})`) + chitinChips(r) : drawn;
+/**
+ * A centipede's piece seen from above, pointing right and turned along its spine by its pose,
+ * centred on its canvas. Its plate is longer than a cell (WORM_PLATE_CELLS) so neighbours overlap
+ * at every bend, the one nearer the head on top.
+ */
+const CENTIPEDE = { w: 124, h: 72, foot: { x: 62, y: 36 } };
+/** Half a plate's length, in px: a little over half a cell. */
+const PLATE_HALF = (WORM_PLATE_CELLS * TILE) / 2;
+
+/** The colours a centipede's plates are cut from. */
+interface PlateLook {
+  plate: string;
+  light: string;
+  dark: string;
+  edge: string;
+  mandible: string;
+  mandibleTip: string;
+}
+/** The regular worm: matte brown-black chitin, no glow. */
+const MATTE: PlateLook = { plate: C.matte, light: C.matteLight, dark: C.matteDark, edge: C.matteEdge, mandible: C.mandible, mandibleTip: C.mandibleTip };
+
+/**
+ * How a centipede piece moves in one frame: stretched along its spine and squeezed across it as
+ * the crawl ripples through, wobbling a few degrees off it, its mandibles open `gape` wide.
+ */
+interface Ripple {
+  stretch: number;
+  squeeze: number;
+  wobble: number;
+  gape: number;
+  hurt: boolean;
+}
+
+function ripple(action: Action, frame: number): Ripple {
+  const base = { stretch: 1, squeeze: 1, wobble: 0, gape: 0.35, hurt: false };
+  switch (action) {
+    case 'move':
+      return { ...base, stretch: [1, 1.04, 1.01, 0.96][frame], squeeze: [1, 0.96, 0.99, 1.04][frame], wobble: [0, 2.5, 0, -2.5][frame], gape: [0.3, 0.5, 0.4, 0.2][frame] };
+    case 'attack':
+      return { ...base, stretch: [0.96, 1.05, 0.98][frame], squeeze: [1.04, 0.97, 1.02][frame], gape: [0.8, 1.3, 0.5][frame] };
+    case 'hurt':
+      return { ...base, stretch: 0.95, squeeze: 1.05, wobble: -6, gape: 0.1, hurt: true };
+    default:
+      return { ...base, stretch: [1, 0.99][frame], squeeze: [1.01, 1.03][frame], gape: [0.3, 0.4][frame] };
+  }
+}
+
+/** Points about the canvas's centre, along the spine (x) and across it (y). */
+const along = (list: readonly (readonly [number, number])[], sx = 1, sy = 1): Pt[] =>
+  list.map(([x, y]) => ({ x: CENTIPEDE.foot.x + x * sx, y: CENTIPEDE.foot.y + y * sy }));
+
+/** A hooked mandible on side `s` (1 below the spine, -1 above), from x,y forward and curling in, opened `gape` wide. */
+function mandible(x: number, y: number, s: 1 | -1, gape: number, look: PlateLook): string {
+  const hook = taper([{ x: 0, y: 0 }, { x: 9, y: 2.5 * s }, { x: 17, y: 1.5 * s }, { x: 21, y: -2.5 * s }], 5.5, 0.6);
+  const tip = taper([{ x: 14, y: 2 * s }, { x: 17, y: 1.5 * s }, { x: 21, y: -2.5 * s }], 2.4, 0.4);
+  return group(fill(hook, look.mandible) + fill(tip, look.mandibleTip), `translate(${n(x)} ${n(y)}) rotate(${n(s * (gape * 24 - 4))})`);
+}
+
+/**
+ * One piece of a centipede from above, pointing right: a body plate with flanged sides and a keel
+ * down its middle, its back rim lapped over the plate behind; the head's rounder plate with dull
+ * eye pits and hooked mandibles; the tail's tapering plate trailing one long stinger. No legs.
+ */
+function centipedePiece(piece: WormPieceArt, c: Ripple, champion: boolean, look: PlateLook, r: PieceRng): string {
+  const s = c.stretch;
+  const w = c.squeeze;
+  const half = PLATE_HALF;
+  const { x: cx, y: cy } = CENTIPEDE.foot;
+  const outline =
+    piece === 'head'
+      ? ([[half - 12, 0], [half - 15, -9], [half - 24, -13.5], [-6, -15], [-half + 8, -13], [-half + 2, -7], [-half, 0], [-half + 2, 7], [-half + 8, 13], [-6, 15], [half - 24, 13.5], [half - 15, 9]] as const)
+      : piece === 'tail'
+        ? ([[half, 0], [half - 4, -9], [half - 14, -13.5], [0, -13], [-half + 14, -9], [-half + 8, -4], [-half + 6, 0], [-half + 8, 4], [-half + 14, 9], [0, 13], [half - 14, 13.5], [half - 4, 9]] as const)
+        : ([[half, 0], [half - 4, -9], [half - 14, -14], [0, -15.5], [-half + 10, -15], [-half + 2, -10], [-half, 0], [-half + 2, 10], [-half + 10, 15], [0, 15.5], [half - 14, 14], [half - 4, 9]] as const);
+  const plateD = smoothPath(along(outline, s, w));
+  // Its back corners swept back into spikes over the plate behind: what it has instead of legs.
+  const spikes = [-1, 1]
+    .map((side) => {
+      const reach = piece === 'tail' ? 11 : piece === 'head' ? 12 : 13.5;
+      const tip: [number, number] = [-half - (piece === 'tail' ? 1 : 5), side * (reach + 6)];
+      const pts = along([[-half + 15, side * (reach - 1)], tip, [-half + 3, side * (reach - 4)]], s, w);
+      return fill(cutPoly(r(`spike${side}`), pts, 0.4), look.plate) + `<path d="M${n(pts[0].x)} ${n(pts[0].y)}L${n(pts[1].x)} ${n(pts[1].y)}" stroke="${look.edge}" stroke-width="0.9" opacity="0.7"/>`;
+    })
+    .join('');
+  // The shadow it throws over the plate behind, past its back rim.
+  const seam = `<path d="M${n(cx - (half - 8) * s)} ${n(cy - 14 * w)}Q${n(cx - (half + 9) * s)} ${n(cy)} ${n(cx - (half - 8) * s)} ${n(cy + 14 * w)}" stroke="${look.dark}" stroke-width="4" fill="none" opacity="0.7"/>`;
+  const shadow = ellipse(cx, cy, half * s + 3, 18 * w, P.shadow, 'opacity="0.35"');
+  const shade = fill(polyPath(along([[half, 4], [-half, 4], [-half, 16], [half, 16]], s, w)), look.dark, 'opacity="0.4"');
+  const keelEnd = piece === 'head' ? half - 16 : half - 4;
+  const keel = `<path d="M${n(cx - (half - 6) * s)} ${n(cy)}L${n(cx + keelEnd * s)} ${n(cy)}" stroke="${look.light}" stroke-width="1.6" opacity="0.7"/>`;
+  // A groove across its back, and the rim of its back edge lapped over the plate behind.
+  const groove = piece === 'head' ? '' : `<path d="M${n(cx + 6 * s)} ${n(cy - 13 * w)}Q${n(cx + 1 * s)} ${n(cy)} ${n(cx + 6 * s)} ${n(cy + 13 * w)}" stroke="${look.dark}" stroke-width="1.4" fill="none"/>`;
+  const rim = `<path d="M${n(cx - (half - 9) * s)} ${n(cy - 13 * w)}Q${n(cx - (half + 1) * s)} ${n(cy)} ${n(cx - (half - 9) * s)} ${n(cy + 13 * w)}" stroke="${look.edge}" stroke-width="1.6" fill="none"/>`;
+  const sheen = `<path d="M${n(cx - (half - 12) * s)} ${n(cy - 9 * w)}Q${n(cx)} ${n(cy - 13 * w)} ${n(cx + (half - 16) * s)} ${n(cy - 8 * w)}" stroke="${look.light}" stroke-width="1.2" fill="none" opacity="0.55"/>`;
+  const plate = seam + trim(plateD, champion) + spikes + fill(plateD, look.plate) + shade + keel + groove + rim + sheen;
+  let ends = '';
+  if (piece === 'head') {
+    const front = cx + (half - 14) * s;
+    ends =
+      mandible(front, cy - 5 * w, -1, c.gape, look) +
+      mandible(front, cy + 5 * w, 1, c.gape, look) +
+      [-1, 1].map((side) => ellipse(front - 6, cy + side * 7 * w, 1.6, 1.2, look.dark) + ellipse(front - 6.4, cy + side * 7 * w - 0.4, 0.6, 0.5, look.edge, 'opacity="0.6"')).join('');
+  }
+  if (piece === 'tail') {
+    const root = cx - (half - 8) * s;
+    ends = fill(taper([{ x: root + 4, y: cy }, { x: root - 12, y: cy + 1 }, { x: root - 26, y: cy - 0.5 }, { x: root - 36, y: cy - 3.5 }], 7, 0.5), look.mandible) +
+      fill(taper([{ x: root - 24, y: cy - 0.4 }, { x: root - 30, y: cy - 1.5 }, { x: root - 36, y: cy - 3.5 }], 2.6, 0.4), look.mandibleTip);
+  }
+  const body = shadow + ends + plate;
+  const chips = c.hurt
+    ? [[-14, -20, 25], [12, 19, -40], [20, -18, 70]].map(([x, y, a], i) => group(fill(cutPoly(r(`chip${i}`), [{ x: -2, y: -1.4 }, { x: 2, y: -1 }, { x: 1, y: 1.8 }, { x: -1.5, y: 1.2 }], 0.3), look.edge), `translate(${n(cx + x)} ${n(cy + y)}) rotate(${a})`)).join('')
+    : '';
+  return group(body, `rotate(${n(c.wobble)} ${cx} ${cy})`) + chips;
+}
+
+function drawWorm(piece: WormPieceArt, action: Action, frame: number, champion: boolean): string {
+  return centipedePiece(piece, ripple(action, frame), champion, MATTE, (part) => pieceRng('worm', piece, part));
 }
 
 /**
@@ -1301,9 +1415,9 @@ export const CHARACTERS: Readonly<Record<string, CharacterArt>> = {
   bat: art(BAT, ['side'], (a, f, _v, c) => drawBat(a, f, c), 23),
   slime: art(SLIME, ['side'], (a, f, _v, c) => drawSlime(a, f, c), 29, ['land']),
   geode: art(GEODE, ['down'], (a, f, _v, c) => drawGeode(a, f, c), 31),
-  wormHead: art(WORM, ['side', 'down', 'up'], (a, f, v, c) => drawWorm('head', a, f, v, c), 37),
-  wormBody: art(WORM, ['side', 'down', 'up'], (a, f, v, c) => drawWorm('body', a, f, v, c), 37),
-  wormTail: art(WORM, ['side', 'down', 'up'], (a, f, v, c) => drawWorm('tail', a, f, v, c), 37),
+  wormHead: art(CENTIPEDE, ['top'], (a, f, _v, c) => drawWorm('head', a, f, c), 37),
+  wormBody: art(CENTIPEDE, ['top'], (a, f, _v, c) => drawWorm('body', a, f, c), 37),
+  wormTail: art(CENTIPEDE, ['top'], (a, f, _v, c) => drawWorm('tail', a, f, c), 37),
   wormBossHead: art(WORM_BOSS, ['side', 'down', 'up'], (a, f, v) => drawWormBoss('head', a, f, v), 41, BOSS_ACTIONS),
   wormBossBody: art(WORM_BOSS, ['side', 'down', 'up'], (a, f, v) => drawWormBoss('body', a, f, v), 41, BOSS_ACTIONS),
   wormBossTail: art(WORM_BOSS, ['side', 'down', 'up'], (a, f, v) => drawWormBoss('tail', a, f, v), 41, BOSS_ACTIONS),

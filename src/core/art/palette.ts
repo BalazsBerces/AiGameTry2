@@ -194,6 +194,13 @@ export const PAPER = {
     wormBellyShade: '#33221f',
     maw: '#7a2a2c',
     mawDeep: '#2a0a0e',
+    // The regular worm, the Obsidian Centipede's dull chitin cousin: matte brown-black plates, horn mandibles, no glow.
+    matte: '#2f241e',
+    matteLight: '#4a3a2f',
+    matteDark: '#160f0b',
+    matteEdge: '#6e5646',
+    mandible: '#5c4434',
+    mandibleTip: '#a08068',
     // The worm boss's eggs: pale, leathery pods flecked with crystal.
     egg: '#d8cdb2',
     eggLight: '#efe6d0',

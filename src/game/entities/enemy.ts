@@ -130,8 +130,23 @@ export type EnemyLook = EnemyType | 'wormEgg';
 
 /** What an enemy reports about how it looks: its paper art otherwise animates from its velocity. */
 export type Visual = Pick<Motion, 'loop' | 'hold' | 'aim'>;
-/** How one part of a many-piece body looks: the character it is drawn as (core/art/characters), and its `Visual`. */
-export type PieceVisual = Visual & { kind: string };
+/**
+ * How one part of a many-piece body looks: the character it is drawn as (core/art/characters), its
+ * `Visual`, and, for a piece seen from above (a worm's plate), where it lies on the body's spine.
+ */
+export type PieceVisual = Visual & { kind: string; spine?: OnSpine };
+
+/** A piece seen from above, laid along its body's spine. */
+export interface OnSpine {
+  /** From its shape's centre, in px. */
+  offset: { x: number; y: number };
+  /** The way the spine runs there, in radians: the art points right unturned. */
+  angle: number;
+  /** The foot line the whole body sorts by, so its pieces stay together. */
+  footY: number;
+  /** Over pieces of the same body with a lower rank (the head over its neck). */
+  rank: number;
+}
 
 /** Emitted on an enemy part when it takes a hit (with the time), so its paper art can flash and flinch. */
 export const HIT_EVENT = 'enemy-hit';

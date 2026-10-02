@@ -244,9 +244,9 @@ describe('the art catalogue', () => {
       bat: { views: ['side'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 } },
       slime: { views: ['side'], actions: { idle: 2, move: 4, attack: 3, hurt: 1, land: 2 } },
       geode: { views: ['down'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 } },
-      wormHead: { views: ['side', 'down', 'up'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 } },
-      wormBody: { views: ['side', 'down', 'up'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 } },
-      wormTail: { views: ['side', 'down', 'up'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 } },
+      wormHead: { views: ['top'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 } },
+      wormBody: { views: ['top'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 } },
+      wormTail: { views: ['top'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 } },
       wormBossHead: { views: ['side', 'down', 'up'], actions: BOSS_ACTIONS, champion: false },
       wormBossBody: { views: ['side', 'down', 'up'], actions: BOSS_ACTIONS, champion: false },
       wormBossTail: { views: ['side', 'down', 'up'], actions: BOSS_ACTIONS, champion: false },
@@ -261,7 +261,7 @@ describe('the art catalogue', () => {
         ),
       );
 
-    it("stalks, lunges and recovers as a ghoul; flutters and swoops as a bat; squashes, hops and lands as a slime, all side on; a geode faces the camera; a worm's and the worm boss's head, body and tail face every way they crawl; an egg sits facing the camera", () => {
+    it("stalks, lunges and recovers as a ghoul; flutters and swoops as a bat; squashes, hops and lands as a slime, all side on; a geode faces the camera; a worm's head, body and tail are seen from above, turned along its spine; the worm boss's face every way they crawl; an egg sits facing the camera", () => {
       for (const kind of KINDS) {
         expect(CHARACTERS[kind].actions, kind).toEqual(CAST[kind].actions);
         expect([...CHARACTERS[kind].views], kind).toEqual(CAST[kind].views);
@@ -283,20 +283,24 @@ describe('the art catalogue', () => {
     });
 
     it("draws the worm's head, body and tail as pieces of their own", () => {
-      const idle = (kind: string) => svgOf(charKey(kind, 'idle', 0, 'side'));
+      const idle = (kind: string) => svgOf(charKey(kind, 'idle', 0, 'top'));
       expect(new Set(['wormHead', 'wormBody', 'wormTail'].map(idle)).size).toBe(3);
     });
 
-    it("draws the worm boss's pieces as its own, apart from the worm's and from each other", () => {
-      const idle = (kind: string) => svgOf(charKey(kind, 'idle', 0, 'side'));
-      expect(new Set(['wormHead', 'wormBody', 'wormTail', 'wormBossHead', 'wormBossBody', 'wormBossTail'].map(idle)).size).toBe(6);
+    it('draws the worm as the dull chitin cousin of the Obsidian Centipede: matte plates, nothing glowing', () => {
+      const { matte, crystal, crystalLight } = PAPER.caves;
+      for (const kind of ['wormHead', 'wormBody', 'wormTail']) {
+        for (const key of keysOf(kind as keyof typeof CAST, false)) {
+          const svg = svgOf(key).toLowerCase();
+          expect(svg, key).toContain(matte.toLowerCase());
+          for (const glow of [crystal, crystalLight]) expect(svg, key).not.toContain(glow.toLowerCase());
+        }
+      }
     });
 
-    it("leaves the worm's own pieces drawn exactly as they were", () => {
-      const entries = artCatalogue().filter((e) => ['wormHead', 'wormBody', 'wormTail'].includes(e.key.split(':')[1]));
-      expect(entries.length).toBe(180);
-      // The fingerprint of the worm's frames before the worm boss got its own.
-      expect(fnv(entries.map((e) => e.key + e.svg()).join('\n'))).toBe('1d114173');
+    it("draws the worm boss's pieces as its own, apart from the worm's and from each other", () => {
+      const idle = (kind: string) => svgOf(charKey(kind, 'idle', 0, kind.startsWith('wormBoss') ? 'side' : 'top'));
+      expect(new Set(['wormHead', 'wormBody', 'wormTail', 'wormBossHead', 'wormBossBody', 'wormBossTail'].map(idle)).size).toBe(6);
     });
 
     it('comes out the same when built twice', () => {

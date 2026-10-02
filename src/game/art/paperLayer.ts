@@ -4,7 +4,7 @@ import { charKey } from '../../core/art/catalogue';
 import { CHARACTERS, type Action } from '../../core/art/characters';
 import { footDepth } from '../../core/art/depth';
 import { ART_SCALE, bakedArt } from './bake';
-import { FLASH_MS, HIT_EVENT, type Visual } from '../entities/enemy';
+import { FLASH_MS, HIT_EVENT, type OnSpine, type Visual } from '../entities/enemy';
 
 /** Stop-motion frame rate, and how long the hurt pose holds. */
 const ANIM = { fps: 9, hurtMs: 220 };
@@ -39,8 +39,12 @@ export class PaperActor {
   loop?: Action;
   /** Velocity to animate from when the shape has no moving body (grid movers). */
   motion?: { vx: number; vy: number };
-  /** What its owner reports about how it looks (an enemy's `visual`), and the character it is drawn as if that changes (a worm's tail becoming its head). */
-  visual?: (time: number) => Visual & { kind?: string };
+  /**
+   * What its owner reports about how it looks (an enemy's `visual`), the character it is drawn as
+   * if that changes (a worm's tail becoming its head), and where it lies on its body's spine if it
+   * is seen from above (a worm's plate): moved off its shape, turned, and sorted with its body.
+   */
+  visual?: (time: number) => Visual & { kind?: string; spine?: OnSpine };
   /** Up in the air (a jumping slime): drawn at its shape's depth, over everything standing, not by its feet. */
   aloft?: () => boolean;
   /** The action and frame it showed last (a geode's light follows its art's glow). */
@@ -84,7 +88,7 @@ export class PaperActor {
     const body = shape.body as Phaser.Physics.Arcade.Body | null;
     const v = this.motion ?? { vx: body?.velocity.x ?? 0, vy: body?.velocity.y ?? 0 };
     const aim = this.aim && time < this.aim.until ? this.aim : undefined;
-    const { kind = this.kind, ...look } = this.visual?.(time) ?? {};
+    const { kind = this.kind, spine, ...look } = this.visual?.(time) ?? {};
     const f = this.animator.update(time, { ...v, aim, loop: this.loop, ...look });
     this.shown = { action: f.action, frame: f.frame };
     // A champion's gold-trimmed frame where there is one, else the plain frame.
@@ -96,13 +100,23 @@ export class PaperActor {
     const stretch = this.opts.ownShape ? { x: 1, y: 1 } : { x: shape.scaleX, y: shape.scaleY };
     const footY = shape.y + this.opts.footOffset * stretch.y * (this.opts.scale ?? 1);
     sprite
-      .setPosition(shape.x, footY)
       .setScale(scale * stretch.x, scale * stretch.y)
-      .setFlipX(f.flip)
-      .setAngle(this.opts.tilts ? shape.angle : 0)
       .setAlpha(shape.alpha)
-      .setVisible(shape.visible)
-      .setDepth(this.aloft?.() ? shape.depth : footDepth(footY, this.serial));
+      .setVisible(shape.visible);
+    if (spine) {
+      // Seen from above: laid on its body's spine and turned along it, sorted with the rest of its body.
+      sprite
+        .setPosition(shape.x + spine.offset.x, shape.y + spine.offset.y)
+        .setFlipX(false)
+        .setRotation(spine.angle)
+        .setDepth(footDepth(spine.footY, spine.rank));
+    } else {
+      sprite
+        .setPosition(shape.x, footY)
+        .setFlipX(f.flip)
+        .setAngle(this.opts.tilts ? shape.angle : 0)
+        .setDepth(this.aloft?.() ? shape.depth : footDepth(footY, this.serial));
+    }
     if (time < this.flashUntil) sprite.setTintFill(0xffffff);
     else sprite.clearTint();
     return true;

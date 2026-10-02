@@ -87,19 +87,95 @@ export type WormPiece = 'wormHead' | 'wormBody' | 'wormTail';
 
 /** How long each frame of a worm's crawl shows. */
 export const WORM_CRAWL_FRAME_MS = 110;
+/** How long a worm's plate is, in cells: longer than one, so neighbours overlap at every bend. */
+export const WORM_PLATE_CELLS = 1.25;
+
+/** Where a worm's segments are gliding from (one cell each, head first), and how far through the step they are (0–1). */
+export interface WormGlide {
+  from: readonly Cell[];
+  progress: number;
+}
+
+/** Where a segment's plate lies on the worm's spine: `offset` (in cells) from its shape's centre, `angle` (radians) the way the spine runs there. */
+export interface Spine {
+  offset: { x: number; y: number };
+  angle: number;
+}
+
+type Vec = { x: number; y: number };
+/** The step from `a` to `b`, if they are neighbours. */
+const stepBetween = (a: Cell | undefined, b: Cell | undefined): Vec | undefined =>
+  a && b && Math.abs(b.x - a.x) + Math.abs(b.y - a.y) === 1 ? { x: b.x - a.x, y: b.y - a.y } : undefined;
+const scaled = (v: Vec, k: number) => ({ x: v.x * k, y: v.y * k });
+
+/**
+ * The spine through one cell, from the edge it comes in by (`t` -0.5) through the middle (0) to
+ * the edge it leaves by (0.5), relative to the cell's centre: straight on, or a quarter circle
+ * round the inside corner where it turns (`din` in, `dout` out). The head has nothing ahead of it
+ * to round a corner with, nor the tail anything behind: they keep to their straight glide through
+ * a corner cell's half and turn smoothly on the way.
+ */
+function spineThrough(din: Vec | undefined, dout: Vec | undefined, t: number, end: { head: boolean; tail: boolean }): { at: Vec; dir: Vec } | undefined {
+  if (!din || !dout || din.x * dout.x + din.y * dout.y !== 0) {
+    const d = dout ?? din;
+    return d && { at: scaled(d, t), dir: d };
+  }
+  const turned = (share: number) => {
+    const a = share * (Math.PI / 2);
+    return { x: Math.cos(a) * din.x + Math.sin(a) * dout.x, y: Math.cos(a) * din.y + Math.sin(a) * dout.y };
+  };
+  // The head and tail glide straight on and turn on the way, easing in and out of it.
+  const ease = (w: number) => w * w * (3 - 2 * w);
+  if (end.head && t >= 0) return { at: scaled(dout, t), dir: turned(ease(2 * t)) };
+  if (end.tail && t <= 0) return { at: scaled(din, t), dir: turned(ease(2 * t + 1)) };
+  // Round the corner between the edges' midpoints, half a cell from the inside corner.
+  const a = (t + 0.5) * (Math.PI / 2);
+  const rim = { x: Math.sin(a) * din.x - Math.cos(a) * dout.x, y: Math.sin(a) * din.y - Math.cos(a) * dout.y };
+  return { at: { x: (dout.x - din.x + rim.x) / 2, y: (dout.y - din.y + rim.y) / 2 }, dir: turned(t + 0.5) };
+}
+
+/**
+ * Where a worm's `index`th segment lies on its one continuous spine, gliding as `glide` says (or
+ * lying still on its cell if it doesn't): its shape glides straight from cell to cell, cutting
+ * across corners, while its plate curves round them, turning smoothly as it goes.
+ */
+export function wormSpine(worm: Worm, index: number, glide?: WormGlide): Spine {
+  const segs = worm.segments;
+  const b = segs[index];
+  const a = glide?.from[index] ?? b;
+  const k = Math.min(1, Math.max(0, glide?.progress ?? 1));
+  const end = { head: index === 0, tail: index === segs.length - 1 };
+  const heading = STEP[worm.heading];
+  const ahead = index > 0 ? stepBetween(b, segs[index - 1]) : undefined;
+  const fallback = end.head ? heading : ahead ?? stepBetween(segs[index + 1], b) ?? heading;
+  const still = a.x === b.x && a.y === b.y;
+  const move = stepBetween(a, b);
+  const angleOf = (d: Vec) => Math.atan2(d.y, d.x);
+  if (!still && !move) return { offset: { x: 0, y: 0 }, angle: angleOf({ x: b.x - a.x, y: b.y - a.y }) };
+  // Leaving the cell it glides from for the first half of the step, coming into the next for the second.
+  // `ideal` is where its shape is, from the middle of that cell.
+  const piece = still
+    ? { ideal: { x: 0, y: 0 }, line: spineThrough(stepBetween(segs[index + 1], b), ahead, 0, end) }
+    : k < 0.5
+      ? { ideal: scaled(move!, k), line: spineThrough(stepBetween(glide!.from[index + 1], a), move, k, end) }
+      : { ideal: scaled(move!, k - 1), line: spineThrough(move, ahead, k - 1, end) };
+  // Only a segment lying still with no neighbour on another cell (a coiled hatchling) has no spine through it.
+  const line = piece.line ?? { at: { x: 0, y: 0 }, dir: fallback };
+  const clean = (v: number) => (Math.abs(v) < 1e-12 ? 0 : v);
+  return { offset: { x: clean(line.at.x - piece.ideal.x), y: clean(line.at.y - piece.ideal.y) }, angle: angleOf(line.dir) };
+}
 
 /**
  * The pose of a worm's `index`th segment: its head first (a lone segment is all head), its tail
  * last, body pieces between; the crawl rippling from the head down to the tail, each segment a
- * frame behind the one in front. The head points the way the worm is heading; the rest face the
- * way they glide, so the body bends round each turn as it gets there.
+ * frame behind the one in front; its plate on the worm's spine (`wormSpine`), turned the way the
+ * spine runs there.
  */
-export function wormPose(worm: Worm, index: number, time: number): Pose & { piece: WormPiece } {
+export function wormPose(worm: Worm, index: number, time: number, glide?: WormGlide): Pose & Spine & { piece: WormPiece } {
   const last = worm.segments.length - 1;
   const piece = index === 0 ? 'wormHead' : index === last ? 'wormTail' : 'wormBody';
   const frame = (((Math.floor(time / WORM_CRAWL_FRAME_MS) - index) % 4) + 4) % 4;
-  const hold = { action: 'move' as const, frame };
-  return index === 0 ? { piece, hold, aim: { ...STEP[worm.heading] } } : { piece, hold };
+  return { piece, hold: { action: 'move' as const, frame }, ...wormSpine(worm, index, glide) };
 }
 
 /** The pieces the worm boss is drawn in: the worm's, grown huge. */

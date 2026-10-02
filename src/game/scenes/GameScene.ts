@@ -201,8 +201,9 @@ const ENEMY_ART: Partial<Record<EnemyLook, { footOffset: number; fps?: number; o
   // The big slime's (each tier is scaled from it); the art squashes and stretches itself.
   slime: { footOffset: 16, ownShape: true },
   geode: { footOffset: 14 },
-  // Each segment's piece (head, body or tail) stands on its cell's centre, 10 px above its feet; the boss's too, grown to its size.
-  worm: { footOffset: 10 },
+  // A worm's plates lie along its spine, seen from above, so they have no feet.
+  worm: { footOffset: 0 },
+  // Each of the boss's pieces (head, body or tail) stands on its cell's centre, 10 px above its feet.
   wormBoss: { footOffset: 10 },
   // Its eggs rock on their feet as they wobble to hatch.
   wormEgg: { footOffset: 13, tilts: true },

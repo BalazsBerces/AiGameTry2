@@ -181,6 +181,8 @@ interface WormState {
   hp: number[];
   rng: Rng;
   nextStepAt: number;
+  /** The cells its segments are gliding from, and where (in px) each shape glides from and to; none while it lies still on its cells. */
+  glide?: { from: Cell[]; fromPx: { x: number; y: number }[]; toPx: { x: number; y: number }[] };
   boss?: BossPiece;
 }
 
@@ -302,8 +304,24 @@ function drawHole(ctx: EnemyContext, shared: WormBossShared, wall: Cell, inward:
   }
 }
 
+/**
+ * How far through its step a worm is, read off where its shapes are rather than the clock, so its
+ * plates stop with it when it is stunned mid-glide: the first segment that moves (0–1).
+ */
+function glideProgress(parts: EnemySprite[], glide: NonNullable<WormState['glide']>): number {
+  const i = glide.fromPx.findIndex((a, k) => a.x !== glide.toPx[k].x || a.y !== glide.toPx[k].y);
+  if (i < 0 || !parts[i]) return 1;
+  const [a, b] = [glide.fromPx[i], glide.toPx[i]];
+  const d = { x: b.x - a.x, y: b.y - a.y };
+  return ((parts[i].x - a.x) * d.x + (parts[i].y - a.y) * d.y) / (d.x * d.x + d.y * d.y);
+}
+
+/** Tells worms apart where their plates sort on the same line, so two never interleave. */
+let bodies = 0;
+
 /** A worm moving cell by cell per WormChain; its parts glide between cells. The boss also rampages, lunging through the walls. */
 function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Enemy {
+  const bodyId = ++bodies % 10_000;
   const recolor = () => state.parts.forEach((p, i) => p.setFillStyle(i === 0 ? style.headColor : style.bodyColor));
   recolor();
 
@@ -685,9 +703,11 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
       if (after.length > 2 && !sameCell(after[1], before[0])) {
         state.parts.reverse();
         state.hp.reverse();
+        state.glide = undefined;
         recolor();
         return;
       }
+      state.glide = { from: before, fromPx: before.map(ctx.tileCenter), toPx: after.map(ctx.tileCenter) };
       if (state.boss) hideInWalls(ctx, before);
       const seconds = stepMs / 1000;
       state.worm.segments.forEach((c, i) => {
@@ -696,26 +716,32 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
         part.body.setVelocity((to.x - part.x) / seconds, (to.y - part.y) / seconds);
       });
     },
-    // Drawn piece by piece: head, body and tail, the head facing the way it heads; the boss's acting out its fight.
+    // Drawn piece by piece: head, body and tail, the boss's acting out its fight; a worm's plates laid along its spine.
     pieceVisual(part, time) {
       const index = Math.max(0, state.parts.indexOf(part));
       const b = state.boss;
-      const { piece: kind, ...look } = b
-        ? wormBossPose(
-            {
-              worm: state.worm,
-              room: b.shared.room ?? { w: Infinity, h: Infinity },
-              moment: b.moment,
-              rawEnd: b.rawEnd,
-              rampage: b.rampage?.phase,
-              spit: b.spat,
-              heave: b.heave,
-              dying: b.dying,
-            },
-            index,
-            time,
-          )
-        : wormPose(state.worm, index, time);
+      if (!b) {
+        const { glide } = state;
+        const { piece: kind, offset, angle, ...look } = wormPose(state.worm, index, time, glide && { from: glide.from, progress: glideProgress(state.parts, glide) });
+        const t = TUNING.tile;
+        // The whole body sorts by its lowest plate, the head on top of its neck and so on down to the tail.
+        const footY = Math.max(...state.parts.map((p) => p.y)) + t / 2;
+        return { kind, ...look, spine: { offset: { x: offset.x * t, y: offset.y * t }, angle, footY, rank: bodyId * 64 + state.parts.length - index } };
+      }
+      const { piece: kind, ...look } = wormBossPose(
+        {
+          worm: state.worm,
+          room: b.shared.room ?? { w: Infinity, h: Infinity },
+          moment: b.moment,
+          rawEnd: b.rawEnd,
+          rampage: b.rampage?.phase,
+          spit: b.spat,
+          heave: b.heave,
+          dying: b.dying,
+        },
+        index,
+        time,
+      );
       return { kind, ...look };
     },
     // The boss is the worm's art grown to its size.
@@ -739,6 +765,8 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
           hp: from.map((k) => state.hp[k]),
           rng: state.rng.fork(`split ${index} ${i}`),
           nextStepAt: state.nextStepAt,
+          // Each piece glides on from where its segments were gliding from.
+          glide: state.glide && { from: from.map((k) => state.glide!.from[k]), fromPx: from.map((k) => state.glide!.fromPx[k]), toPx: from.map((k) => state.glide!.toPx[k]) },
         }),
       );
     },

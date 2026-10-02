@@ -247,9 +247,9 @@ describe('the art catalogue', () => {
       wormHead: { views: ['top'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 } },
       wormBody: { views: ['top'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 } },
       wormTail: { views: ['top'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 } },
-      wormBossHead: { views: ['side', 'down', 'up'], actions: BOSS_ACTIONS, champion: false },
-      wormBossBody: { views: ['side', 'down', 'up'], actions: BOSS_ACTIONS, champion: false },
-      wormBossTail: { views: ['side', 'down', 'up'], actions: BOSS_ACTIONS, champion: false },
+      wormBossHead: { views: ['top'], actions: BOSS_ACTIONS, champion: false },
+      wormBossBody: { views: ['top'], actions: BOSS_ACTIONS, champion: false },
+      wormBossTail: { views: ['top'], actions: BOSS_ACTIONS, champion: false },
       wormEgg: { views: ['down'], actions: { idle: 2, move: 4, attack: 3, hurt: 1 }, champion: false },
     } as const;
     const KINDS = Object.keys(CAST) as (keyof typeof CAST)[];
@@ -261,7 +261,7 @@ describe('the art catalogue', () => {
         ),
       );
 
-    it("stalks, lunges and recovers as a ghoul; flutters and swoops as a bat; squashes, hops and lands as a slime, all side on; a geode faces the camera; a worm's head, body and tail are seen from above, turned along its spine; the worm boss's face every way they crawl; an egg sits facing the camera", () => {
+    it("stalks, lunges and recovers as a ghoul; flutters and swoops as a bat; squashes, hops and lands as a slime, all side on; a geode faces the camera; a worm's and the worm boss's head, body and tail are seen from above, turned along its spine; an egg sits facing the camera", () => {
       for (const kind of KINDS) {
         expect(CHARACTERS[kind].actions, kind).toEqual(CAST[kind].actions);
         expect([...CHARACTERS[kind].views], kind).toEqual(CAST[kind].views);
@@ -299,8 +299,32 @@ describe('the art catalogue', () => {
     });
 
     it("draws the worm boss's pieces as its own, apart from the worm's and from each other", () => {
-      const idle = (kind: string) => svgOf(charKey(kind, 'idle', 0, kind.startsWith('wormBoss') ? 'side' : 'top'));
+      const idle = (kind: string) => svgOf(charKey(kind, 'idle', 0, 'top'));
       expect(new Set(['wormHead', 'wormBody', 'wormTail', 'wormBossHead', 'wormBossBody', 'wormBossTail'].map(idle)).size).toBe(6);
+    });
+
+    it('draws the worm boss as the Obsidian Centipede: black-glass plates with blood-red light in their seams, none of the old crystal or the worm\'s matte chitin', () => {
+      const { obsidian, seamBlood, crystal, crystalLight, chitin, matte } = PAPER.caves;
+      for (const kind of ['wormBossHead', 'wormBossBody', 'wormBossTail'] as const) {
+        for (const key of keysOf(kind, false)) {
+          const svg = svgOf(key).toLowerCase();
+          for (const own of [obsidian, seamBlood]) expect(svg, key).toContain(own.toLowerCase());
+          for (const old of [crystal, crystalLight, chitin, matte]) expect(svg, key).not.toContain(old.toLowerCase());
+        }
+      }
+    });
+
+    it("pulses its seams dimly as it crawls, never as bright as its roar's flare", () => {
+      const { seamBlood } = PAPER.caves;
+      // How strongly its seams glow in a frame: the opacities of the strokes in the seam colour.
+      const glowOf = (action: Action, frame: number) => {
+        const svg = svgOf(charKey('wormBossBody', action, frame, 'top'));
+        const strokes = [...svg.matchAll(new RegExp(`stroke="${seamBlood}"[^>]*?opacity="([\\d.]+)"`, 'gi'))].map((m) => Number(m[1]));
+        return strokes.reduce((a, b) => a + b, 0);
+      };
+      const crawl = [0, 1, 2, 3].map((f) => glowOf('move', f));
+      expect(new Set(crawl).size).toBeGreaterThan(1);
+      expect(Math.max(...crawl)).toBeLessThan(glowOf('attack', 1));
     });
 
     it('comes out the same when built twice', () => {

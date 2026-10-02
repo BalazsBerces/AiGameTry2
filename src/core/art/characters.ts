@@ -773,233 +773,9 @@ function drawGeode(action: Action, frame: number, champion: boolean): string {
 // Worm
 // ---------------------------------------------------------------------------------------------
 
-/** Where the worm boss's segment's centre (its cell's) sits on the worm's old canvas, 10 px above its feet. */
-const WORM_MID = { x: 32, y: 46 };
-
 type Pt = { x: number; y: number };
 type PieceRng = (part: string) => ReturnType<typeof pieceRng>;
 type WormPieceArt = 'head' | 'body' | 'tail';
-
-/**
- * How a worm piece moves in one frame: its bob, its stretch along the way it crawls, how high
- * its back arches, how wide the maw gapes and how bright the crystals on its spine burn.
- */
-interface Crawl {
-  bob: number;
-  stretch: number;
-  arch: number;
-  maw: number;
-  glow: number;
-  hurt: boolean;
-  /** How far its spine's crystals lean forward, in degrees (back if negative). */
-  tilt?: number;
-  /** How big its crystals grow: the worm boss's are bigger. */
-  crystals?: number;
-  /** How strongly their glow shows round them as they kindle (none round the boss's big crystals, where it would read as a bubble). */
-  halo?: number;
-}
-
-function crawl(action: Action, frame: number): Crawl {
-  switch (action) {
-    case 'move':
-      return { bob: [0, -1.5, 0, -0.8][frame], stretch: [1, 1.05, 1, 0.95][frame], arch: [0, 1, 0.4, -0.5][frame], maw: [0.5, 0.8, 0.55, 0.3][frame], glow: [0.3, 0.42, 0.34, 0.24][frame], hurt: false };
-    case 'attack':
-      // Rearing: tensed as its crystals kindle, the maw splayed wide as they flare, then settling.
-      return { bob: [-1, -2, 0][frame], stretch: [0.94, 1.06, 1][frame], arch: [2, 3, 0.5][frame], maw: [0.8, 1.35, 0.9][frame], glow: [0.8, 1.3, 0.6][frame], hurt: false };
-    case 'hurt':
-      return { bob: 1, stretch: 0.95, arch: -1, maw: 0.1, glow: 0.05, hurt: true };
-    case 'spit':
-      // Ready, then its flanks puffing and its crystals flaring as the spit leaves (the head's maw pulsing).
-      return { bob: [0, -1][frame], stretch: [1, 0.96][frame], arch: [0.6, 1.8][frame], maw: [0.9, 1.45][frame], glow: [0.6, 1.15][frame], hurt: false };
-    case 'charge':
-      // Head tucked, hunched and shuddering, maw clamped shut, its shards pointing forward.
-      return { bob: [0.6, 1.2][frame], stretch: [0.9, 0.88][frame], arch: [2.5, 3][frame], maw: 0, glow: [0.7, 0.9][frame], hurt: false, tilt: [52, 60][frame] };
-    case 'burrow':
-      // Diving in, low with its crystals swept back; coming out, rising with them shaking loose.
-      return { bob: [1.5, -1][frame], stretch: [1.04, 1][frame], arch: [-1, 1.5][frame], maw: [0.7, 0.9][frame], glow: [0.3, 0.5][frame], hurt: false, tilt: [-25, 10][frame] };
-    case 'lob':
-      // Heaving up an egg, then letting go.
-      return { bob: [-3, 0.8][frame], stretch: [0.92, 1.05][frame], arch: [5, -0.5][frame], maw: [0.6, 0.5][frame], glow: [0.9, 0.45][frame], hurt: false };
-    case 'split':
-      // Torn open, twitching.
-      return { bob: [0, 1][frame], stretch: [0.97, 1][frame], arch: [1, 0][frame], maw: [0.3, 0.2][frame], glow: [0.9, 0.7][frame], hurt: false };
-    case 'die':
-      // Cracked through, its crystals burning ever brighter until it bursts.
-      return { bob: [0.5, 0][frame], stretch: [0.98, 1.02][frame], arch: [-0.5, 0.5][frame], maw: [0.15, 0.1][frame], glow: [0.9, 1.4][frame], hurt: false };
-    default:
-      return { bob: frame ? 0.6 : 0, stretch: 1, arch: 0, maw: [0.4, 0.5][frame], glow: [0.25, 0.4][frame], hurt: false };
-  }
-}
-
-/** Points about the segment's centre, scaled by `sx` and `sy` (a stretch, a mirror). */
-const wormPts = (list: readonly (readonly [number, number])[], sx = 1, sy = 1): Pt[] => list.map(([x, y]) => ({ x: WORM_MID.x + x * sx, y: WORM_MID.y + y * sy }));
-
-/**
- * A cluster of crystal shards growing out of the spine at x,y, fanned about `a` degrees off
- * straight up, `size` times full height, in a halo as bright as `glow` (flaring past 1), `haloK` as strong.
- */
-function spineShards(x: number, y: number, a: number, size: number, glow: number, haloK = 1): string {
-  // A cold glow round them only as they kindle; a faint one otherwise would read as a bubble.
-  const halo = glow > 0.5 && haloK > 0 ? ellipse(x + Math.sin((a * Math.PI) / 180) * 6 * size, y - 8 * size, 8 * size, 10 * size, C.crystal, `opacity="${n(Math.min(0.4, 0.2 * glow) * haloK)}"`) : '';
-  const flare =
-    glow > 1
-      ? [-40, 0, 40]
-          .map((d) => group(fill(polyPath([{ x: 0, y: -1 }, { x: 1, y: -5 }, { x: -1, y: -5 }]), C.crystalLight), `translate(${n(x)} ${n(y - 13 * size)}) rotate(${a + d}) translate(0 ${n(-9 * size)})`))
-          .join('')
-      : '';
-  return (
-    halo +
-    prism(x - 3 * size, y + 0.5, a - 48, 7 * size, 3 * size) +
-    prism(x + 3.5 * size, y + 0.5, a + 26, 10 * size, 4 * size) +
-    prism(x, y, a, 15 * size, 5.5 * size) +
-    prism(x - 1.5 * size, y + 1, a - 22, 9 * size, 3.5 * size) +
-    // A glint at the tip of the tallest, catching the light as it crawls.
-    ellipse(x + Math.sin((a * Math.PI) / 180) * 11 * size, y - Math.cos((a * Math.PI) / 180) * 11 * size, 1.1 * size, 1.1 * size, C.crystalLight, `opacity="${Math.min(1, 0.3 + glow).toFixed(2)}"`) +
-    flare
-  );
-}
-
-/** `count` bone teeth set round the inside of an ellipse at cx,cy, pointing `depth` of the way in toward its middle. */
-function teeth(cx: number, cy: number, rx: number, ry: number, count: number, depth: number, turn = 0): string {
-  const w = (Math.PI / count) * 0.7;
-  return Array.from({ length: count }, (_, i) => {
-    const a = turn + (i / count) * Math.PI * 2;
-    const at = (da: number, k: number) => ({ x: cx + Math.cos(a + da) * rx * k, y: cy + Math.sin(a + da) * ry * k });
-    return fill(polyPath([at(-w, 1), at(0, depth), at(w, 1)]), C.bone);
-  }).join('');
-}
-
-/** A lamprey's round maw at x,y, `rx` by `ry`: a raw lip, rings of hooked teeth, a dark throat open `gape` wide. */
-const lampreyMaw = (x: number, y: number, rx: number, ry: number, gape: number) =>
-  ellipse(x, y, rx, ry, C.maw) +
-  teeth(x, y, rx * 0.92, ry * 0.92, 12, 0.66) +
-  ellipse(x, y, rx * (0.2 + 0.3 * gape), ry * (0.2 + 0.3 * gape), C.mawDeep) +
-  teeth(x, y, rx * 0.5, ry * 0.5, 8, 0.5, 0.4) +
-  ellipse(x, y, rx, ry, 'none', `stroke="${C.wormBelly}" stroke-width="1.2"`);
-
-/** Where one plate laps over the next across the back: its shadow, and the pale rim of the plate in front (`toward` it). */
-function plateSeam(from: Pt, ctrl: Pt, to: Pt, toward: Pt): string {
-  const d = (o: Pt) => `M${n(from.x + o.x)} ${n(from.y + o.y)}Q${n(ctrl.x + o.x)} ${n(ctrl.y + o.y)} ${n(to.x + o.x)} ${n(to.y + o.y)}`;
-  return (
-    `<path d="${d({ x: 0, y: 0 })}" stroke="${C.chitinDark}" stroke-width="1.5" fill="none"/>` +
-    `<path d="${d(toward)}" stroke="${C.chitinEdge}" stroke-width="0.8" fill="none" opacity="0.75"/>`
-  );
-}
-
-/** Chips of chitin knocked off by a hit. */
-const chitinChips = (r: PieceRng) =>
-  [{ x: -20, y: -18, a: 25 }, { x: 19, y: -16, a: -40 }, { x: 14, y: 4, a: 70 }]
-    .map((c, i) =>
-      group(fill(cutPoly(r(`chip${i}`), [{ x: -2, y: -1.4 }, { x: 2, y: -1 }, { x: 1, y: 1.8 }, { x: -1.5, y: 1.2 }], 0.3), C.chitinLight), `translate(${n(WORM_MID.x + c.x)} ${n(WORM_MID.y + c.y)}) rotate(${c.a})`),
-    )
-    .join('');
-
-/**
- * A worm piece crawling right, side on: a dark chitin plate arched over a soft belly, lapped
- * plates along its back, crystals growing out of its spine; the head ends in a lamprey maw, the
- * tail tapers off behind to a spike.
- */
-function wormSide(piece: WormPieceArt, c: Crawl, champion: boolean, r: PieceRng, torn = false): string {
-  const s = c.stretch;
-  const { x: mx, y: my } = WORM_MID;
-  const top = -14 - c.arch;
-  const outline =
-    piece === 'head'
-      ? ([[-25, 7], [-24, -3], [-16, -11], [-2, top], [10, -12], [17, -6], [19, 2], [16, 8], [0, 9]] as const)
-      : piece === 'tail'
-        ? ([[-28, 5], [-20, -1], [-8, -8], [6, top + 2], [18, -10], [25, -3], [25, 7], [6, 9], [-14, 8]] as const)
-        : ([[-25, 7], [-24, -3], [-16, -11], [0, top], [16, -11], [24, -3], [25, 7], [0, 9]] as const);
-  const plateD = smoothPath(wormPts(outline, s));
-  const belly =
-    ellipse(mx + (piece === 'tail' ? 4 : piece === 'head' ? -3 : 0) * s, my + 7.5, (piece === 'tail' ? 20 : 23) * s, 4.5, C.wormBelly) +
-    [-12, -4, 4, 12].map((x) => `<path d="M${n(mx + x * s)} ${n(my + 5)}l0.6 5" stroke="${C.wormBellyShade}" stroke-width="1" opacity="0.8"/>`).join('');
-  const shade = fill(polyPath(wormPts([[-26, 2], [26, 2], [26, 8], [0, 10], [-26, 8]], s)), C.chitinDark, 'opacity="0.55"');
-  const seams = (piece === 'head' ? [-6] : piece === 'tail' ? [-6, 9] : [-9, 7])
-    .map((x) => plateSeam({ x: mx + x * s, y: my - 12 - c.arch * 0.6 }, { x: mx + (x + 3) * s, y: my - 3 }, { x: mx + x * s, y: my + 6 }, { x: 1.2, y: 0 }))
-    .join('');
-  const sheen = `<path d="M${n(mx - 14 * s)} ${n(my - 10)}Q${n(mx)} ${n(my + top - 1)} ${n(mx + 12 * s)} ${n(my - 10)}" stroke="${C.chitinLight}" stroke-width="1.4" fill="none" opacity="0.8"/>`;
-  // The pale rim of its front plate, lapped over the piece ahead.
-  const lip = piece === 'head' ? '' : `<path d="M${n(mx + 16 * s)} ${n(my - 11)}Q${n(mx + 26 * s)} ${n(my - 3)} ${n(mx + 25 * s)} ${n(my + 7)}" stroke="${C.chitinEdge}" stroke-width="1.6" fill="none"/>`;
-  const end = torn
-    ? // Torn open at the split: its raw crystal core where its maw or its tail was.
-      piece === 'head'
-      ? rawCore(r('wound'), mx + 19 * s, my - 1, 7, 11, c.glow)
-      : rawCore(r('wound'), mx - 25 * s, my + 1, 7, 10.5, c.glow)
-    : piece === 'head'
-      ? // The maw seen edge on, and a row of pale pits behind it where eyes should be.
-        lampreyMaw(mx + 20 * s, my - 1, 3 + 2.5 * c.maw, 9 + 2 * c.maw, c.maw) + [[8, -5], [11, -3], [13, 0]].map(([x, y]) => ellipse(mx + x * s, my + y, 0.7, 0.7, C.crystalLight, 'opacity="0.6"')).join('')
-      : piece === 'tail'
-        ? fill(cutPoly(r('spike'), wormPts([[-27, 6], [-34, 3.5], [-26, 1.5]], s), 0.3), C.chitinEdge)
-        : '';
-  const k = c.crystals ?? 1;
-  const tilt = c.tilt ?? 0;
-  const spine = (x: number, y: number, a: number, size: number) => spineShards(x, y, a + tilt, size * k, c.glow, c.halo);
-  const shards =
-    piece === 'head' ? spine(mx - 8 * s, my + top + 1, -18, 0.75) : piece === 'tail' ? spine(mx + 4 * s, my + top + 3, -20, 0.55) : spine(mx - 2 * s, my + top + 1, -12, 1.15) + spine(mx + 12 * s, my - 10, 18, 0.45);
-  const plate = trim(plateD, champion) + fill(plateD, C.chitin) + shade + seams + sheen + lip;
-  return contact(mx, my + 9, 25 * s, 3) + group(sheet(belly) + sheet(plate + end, 2) + sheet(shards), `translate(0 ${n(c.bob)})`);
-}
-
-/**
- * A worm piece crawling toward the camera (`dir` 1) or away from it (-1), seen from above: its
- * plated back down the length of its cell, lapping toward its front, crystals standing up out of
- * its spine. Toward the camera the head shows its maw under the lip of its hood; away, just the
- * maw's rim past the back of the hood. The tail tapers off behind to a spike.
- */
-function wormEnd(piece: WormPieceArt, dir: 1 | -1, c: Crawl, champion: boolean, r: PieceRng, torn = false): string {
-  const sy = c.stretch * dir;
-  // Seen from above it reaches past its cell at both ends, lapping its neighbours, and under a piece turning side on at a corner.
-  const reach = sy * 1.3;
-  const { x: mx, y: my } = WORM_MID;
-  const facing = piece === 'head' && dir === 1;
-  const outline =
-    piece === 'tail'
-      ? ([[0, -29], [5, -18], [10, -6], [13, 8], [9, 23], [0, 26], [-9, 23], [-13, 8], [-10, -6], [-5, -18]] as const)
-      : facing
-        ? ([[0, -26], [12, -22], [15, -8], [14, 4], [8, 6.5], [-8, 6.5], [-14, 4], [-15, -8], [-12, -22]] as const)
-        : ([[0, -26], [12, -22], [15, -6], [14, 10], [9, 23], [0, 26], [-9, 23], [-14, 10], [-15, -6], [-12, -22]] as const);
-  // Its back swells across as it arches.
-  const plateD = smoothPath(wormPts(outline, 1 + c.arch * 0.03, reach));
-  const belly = ellipse(mx, my + 2 * dir, 16, 25 * Math.abs(reach), C.wormBelly);
-  const shade = fill(polyPath(wormPts([[5, -24], [16, -18], [16, 12], [8, 24], [5, 24]], 1, reach)), C.chitinDark, 'opacity="0.5"');
-  // The plates lap toward the front, so each seam bows that way, the pale rim of the plate in front beside it.
-  const seams = (facing ? [-8] : [-11, 11])
-    .map((y) => {
-      const w = piece === 'tail' ? 10 + y * 0.25 * dir : 14;
-      return plateSeam({ x: mx - w, y: my + y * sy }, { x: mx, y: my + (y + 4) * sy }, { x: mx + w, y: my + y * sy }, { x: 0, y: 1.2 * dir });
-    })
-    .join('');
-  const spine = `<path d="M${n(mx)} ${n(my - 26 * c.stretch)}L${n(mx)} ${n(my + 26 * c.stretch)}" stroke="${C.chitinLight}" stroke-width="1.2" opacity="0.6"/>`;
-  const lip = facing ? '' : `<path d="M${n(mx - 9)} ${n(my + 23 * reach)}Q${n(mx)} ${n(my + 27.5 * reach)} ${n(mx + 9)} ${n(my + 23 * reach)}" stroke="${C.chitinEdge}" stroke-width="1.6" fill="none"/>`;
-  const pits = facing ? [[6, -1], [9, -3], [11, -6]].flatMap(([x, y]) => [circle(mx + x, my + y, 0.8, C.crystalLight), circle(mx - x, my + y, 0.8, C.crystalLight)]).join('') : '';
-  const end = torn
-    ? // Torn open at the split: its raw crystal core where its maw or its tail was.
-      piece === 'head'
-      ? facing
-        ? rawCore(r('wound'), mx, my + 12, 12, 9, c.glow)
-        : rawCore(r('wound'), mx, my + 25 * reach, 10, 4.5, c.glow)
-      : rawCore(r('wound'), mx, my - 25 * reach, 10, 4.5, c.glow)
-    : piece === 'head'
-      ? facing
-        ? lampreyMaw(mx, my + 12, 11 + 2 * c.maw, 9 + 2 * c.maw, c.maw)
-        : ellipse(mx, my + 25.5 * reach, 9 + c.maw, 3.2, C.maw) + teeth(mx, my + 25.5 * reach, 8 + c.maw, 3, 10, 0.4)
-      : piece === 'tail'
-        ? fill(cutPoly(r('spike'), wormPts([[-2.5, -27], [0, -35], [2.5, -27]], 1, reach), 0.3), C.chitinEdge)
-        : '';
-  const k = c.crystals ?? 1;
-  // Seen from above, crystals leaning forward or back stand nearer its front or its back.
-  const lean = (c.tilt ?? 0) * 0.12 * dir;
-  const spineAt = (y: number, a: number, size: number) => spineShards(mx, y + lean, a, size * k, c.glow, c.halo);
-  const shards =
-    piece === 'head'
-      ? spineAt(my - (facing ? 10 : 2), 0, 0.8)
-      : piece === 'tail'
-        ? spineAt(my + 3 * dir, 0, 0.55)
-        : spineAt(my - 2, 0, 0.9) + spineAt(my + 13, 8, 0.45);
-  const plate = trim(plateD, champion) + fill(plateD, C.chitin) + shade + seams + spine + lip + pits;
-  const body = facing ? sheet(belly) + sheet(end) + sheet(plate, 2) : sheet(belly) + sheet(plate + end, 2);
-  return contact(mx, my + 1, 16, 30) + group(body + sheet(shards), `translate(0 ${n(c.bob)})`);
-}
 
 /**
  * A centipede's piece seen from above, pointing right and turned along its spine by its pose,
@@ -1018,9 +794,21 @@ interface PlateLook {
   edge: string;
   mandible: string;
   mandibleTip: string;
+  /** The light glowing in the seams between its plates, and its bright core; none on a worm. */
+  seam?: { glow: string; core: string };
 }
 /** The regular worm: matte brown-black chitin, no glow. */
 const MATTE: PlateLook = { plate: C.matte, light: C.matteLight, dark: C.matteDark, edge: C.matteEdge, mandible: C.mandible, mandibleTip: C.mandibleTip };
+/** The worm boss, the Obsidian Centipede: black glass, dim blood-red light in its seams. */
+const OBSIDIAN: PlateLook = {
+  plate: C.obsidian,
+  light: C.obsidianLight,
+  dark: C.obsidianDark,
+  edge: C.obsidianEdge,
+  mandible: C.glassFang,
+  mandibleTip: C.glassFangTip,
+  seam: { glow: C.seamBlood, core: C.seamBloodLight },
+};
 
 /**
  * How a centipede piece moves in one frame: stretched along its spine and squeezed across it as
@@ -1032,6 +820,8 @@ interface Ripple {
   wobble: number;
   gape: number;
   hurt: boolean;
+  /** How bright the light in its seams burns, flaring past 1; dark on a worm. */
+  glow?: number;
 }
 
 function ripple(action: Action, frame: number): Ripple {
@@ -1063,10 +853,12 @@ function mandible(x: number, y: number, s: 1 | -1, gape: number, look: PlateLook
  * One piece of a centipede from above, pointing right: a body plate with flanged sides and a keel
  * down its middle, its back rim lapped over the plate behind; the head's rounder plate with dull
  * eye pits and hooked mandibles; the tail's tapering plate trailing one long stinger. No legs.
+ * `breadth` widens it across its spine (the worm boss's are broader). With a glowing look, light
+ * leaks out of the seam behind its back rim and the groove across its back, and its eyes burn.
  */
-function centipedePiece(piece: WormPieceArt, c: Ripple, champion: boolean, look: PlateLook, r: PieceRng): string {
+function centipedePiece(piece: WormPieceArt, c: Ripple, champion: boolean, look: PlateLook, r: PieceRng, breadth = 1): string {
   const s = c.stretch;
-  const w = c.squeeze;
+  const w = c.squeeze * breadth;
   const half = PLATE_HALF;
   const { x: cx, y: cy } = CENTIPEDE.foot;
   const outline =
@@ -1095,14 +887,24 @@ function centipedePiece(piece: WormPieceArt, c: Ripple, champion: boolean, look:
   const groove = piece === 'head' ? '' : `<path d="M${n(cx + 6 * s)} ${n(cy - 13 * w)}Q${n(cx + 1 * s)} ${n(cy)} ${n(cx + 6 * s)} ${n(cy + 13 * w)}" stroke="${look.dark}" stroke-width="1.4" fill="none"/>`;
   const rim = `<path d="M${n(cx - (half - 9) * s)} ${n(cy - 13 * w)}Q${n(cx - (half + 1) * s)} ${n(cy)} ${n(cx - (half - 9) * s)} ${n(cy + 13 * w)}" stroke="${look.edge}" stroke-width="1.6" fill="none"/>`;
   const sheen = `<path d="M${n(cx - (half - 12) * s)} ${n(cy - 9 * w)}Q${n(cx)} ${n(cy - 13 * w)} ${n(cx + (half - 16) * s)} ${n(cy - 8 * w)}" stroke="${look.light}" stroke-width="1.2" fill="none" opacity="0.55"/>`;
-  const plate = seam + trim(plateD, champion) + spikes + fill(plateD, look.plate) + shade + keel + groove + rim + sheen;
+  // Light leaking out from under its back rim onto the plate behind, and along the groove across its back.
+  const g = c.glow ?? 0;
+  const lit = (d: string, width: number, k: number) =>
+    look.seam
+      ? `<path d="${d}" stroke="${look.seam.glow}" stroke-width="${n(width * 2.5)}" fill="none" opacity="${n(Math.min(0.6, 0.3 * g * k))}" stroke-linecap="round"/>` +
+        `<path d="${d}" stroke="${look.seam.core}" stroke-width="${n(width)}" fill="none" opacity="${n(Math.min(1, 0.6 * g * k))}" stroke-linecap="round"/>`
+      : '';
+  const leak = lit(`M${n(cx - (half - 7) * s)} ${n(cy - 13 * w)}Q${n(cx - (half + 13) * s)} ${n(cy)} ${n(cx - (half - 7) * s)} ${n(cy + 13 * w)}`, 1.6, 1);
+  const grooveGlow = piece === 'head' ? '' : lit(`M${n(cx + 6 * s)} ${n(cy - 12 * w)}Q${n(cx + 1 * s)} ${n(cy)} ${n(cx + 6 * s)} ${n(cy + 12 * w)}`, 0.9, 0.7);
+  const plate = seam + leak + trim(plateD, champion) + spikes + fill(plateD, look.plate) + shade + keel + groove + grooveGlow + rim + sheen;
   let ends = '';
   if (piece === 'head') {
     const front = cx + (half - 14) * s;
-    ends =
-      mandible(front, cy - 5 * w, -1, c.gape, look) +
-      mandible(front, cy + 5 * w, 1, c.gape, look) +
-      [-1, 1].map((side) => ellipse(front - 6, cy + side * 7 * w, 1.6, 1.2, look.dark) + ellipse(front - 6.4, cy + side * 7 * w - 0.4, 0.6, 0.5, look.edge, 'opacity="0.6"')).join('');
+    const eye = (side: number) =>
+      look.seam
+        ? ellipse(front - 6, cy + side * 7 * w, 1.8, 1.3, look.seam.glow) + ellipse(front - 6.2, cy + side * 7 * w, 0.8, 0.6, look.seam.core, `opacity="${n(Math.min(1, 0.4 + 0.5 * g))}"`)
+        : ellipse(front - 6, cy + side * 7 * w, 1.6, 1.2, look.dark) + ellipse(front - 6.4, cy + side * 7 * w - 0.4, 0.6, 0.5, look.edge, 'opacity="0.6"');
+    ends = mandible(front, cy - 5 * w, -1, c.gape, look) + mandible(front, cy + 5 * w, 1, c.gape, look) + [-1, 1].map(eye).join('');
   }
   if (piece === 'tail') {
     const root = cx - (half - 8) * s;
@@ -1121,25 +923,45 @@ function drawWorm(piece: WormPieceArt, action: Action, frame: number, champion: 
 }
 
 /**
- * Its raw crystal core, bared where it was torn open at the split: a ragged red wound round a
- * dark hollow, faceted crystal jutting out of it, glowing as bright as `glow`.
+ * The worm boss, the Obsidian Centipede, drawn on a canvas of its own at its own size: its plates
+ * as long as a worm's and as broad as its segments, its stinger and splayed mandibles reaching
+ * past them.
  */
-function rawCore(r: ReturnType<typeof pieceRng>, x: number, y: number, rx: number, ry: number, glow: number): string {
-  const a = Math.min(rx, ry);
-  return (
-    fill(ragged(r, x, y, rx, ry, 9, 0.35), C.maw) +
-    ellipse(x, y, rx * 0.72, ry * 0.72, C.mawDeep) +
-    ellipse(x, y, rx * 0.9, ry * 0.9, C.crystal, `opacity="${n(0.25 * glow)}"`) +
-    prism(x - a * 0.35, y + a * 0.3, -35, a * 1.1, a * 0.5) +
-    prism(x + a * 0.35, y + a * 0.3, 30, a * 0.9, a * 0.45) +
-    prism(x, y + a * 0.4, 0, a * 1.4, a * 0.6)
-  );
-}
+const WORM_BOSS = { w: 140, h: 88, foot: { x: 70, y: 44 } };
+/** How much broader its plates are than a worm's: as broad as its segments (38 px to the worm's 31). */
+const BOSS_BREADTH = 1.22;
 
-/** The worm boss: the worm grown huge, its crystals bigger still. Each piece is drawn over its segment's cell. */
-const WORM_BOSS = { w: 80, h: 112, foot: { x: 40, y: 82 } };
-/** Where the worm's own canvas sits on the boss's: crystals that big need the room above. */
-const WORM_BOSS_OFFSET = { x: 8, y: 26 };
+/**
+ * How a piece of the worm boss moves in a frame, and how bright its seams burn: they pulse dimly
+ * as it crawls and at rest, blaze as it roars. Its other beats are stand-ins for now: its seams
+ * flare as it spits, its mandibles spread as it charges up, its plates heave as it lobs, its torn
+ * end twitches, and its seams burn ever brighter as it dies.
+ */
+function bossRipple(action: Action, frame: number): Ripple {
+  const base = { ...ripple(action, frame), glow: [0.35, 0.45][frame] ?? 0.4 };
+  switch (action) {
+    case 'move':
+      return { ...base, glow: [0.4, 0.55, 0.47, 0.32][frame] };
+    case 'attack':
+      return { ...base, glow: [0.9, 1.6, 1.15][frame] };
+    case 'hurt':
+      return { ...base, glow: 0.15 };
+    case 'spit':
+      return { ...base, stretch: [1, 0.97][frame], squeeze: [1, 1.05][frame], gape: [0.9, 1.3][frame], glow: [0.6, 1.25][frame] };
+    case 'charge':
+      return { ...base, stretch: [0.93, 0.91][frame], squeeze: [1.05, 1.07][frame], wobble: [1.5, -1.5][frame], gape: [1.35, 1.5][frame], glow: [0.75, 0.95][frame] };
+    case 'burrow':
+      return { ...base, stretch: [1.03, 1][frame], gape: [0.6, 0.45][frame], glow: [0.38, 0.5][frame] };
+    case 'lob':
+      return { ...base, stretch: [0.94, 1.04][frame], squeeze: [1.08, 0.98][frame], gape: [0.5, 0.4][frame], glow: [0.85, 0.5][frame] };
+    case 'split':
+      return { ...base, wobble: [3, -3][frame], gape: [0.25, 0.15][frame], glow: [0.95, 0.8][frame] };
+    case 'die':
+      return { ...base, stretch: [0.98, 1.02][frame], gape: [0.1, 0.05][frame], glow: [1.1, 1.7][frame] };
+    default:
+      return base;
+  }
+}
 
 /** Rock chips round x,y, `spread` px across: rubble thrown up as it burrows. */
 const rubble = (r: PieceRng, x: number, y: number, spread: number) =>
@@ -1156,51 +978,21 @@ const rubble = (r: PieceRng, x: number, y: number, spread: number) =>
 const burrowHole = (r: PieceRng, x: number, y: number, rx: number, ry: number) =>
   sheet(fill(ragged(r('hole'), x, y, rx, ry, 10, 0.25), C.rockDeep) + ellipse(x, y, rx * 0.6, ry * 0.6, C.mawDeep, 'opacity="0.7"')) + sheet(rubble(r, x, y, Math.max(rx, ry) * 1.1));
 
-/** Cracks of light through its plates as it dies, more of them as it is about to burst. */
-function deathCracks(side: boolean, frame: number): string {
-  // Jagged, forking runs across the plates, as rock splits.
-  const lines = side
-    ? [[[-18, -6], [-13, -4], [-11, 1], [-6, 3], [-4, 7]], [[3, -12], [5, -7], [2, -3], [6, 1], [5, 6]], [[12, -9], [15, -5], [20, -4]], [[-13, -4], [-15, 2], [-19, 4]], [[5, -7], [10, -6], [12, -1]]]
-    : [[[-9, -16], [-6, -11], [-8, -6], [-3, -3], [-4, 2]], [[7, 2], [4, 7], [7, 11], [3, 16], [5, 21]], [[-8, -6], [-12, -2], [-11, 3]], [[4, -18], [7, -13], [5, -9]], [[4, 7], [-2, 9], [-5, 14]]];
-  return lines
-    .slice(0, frame ? 5 : 3)
-    .map((line) => {
-      const d = `M${line.map(([x, y]) => `${n(WORM_MID.x + x)} ${n(WORM_MID.y + y)}`).join('L')}`;
-      return `<path d="${d}" stroke="${C.crystal}" stroke-width="3.5" fill="none" opacity="0.35" stroke-linejoin="round"/>` + `<path d="${d}" stroke="${C.crystalLight}" stroke-width="1.3" fill="none" stroke-linejoin="round"/>`;
-    })
-    .join('');
-}
-
-/** Splinters of crystal breaking off it as it is about to burst. */
-const splinters = () =>
-  [[-24, -26, -30], [22, -30, 35], [-28, 6, -80], [27, 4, 75], [2, -38, 5]].map(([x, y, a]) => prism(WORM_MID.x + x, WORM_MID.y + y, a, 6, 2.5)).join('');
-
 /**
- * A piece of the worm boss acting out its fight: the worm's own pieces, bigger-crystalled, and
- * what each moment adds: rubble round the hole it dives into or climbs out of, an egg cresting
- * its back as it heaves, its raw core where it was torn open, cracks of light as it dies.
+ * A piece of the worm boss acting out its fight from above, pointing right and turned along its
+ * spine: the centipede's own piece in black glass, broad as its segments. Burrowing, the hole it
+ * dives into lies over its front, or the one it climbs out of under its back.
  */
-function drawWormBoss(piece: WormPieceArt, action: Action, frame: number, view: View): string {
-  const r: PieceRng = (part) => pieceRng('wormBoss', piece, view, part);
-  const c = { ...crawl(action, frame), crystals: 1.45, halo: 0 };
-  const side = view === 'side';
-  const dir = view === 'down' ? 1 : -1;
-  const torn = action === 'split';
-  const body = side ? wormSide(piece, c, false, r, torn) : wormEnd(piece, dir, c, false, r, torn);
-  const { x: mx, y: my } = WORM_MID;
-  // Its front and its back, where it crawls toward and away from.
-  const front = side ? { x: mx + 21 * c.stretch, y: my + 1 } : { x: mx, y: my + 24 * dir };
-  const back = side ? { x: mx - 24 * c.stretch, y: my + 2 } : { x: mx, y: my - 24 * dir };
+function drawWormBoss(piece: WormPieceArt, action: Action, frame: number): string {
+  const r: PieceRng = (part) => pieceRng('wormBoss', piece, part);
+  const body = centipedePiece(piece, bossRipple(action, frame), false, OBSIDIAN, r, BOSS_BREADTH);
+  const { x: cx, y: cy } = CENTIPEDE.foot;
   let drawn = body;
   if (action === 'burrow') {
-    // Diving in, front first, the hole over its front; climbing out, its back still down the hole.
-    drawn = frame ? burrowHole(r, back.x, back.y, side ? 10 : 15, side ? 12 : 8) + body : body + burrowHole(r, front.x, front.y, side ? 11 : 16, side ? 13 : 9);
+    drawn = frame ? burrowHole(r, cx - PLATE_HALF, cy, 9, 18) + body : body + burrowHole(r, cx + PLATE_HALF, cy, 9, 18);
   }
-  // Heaving, an egg crests its back.
-  if (action === 'lob' && frame === 0) drawn += sheet(eggPod((part) => pieceRng('wormBoss', 'egg', part), mx + (side ? 2 : 0), my - 22 - c.arch + c.bob, 0.55, 0));
-  if (action === 'die') drawn += deathCracks(side, frame) + (frame ? splinters() : '');
-  if (c.hurt) drawn = group(drawn, `rotate(-4 ${mx} ${my})`) + chitinChips(r);
-  return group(drawn, `translate(${WORM_BOSS_OFFSET.x} ${WORM_BOSS_OFFSET.y})`);
+  // Its own canvas is bigger than a worm's: the piece sits in the middle of it.
+  return group(drawn, `translate(${WORM_BOSS.foot.x - cx} ${WORM_BOSS.foot.y - cy})`);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1418,9 +1210,9 @@ export const CHARACTERS: Readonly<Record<string, CharacterArt>> = {
   wormHead: art(CENTIPEDE, ['top'], (a, f, _v, c) => drawWorm('head', a, f, c), 37),
   wormBody: art(CENTIPEDE, ['top'], (a, f, _v, c) => drawWorm('body', a, f, c), 37),
   wormTail: art(CENTIPEDE, ['top'], (a, f, _v, c) => drawWorm('tail', a, f, c), 37),
-  wormBossHead: art(WORM_BOSS, ['side', 'down', 'up'], (a, f, v) => drawWormBoss('head', a, f, v), 41, BOSS_ACTIONS),
-  wormBossBody: art(WORM_BOSS, ['side', 'down', 'up'], (a, f, v) => drawWormBoss('body', a, f, v), 41, BOSS_ACTIONS),
-  wormBossTail: art(WORM_BOSS, ['side', 'down', 'up'], (a, f, v) => drawWormBoss('tail', a, f, v), 41, BOSS_ACTIONS),
+  wormBossHead: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('head', a, f), 41, BOSS_ACTIONS),
+  wormBossBody: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('body', a, f), 41, BOSS_ACTIONS),
+  wormBossTail: art(WORM_BOSS, ['top'], (a, f) => drawWormBoss('tail', a, f), 41, BOSS_ACTIONS),
   wormEgg: art(EGG, ['down'], (a, f) => drawEgg(a, f), 43),
   treantBoss: art(TREANT, ['down'], (a, f) => drawTreant(a, f), 17),
 };

@@ -185,14 +185,9 @@ export const PAPER = {
     batEar: '#e89aa8',
     batEarInner: '#c4687e',
     batEye: '#d8445a',
-    // The worm: dark chitin plates with a cold sheen, a pale rim where each plate overlaps the next, and a raw red lamprey maw ringed with bone teeth.
+    // The old worm's chitin, still what its pieces burst into, and the dark of a burrow hole's depths.
     chitin: '#3e3438',
-    chitinLight: '#66585c',
-    chitinDark: '#1e171a',
     chitinEdge: '#a08a7a',
-    wormBelly: '#4a3532',
-    wormBellyShade: '#33221f',
-    maw: '#7a2a2c',
     mawDeep: '#2a0a0e',
     // The regular worm, the Obsidian Centipede's dull chitin cousin: matte brown-black plates, horn mandibles, no glow.
     matte: '#2f241e',
@@ -201,6 +196,15 @@ export const PAPER = {
     matteEdge: '#6e5646',
     mandible: '#5c4434',
     mandibleTip: '#a08068',
+    // The worm boss, the Obsidian Centipede: black-glass plates with a cold sheen, dim blood-red light in the seams between them.
+    obsidian: '#121015',
+    obsidianLight: '#3b3644',
+    obsidianDark: '#050407',
+    obsidianEdge: '#8c8598',
+    glassFang: '#1d1a22',
+    glassFangTip: '#b8b2c4',
+    seamBlood: '#a3121f',
+    seamBloodLight: '#ff4a3d',
     // The worm boss's eggs: pale, leathery pods flecked with crystal.
     egg: '#d8cdb2',
     eggLight: '#efe6d0',

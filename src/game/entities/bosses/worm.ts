@@ -716,36 +716,35 @@ function wormEnemy(scene: Phaser.Scene, style: WormStyle, state: WormState): Ene
         part.body.setVelocity((to.x - part.x) / seconds, (to.y - part.y) / seconds);
       });
     },
-    // Drawn piece by piece: head, body and tail, the boss's acting out its fight; a worm's plates laid along its spine.
+    // Drawn piece by piece, its plates laid along its spine: head, body and tail, the boss's acting out its fight.
     pieceVisual(part, time) {
       const index = Math.max(0, state.parts.indexOf(part));
       const b = state.boss;
-      if (!b) {
-        const { glide } = state;
-        const { piece: kind, offset, angle, ...look } = wormPose(state.worm, index, time, glide && { from: glide.from, progress: glideProgress(state.parts, glide) });
-        const t = TUNING.tile;
-        // The whole body sorts by its lowest plate, the head on top of its neck and so on down to the tail.
-        const footY = Math.max(...state.parts.map((p) => p.y)) + t / 2;
-        return { kind, ...look, spine: { offset: { x: offset.x * t, y: offset.y * t }, angle, footY, rank: bodyId * 64 + state.parts.length - index } };
-      }
-      const { piece: kind, ...look } = wormBossPose(
-        {
-          worm: state.worm,
-          room: b.shared.room ?? { w: Infinity, h: Infinity },
-          moment: b.moment,
-          rawEnd: b.rawEnd,
-          rampage: b.rampage?.phase,
-          spit: b.spat,
-          heave: b.heave,
-          dying: b.dying,
-        },
-        index,
-        time,
-      );
-      return { kind, ...look };
+      const glide = state.glide && { from: state.glide.from, progress: glideProgress(state.parts, state.glide) };
+      const { piece: kind, offset, angle, ...look } = b
+        ? wormBossPose(
+            {
+              worm: state.worm,
+              room: b.shared.room ?? { w: Infinity, h: Infinity },
+              moment: b.moment,
+              rawEnd: b.rawEnd,
+              rampage: b.rampage?.phase,
+              spit: b.spat,
+              heave: b.heave,
+              dying: b.dying,
+              glide,
+            },
+            index,
+            time,
+          )
+        : wormPose(state.worm, index, time, glide);
+      const t = TUNING.tile;
+      // The whole body sorts by its lowest plate, the head on top of its neck and so on down to the tail.
+      const footY = Math.max(...state.parts.map((p) => p.y)) + t / 2;
+      return { kind, ...look, spine: { offset: { x: offset.x * t, y: offset.y * t }, angle, footY, rank: bodyId * 64 + state.parts.length - index } };
     },
-    // The boss is the worm's art grown to its size.
-    art: state.boss ? { scale: style.segmentSize / REGULAR_WORM.segmentSize, champion: false } : undefined,
+    // The boss's art is drawn at its own size.
+    art: state.boss ? { scale: 1, champion: false } : undefined,
     hit(part, damage) {
       const index = state.parts.indexOf(part);
       if (index < 0) return [enemy];

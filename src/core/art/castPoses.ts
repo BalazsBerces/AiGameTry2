@@ -212,6 +212,8 @@ export interface WormBossLook {
   heave?: { segments: readonly number[]; start: number };
   /** When it died, blowing apart. */
   dying?: { at: number };
+  /** Where its segments are gliding from, and how far through the step; none while it lies still. */
+  glide?: WormGlide;
 }
 
 /**
@@ -222,13 +224,14 @@ export interface WormBossLook {
  * and crystals flaring; its maw pulsing through a spit wave as each segment flares in turn; its
  * head tucked and shards forward while it charges up and between lunges; a segment heaving as it
  * lobs an egg; burrowing into the walls and out of them. Otherwise it crawls like any worm.
+ * Whatever it does, its plate lies on its spine like any worm's (`wormSpine`).
  */
-export function wormBossPose(look: WormBossLook, index: number, time: number): Pose & { piece: WormBossPiece } {
+export function wormBossPose(look: WormBossLook, index: number, time: number): Pose & Spine & { piece: WormBossPiece } {
   const { worm, room, moment } = look;
   const last = worm.segments.length - 1;
   const piece = index === 0 ? 'wormBossHead' : index === last ? 'wormBossTail' : 'wormBossBody';
-  const aim = index === 0 ? { aim: { ...STEP[worm.heading] } } : {};
-  const pose = (hold?: Pose['hold']) => ({ piece, ...(hold ? { hold } : {}), ...aim }) as Pose & { piece: WormBossPiece };
+  const spine = wormSpine(worm, index, look.glide);
+  const pose = (hold?: Pose['hold']) => ({ piece, ...(hold ? { hold } : {}), ...spine }) as Pose & Spine & { piece: WormBossPiece };
   const beat = (ms: number) => Math.floor(time / ms) % 2;
   if (look.dying) {
     const pop = deathChain(worm.segments.length).pops.find((p) => p.segment === index)!;

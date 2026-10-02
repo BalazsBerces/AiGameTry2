@@ -268,10 +268,21 @@ describe("the worm boss's poses", () => {
     }
   });
 
-  it('points its head the way it heads, whatever it is doing', () => {
-    expect(wormBossPose(look(), 0, 0).aim).toEqual({ x: 0, y: 1 });
-    expect(wormBossPose(look({ moment: { phase: 'roaring', until: 500 } }), 0, 0).aim).toEqual({ x: 0, y: 1 });
-    expect(wormBossPose(look(), 2, 0).aim).toBeUndefined();
+  it("lies along the worm's one continuous spine, gliding or still, whatever it is doing", () => {
+    // Its head has just stepped down round the corner at 5,1, the rest following on along row 1.
+    const glide: WormGlide = { from: [{ x: 5, y: 1 }, { x: 4, y: 1 }, { x: 3, y: 1 }, { x: 2, y: 1 }, { x: 1, y: 1 }], progress: 0.3 };
+    const moments: Partial<WormBossLook>[] = [{}, { moment: { phase: 'roaring', until: 500 } }, { rampage: 'charging' }, { dying: { at: 0 } }];
+    for (const more of moments) {
+      for (const i of ALL) {
+        const { offset, angle } = wormBossPose(look({ ...more, glide }), i, 100);
+        expect({ offset, angle }, `${i} ${JSON.stringify(more)}`).toEqual(wormSpine(worm, i, glide));
+        expect(wormBossPose(look(more), i, 100).angle).toEqual(wormSpine(worm, i).angle);
+      }
+    }
+    // Still, its head points the way it heads and its neck rounds the corner.
+    expect(wormBossPose(look(), 0, 0).angle).toBeCloseTo(Math.PI / 2);
+    expect(wormBossPose(look(), 1, 0).angle).toBeCloseTo(Math.PI / 4);
+    expect(wormBossPose(look(), 0, 0).aim).toBeUndefined();
   });
 
   it('rears up and roars, maw splayed and crystals flaring, for exactly as long as the roar', () => {

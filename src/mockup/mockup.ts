@@ -466,20 +466,21 @@ const CAVE_RUBBLE: Scene = { ...CAVE, actors: ALONE, shots: [], seed: 53, map: R
 /**
  * A worm lying along cells `cells` (head first), each plate where the game would put it: on its
  * spine (core/art/castPoses), seen from above and turned along it, rounding each corner, the head's
- * plate over its neck's and so on down; its crawl rippling down from the head.
+ * plate over its neck's and so on down; its crawl rippling down from the head. The worm boss
+ * (`boss`) lies the same way, its art drawn at its own size; `pose` holds one of its segments in
+ * another pose.
  */
-function centipede(cells: [number, number][], champion = false): Actor[] {
+function centipede(cells: [number, number][], champion = false, boss = false, pose?: { segment: number; action: Action; frame: number }): Actor[] {
   const body = createWorm(cells.map(([x, y]) => ({ x, y })), 'down');
   const scale = champion ? 1.35 : undefined;
   const lowest = Math.max(...cells.map(([, y]) => y)) * TILE + TILE;
   return cells.map((cell, i) => {
     const { offset, angle } = wormSpine(body, i);
     return {
-      kind: `worm${i === 0 ? 'Head' : i === cells.length - 1 ? 'Tail' : 'Body'}`,
+      kind: `${boss ? 'wormBoss' : 'worm'}${i === 0 ? 'Head' : i === cells.length - 1 ? 'Tail' : 'Body'}`,
       x: (cell[0] + 0.5 + offset.x) * TILE,
       y: (cell[1] + 0.5 + offset.y) * TILE,
-      action: 'move' as const,
-      frame: (4 - (i % 4)) % 4,
+      ...(pose?.segment === i ? { action: pose.action, frame: pose.frame } : { action: 'move' as const, frame: (4 - (i % 4)) % 4 }),
       angle: (angle * 180) / Math.PI,
       sortY: lowest + (cells.length - i) * 0.01,
       champion,
@@ -487,32 +488,6 @@ function centipede(cells: [number, number][], champion = false): Actor[] {
     };
   });
 }
-
-/**
- * The worm boss crawling along cells `cells` (head first), each piece where the game would put it: on its
- * cell's centre (its feet 10 px below), facing the way it crawls, its crawl rippling down from the head,
- * at its bigger size; `pose` holds one of its segments in another pose.
- */
-function worm(cells: [number, number][], champion = false, boss = false, pose?: { segment: number; action: Action; frame: number }): Actor[] {
-  const face = (from: [number, number], to: [number, number]) => {
-    const [dx, dy] = [to[0] - from[0], to[1] - from[1]];
-    return dx ? { view: 'side' as const, flip: dx < 0 } : { view: dy > 0 ? ('down' as const) : ('up' as const), flip: false };
-  };
-  const scale = boss ? BOSS_SCALE : champion ? 1.35 : undefined;
-  return cells.map((cell, i) => ({
-    kind: `${boss ? 'wormBoss' : 'worm'}${i === 0 ? 'Head' : i === cells.length - 1 ? 'Tail' : 'Body'}`,
-    x: cell[0] * TILE + TILE / 2,
-    y: cell[1] * TILE + TILE / 2 + 10 * (scale ?? 1),
-    ...(pose?.segment === i ? { action: pose.action, frame: pose.frame } : { action: 'move' as const, frame: (4 - (i % 4)) % 4 }),
-    // Each piece faces the way it got to its cell: from the one behind it (the head, its tail, the way it heads).
-    ...(i < cells.length - 1 ? face(cells[i + 1], cell) : face(cell, cells[i - 1])),
-    champion,
-    scale,
-  }));
-}
-
-/** The worm boss's segments against the worm's (core/config): its art is the worm's, grown to fit. */
-const BOSS_SCALE = 38 / 30;
 
 const CAVE_RIFT: Scene = {
   ...CAVE,
@@ -535,7 +510,7 @@ const CAVE_BOSS: Scene = {
   actors: [
     { kind: 'player', x: 344, y: 330, action: 'idle', frame: 0, view: 'up' },
     // The worm boss crawling round the room, heaving an egg out of its back; one egg in the air, one resting, one about to hatch.
-    ...worm([[4, 3], [5, 3], [6, 3], [7, 3], [8, 3], [9, 3], [10, 3], [10, 4], [10, 5], [11, 5], [12, 5]], false, true, { segment: 5, action: 'lob', frame: 0 }),
+    ...centipede([[4, 3], [5, 3], [6, 3], [7, 3], [8, 3], [9, 3], [10, 3], [10, 4], [10, 5], [11, 5], [12, 5]], false, true, { segment: 5, action: 'lob', frame: 0 }),
     { kind: 'wormEgg', x: 9 * TILE, y: 2 * TILE, action: 'move', frame: 1 },
     { kind: 'wormEgg', x: 2.5 * TILE, y: 6.5 * TILE + 13, action: 'idle', frame: 0 },
     { kind: 'wormEgg', x: 12.5 * TILE, y: 1.5 * TILE + 13, action: 'attack', frame: 2 },
@@ -555,9 +530,9 @@ const POSE_NAMES: Record<string, Partial<Record<Action, string>>> = {
   wormHead: { move: 'crawl', attack: 'mandibles spread, snapping' },
   wormBody: { move: 'crawl', attack: 'tensing' },
   wormTail: { move: 'crawl', attack: 'tensing' },
-  wormBossHead: { move: 'crawl', attack: 'roar: maw splayed, crystals flaring', spit: 'maw pulsing', charge: 'head tucked, shards forward', burrow: 'diving in, climbing out', lob: 'heave, let go', split: 'torn open on its crystal core', die: 'cracking, bursting' },
-  wormBossBody: { move: 'crawl', attack: 'roar: crystals flaring', spit: 'ready, firing', charge: 'shards forward', burrow: 'diving in, climbing out', lob: 'heave, let go', split: 'torn open', die: 'cracking, bursting' },
-  wormBossTail: { move: 'crawl', attack: 'roar', spit: 'ready, firing', charge: 'shards forward', burrow: 'diving in, climbing out', lob: 'heave, let go', split: 'torn open on its crystal core', die: 'cracking, bursting' },
+  wormBossHead: { idle: 'seams pulsing', move: 'crawl, seams pulsing', attack: 'roar: mandibles splayed, seams blazing', spit: 'seams flaring (stand-in)', charge: 'mandibles spread (stand-in)', burrow: 'diving in, climbing out (stand-in)', lob: 'heave, let go (stand-in)', split: 'twitching (stand-in)', die: 'seams burning brighter (stand-in)' },
+  wormBossBody: { idle: 'seams pulsing', move: 'crawl, seams pulsing', attack: 'roar: seams blazing', spit: 'seams flaring (stand-in)', charge: 'tensing (stand-in)', burrow: 'diving in, climbing out (stand-in)', lob: 'heave, let go (stand-in)', split: 'twitching (stand-in)', die: 'seams burning brighter (stand-in)' },
+  wormBossTail: { idle: 'seams pulsing', move: 'crawl, seams pulsing', attack: 'roar: seams blazing', spit: 'seams flaring (stand-in)', charge: 'tensing (stand-in)', burrow: 'diving in, climbing out (stand-in)', lob: 'heave, let go (stand-in)', split: 'twitching (stand-in)', die: 'seams burning brighter (stand-in)' },
   wormEgg: { idle: 'resting', move: 'tumbling through the air', attack: 'wobbling: hairline, spreading, splitting' },
 };
 
@@ -738,7 +713,7 @@ ${defs(lit)}${defs(unlit)}${defs(grotto)}${defs(hollow)}${defs(rift)}${defs(rubb
 <p class="note">The worm is the Obsidian Centipede's dull chitin cousin, drawn from above piece by piece: a head with dull eye pits and hooked horn mandibles, body plates with notched flanges and a keel, and a tail trailing one long stinger, all matte brown-black chitin with nothing glowing, and no legs. The plates lie along one continuous spine, each turned the way it runs and longer than a cell, so neighbours overlap through every bend, the plate nearer the head on top; at a corner the spine curves round it rather than cutting across. The crawl ripples from the head down to the tail, a frame behind segment by segment.</p>
 ${frameStrips(['ghoul', 'bat', 'slime', 'geode', 'wormHead', 'wormBody', 'wormTail'], ['ghoul', 'bat', 'slime', 'geode', 'wormHead', 'wormBody', 'wormTail'])}
 <h2>The worm boss, acting out its fight</h2>
-<p class="note">The worm boss is the worm grown huge, its crystals bigger still, drawn piece by piece like the worm, each pose held exactly as long as the moment of the fight it acts out. It crawls; it rears up and roars (the maw splayed, the crystals flaring) through the stop at its split and through its last stand's roar; its maw pulses as a spit wave runs down its body, each segment flaring as its shot leaves; it tucks its head and points its shards forward as it charges up and between lunges; it dives into the walls and climbs out of them; a segment heaves as it lobs an egg; at the split its torn ends show a raw crystal core; and a dying half cracks through, each segment's crystals blazing just before it bursts into crystal shards, tail to head along the death chain.</p>
+<p class="note">The worm boss is the Obsidian Centipede: overlapping black-glass plates with dim blood-red light leaking from the seams between them, hooked glass mandibles, eyes burning in its head, a single long glass stinger and no legs. It lies along the same continuous spine as the worm, seen from above and turned along it, its plates as broad as its segments. As it crawls its plates ripple and its seams pulse dimly; through its roar they blaze. Each pose is held exactly as long as the moment of the fight it acts out; the beats marked stand-in show its crawl lit to suit until they get their own frames.</p>
 <p class="note">Its eggs are pale, leathery pods flecked with crystal: tumbling through the air, resting where they land, then cracking ever wider as they wobble to hatch into a worm.</p>
 ${frameStrips(['wormBossHead', 'wormBossBody', 'wormBossTail', 'wormEgg'], [])}
 <section class="strip"><h3>Shots <span>the geode's ricocheting shard shot, red-hot and outlined like the enemy shot beside it</span></h3><div class="frames"><figure>${img(hudSvg.shot('shard', SHOT_ART.shard), SHOT_CANVAS, SHOT_CANVAS, 2.5, false, 'shard shot')}<figcaption>shard shot (tumbles in flight)</figcaption></figure><figure>${img(hudSvg.shot('enemy', SHOT_ART.enemy), SHOT_CANVAS, SHOT_CANVAS, 2.5, false, 'enemy shot')}<figcaption>enemy shot</figcaption></figure></div></section>
